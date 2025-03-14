@@ -354,3 +354,20 @@ class Manager:
             "draws": draws,
             "losses": matches_played - wins - draws
         }
+    
+    
+    def getstats(self):
+        """Get current learning statistics."""
+
+        return {
+            "total_rewards": self.total_rewards,
+            "win_rate": (self.wins / self.matches_played) * 100,
+            "draw_rate": (self.draws / self.matches_played) * 100,
+            "exploration_rate": self.exploration_rate,
+            "learning_rate": self.learning_rate,
+            "formation_preferences": sorted(self.formation_weights.items(), key=lambda x: x[1], reverse=True),
+            "matches_played": self.matches_played,
+            "wins": self.wins,
+            "draws": self.draws,
+            "losses": self.losses
+        }
