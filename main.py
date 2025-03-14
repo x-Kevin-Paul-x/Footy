@@ -50,20 +50,19 @@ def create_premier_league():
         # Create and assign manager
         manager = Manager()
         team.set_manager(manager)
-        print(f"{team_name} Manager: {manager.name} (Experience: {manager.experience_level})")
+        #print(f"{team_name} Manager: {manager.name} (Experience: {manager.experience_level})")
         
         # Create squad
-        print(f"\nCreating {team_name} squad:")
+        #print(f"\nCreating {team_name} squad:")
         goalkeepers = [FootballPlayer.create_player(position="GK") for _ in range(2)]
         for gk in goalkeepers:
             team.add_player(gk)
-            print(f"Signed: {gk.name} ({gk.position}, Age: {gk.age})")
+            #print(f"Signed: {gk.name} ({gk.position}, Age: {gk.age})")
         
         for _ in range(14):  # 14 outfield players
             player = FootballPlayer.create_player()
             team.add_player(player)
-            print(f"Signed: {player.name} ({player.position}, Age: {player.age})")
-        print()
+            #print(f"Signed: {player.name} ({player.position}, Age: {player.age})")
     
     return premier_league
 
@@ -94,68 +93,69 @@ def main():
     # Create and simulate league
     premier_league = create_premier_league()
     
-    print("\nGenerating season schedule...")
-    premier_league.generate_schedule()
-    
-    print("\nSimulating season...")
-    premier_league.play_season()
-    
-    # Generate final reports
-    report = premier_league.generate_season_report()
-    
-    # Print results
-    print_league_table(report['league_table'])
-    
-    # Print champions info
-    champions = report['league_table'][0][0]
-    print(f"\nPremier League Champions: {champions}!")
-    
-    # Print best manager
-    champions_team = report['league_table'][0][0]
-    champions_manager = next(team.manager for team in premier_league.teams if team.name == champions_team)
-    print(f"\nManager of the Season: {champions_manager.name} ({champions_team})")
-    print(f"Experience Level: {champions_manager.experience_level}")
-    manager_stats = champions_manager.get_learning_stats()
-    # Calculate stats if available
-    matches_played = manager_stats.get('matches_played', 76)  # Assuming full season
-    wins = manager_stats.get('wins', 0)
-    draws = manager_stats.get('draws', 0)
-    losses = manager_stats.get('losses', 0)
-    
-    win_rate = (wins / matches_played) * 100 if matches_played > 0 else 0
-    draw_rate = (draws / matches_played) * 100 if matches_played > 0 else 0
-    
-    print(f"Win Rate: {win_rate:.1f}%")
-    print(f"Draw Rate: {draw_rate:.1f}%")
-    print(f"Total Matches: {matches_played}")
-    print(f"Record: W{wins}-D{draws}-L{losses}")
-    print(f"Preferred Formation: {manager_stats['formation_preferences'][0][0]}")
-    
-    # Print team of the season
-    print_best_xi(report['best_players'])
-    
-    # Save detailed report
-    print("\nSaving detailed season report to 'season_report.json'...")
-    with open('season_report.json', 'w') as f:
-        json.dump({
-            'season': premier_league.season_year,
-            'champions': champions_team,
-            'champions_manager': {
-                'name': champions_manager.name,
-                'experience': champions_manager.experience_level,
-                'formation': manager_stats['formation_preferences'][0][0]
-            },
-            'table': report['league_table'],
-            'best_players': [
-                {
-                    'name': p.name,
-                    'position': p.position,
-                    'team': p.team,
-                    'potential': p.potential
-                }
-                for p in report['best_players']
-            ]
-        }, f, indent=2)
+    for _ in range(3):
+        print("\nGenerating season schedule...")
+        premier_league.generate_schedule()
+        
+        print("\nSimulating season...")
+        premier_league.play_season()
+        
+        # Generate final reports
+        report = premier_league.generate_season_report()
+        
+        # Print results
+        print_league_table(report['league_table'])
+        
+        # Print champions info
+        champions = report['league_table'][0][0]
+        print(f"\nPremier League Champions: {champions}!")
+        
+        # Print best manager
+        champions_team = report['league_table'][0][0]
+        champions_manager = next(team.manager for team in premier_league.teams if team.name == champions_team)
+        print(f"\nManager of the Season: {champions_manager.name} ({champions_team})")
+        print(f"Experience Level: {champions_manager.experience_level}")
+        manager_stats = champions_manager.getstats()
+        # Calculate stats if available
+        matches_played = manager_stats.get('matches_played',38)  # Assuming full season
+        wins = manager_stats.get('wins', 0)
+        draws = manager_stats.get('draws', 0)
+        losses = manager_stats.get('losses', 0)
+        
+        win_rate = manager_stats.get('win_rate', 0) 
+        draw_rate = manager_stats.get('draw_rate', 0) 
+        
+        print(f"Win Rate: {win_rate:.1f}%")
+        print(f"Draw Rate: {draw_rate:.1f}%")
+        print(f"Total Matches: {matches_played}")
+        print(f"Record: W{wins}-D{draws}-L{losses}")
+        print(f"Preferred Formation: {manager_stats['formation_preferences'][0][0]}")
+        
+        # Print team of the season
+        print_best_xi(report['best_players'])
+        
+        # Save detailed report
+        print("\nSaving detailed season report to 'season_report.json'...")
+        with open('season_report.json', 'w') as f:
+            json.dump({
+                'season': premier_league.season_year,
+                'champions': champions_team,
+                'champions_manager': {
+                    'name': champions_manager.name,
+                    'experience': champions_manager.experience_level,
+                    'formation': manager_stats['formation_preferences'][0][0]
+                },
+                'table': report['league_table'],
+                'best_players': [
+                    {
+                        'name': p.name,
+                        'position': p.position,
+                        'team': p.team,
+                        'potential': p.potential
+                    }
+                    for p in report['best_players']
+                ]
+            }, f, indent=2)
 
 if __name__ == "__main__":
     main()

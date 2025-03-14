@@ -1,10 +1,12 @@
 import os
 import json
 from datetime import datetime
+import random
 from match import Match
 from team import Team
 from manager import Manager
 from coach import Coach
+from transfer import TransferMarket
 
 class League:
     def __init__(self, name, num_teams=20):
@@ -25,13 +27,19 @@ class League:
         os.makedirs(self.match_reports_dir, exist_ok=True)
 
     def generate_schedule(self):
-        """Create a double round-robin schedule"""
+        """Create a proper double round-robin schedule"""
         fixtures = []
-        for _ in range(2):  # Home and away matches
-            for i in range(len(self.teams)):
-                for j in range(len(self.teams)):
-                    if i != j:
-                        fixtures.append((self.teams[i], self.teams[j]))
+        teams = self.teams
+        n = len(teams)
+        
+        # Create home/away matches for each unique pair
+        for i in range(n):
+            for j in range(n):
+                if i != j:
+                    fixtures.append((teams[i], teams[j]))
+        
+        # Randomize match order to create realistic schedule
+        random.shuffle(fixtures)
         self.matches = fixtures
 
     def play_season(self):
@@ -44,24 +52,9 @@ class League:
                 self._weekly_team_training(team)
             
             # Play the match
-            print(f"\nMatch Day {match_day}")
+            #print(f"\nMatch Day {match_day}")
             match = Match(home, away)
             result = match.play_match()
-            
-            # Update manager's record based on match result
-            if home.manager and away.manager:
-                home.manager.matches_played += 1
-                away.manager.matches_played += 1
-                
-                if result["score"][0] > result["score"][1]:
-                    home.manager.wins += 1
-                    away.manager.losses += 1
-                elif result["score"][0] < result["score"][1]:
-                    away.manager.wins += 1
-                    home.manager.losses += 1
-                else:
-                    home.manager.draws += 1
-                    away.manager.draws += 1
             
             # Save match report
             self.save_match_report(match, result, idx+1)
@@ -73,7 +66,7 @@ class League:
             if idx % 7 == 6:
                 match_day += 1
                 if match_day in [13, 26]:  # Transfer windows
-                    print(f"\nTransfer Window Opens!")
+                    #print(f"\nTransfer Window Opens!")
                     self._run_transfer_window(days=7)
 
     def save_match_report(self, match, result, match_number):
@@ -183,11 +176,10 @@ class League:
 
     def _run_transfer_window(self, days=7):
         """Run a transfer window period."""
-        from transfer import TransferMarket
         market = TransferMarket()
         
         for day in range(days):
-            print(f"\nTransfer Window - Day {day + 1}")
+            #print(f"\nTransfer Window - Day {day + 1}")
             
             # Teams make transfer decisions
             for team in self.teams:
@@ -210,13 +202,13 @@ class League:
             market.advance_day()
         
         # Print window summary
-        print("\nTransfer Window Summary:")
-        for team in self.teams:
-            print(f"\n{team.name}:")
-            print(f"Remaining Budget: £{team.budget:,.2f}")
-            print(f"Squad Size: {len(team.players)}")
-            needs = team.get_squad_needs()
-            print(f"Squad Needs: {needs['needs']}")
+        #print("\nTransfer Window Summary:")
+        #for team in self.teams:
+        #   print(f"\n{team.name}:")
+        #    print(f"Remaining Budget: £{team.budget:,.2f}")
+        #    print(f"Squad Size: {len(team.players)}")
+        #    needs = team.get_squad_needs()
+        #    print(f"Squad Needs: {needs['needs']}")
     
     def _weekly_team_training(self, team):
         """Handle weekly training and development for a team."""

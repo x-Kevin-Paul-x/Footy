@@ -2,6 +2,9 @@ from dataclasses import dataclass
 from typing import List, Dict, Optional
 import random
 
+from player import FootballPlayer
+from team import Team
+
 @dataclass
 class TransferListing:
     player: 'FootballPlayer'

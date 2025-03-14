@@ -141,8 +141,8 @@ class FootballPlayer:
                 final_value = min(99, max(1, (base_value + variation) * potential_factor))
                 player.attributes[attr_type][sub_attr] = round(final_value, 1)
         
-        print(f"Created new player: {name}, {age} years, {position}")
-        print(f"Potential: {player.potential}")
+        #print(f"Created new player: {name}, {age} years, {position}")
+        #print(f"Potential: {player.potential}")
         return player
 
     def train_player(self, intensity, focus_area=None, training_days=1, coach_bonus=0):
@@ -256,8 +256,3 @@ class FootballPlayer:
         else:
             print("Invalid detail level. Using 'basic'")
             return basic_info
-
-
-
-player = FootballPlayer.create_player()
-print(player.get_player_info("full"))
