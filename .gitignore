@@ -6,7 +6,6 @@ __pycache__/
 *.log
 *.DS_Store
 match_reports/
-season_report.json
 .qodo/
 .qodo
-season_report.json
+season_reports.json/
