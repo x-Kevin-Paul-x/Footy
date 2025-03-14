@@ -90,14 +90,17 @@ def print_best_xi(players):
         print(f"{player.position:<10} {player.name:<25} {player.team:<20} {avg_rating:>6.2f}")
 
 def main():
+    
+    num_seasons = 3
+
     # Create and simulate league
     premier_league = create_premier_league()
     
-    for _ in range(3):
-        print("\nGenerating season schedule...")
+    for season in range(num_seasons):
+        print(f"\nSeason {premier_league.season_year} - Generating season schedule...")
         premier_league.generate_schedule()
         
-        print("\nSimulating season...")
+        print(f"Season {premier_league.season_year} - Simulating season...")
         premier_league.play_season()
         
         # Generate final reports
@@ -134,9 +137,10 @@ def main():
         # Print team of the season
         print_best_xi(report['best_players'])
         
-        # Save detailed report
-        print("\nSaving detailed season report to 'season_report.json'...")
-        with open('season_report.json', 'w') as f:
+        # Save detailed report for each season
+        report_filename = f'season_reports/season_report_{premier_league.season_year}.json'
+        print(f"\nSaving detailed season {premier_league.season_year} report to '{report_filename}'...")
+        with open(report_filename, 'w') as f:
             json.dump({
                 'season': premier_league.season_year,
                 'champions': champions_team,
@@ -156,6 +160,9 @@ def main():
                     for p in report['best_players']
                 ]
             }, f, indent=2)
+        
+        # Increment to next season
+        premier_league.increment_season()
 
 if __name__ == "__main__":
     main()

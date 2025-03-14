@@ -166,13 +166,13 @@ class FootballPlayer:
         
         # Set improvement and fitness cost based on intensity and coach influence
         if intensity == "low":
-            improvement = 0.05 + (coach_bonus * 0.02)
+            improvement = 0.1 + (coach_bonus * 0.05)
             fitness_cost = max(1, 3 - coach_bonus)
         elif intensity == "medium":
-            improvement = 0.1 + (coach_bonus * 0.03)
+            improvement = 0.2 + (coach_bonus * 0.08)
             fitness_cost = max(2, 5 - coach_bonus)
         elif intensity == "high":
-            improvement = 0.15 + (coach_bonus * 0.04)
+            improvement = 0.3 + (coach_bonus * 0.1)
             fitness_cost = max(3, 7 - coach_bonus)
         else:
             print("Invalid intensity level. Use 'low', 'medium', or 'high'")
@@ -195,17 +195,23 @@ class FootballPlayer:
                 weight = 2 if attr_type == focus_area else 0.5
                 for sub_attr in self.attributes[attr_type]:
                     # Base improvement with coach and potential influence
-                    base_improvement = improvement * weight
+                    base_improvement = improvement * weight * 1.5  # Increased multiplier
                     potential_factor = self.potential / 100.0
                     
                     # Apply improvement with potential scaling
                     self.attributes[attr_type][sub_attr] += base_improvement * (1 + potential_factor)
                     
                     # Random chance for bonus improvement based on potential
-                    if random.random() < (self.potential / 200):
+                    if random.random() < 0.15 * (1 + coach_bonus/10):
                         bonus = random.uniform(0.1, 0.3) * (1 + coach_bonus * 0.1)
                         self.attributes[attr_type][sub_attr] += bonus
                     
+                    # Potential progression system
+                    if random.random() < 0.15 * (1 + coach_bonus/10):
+                        potential_gain = random.uniform(0.1, 0.5) * (improvement * 2)
+                        self.potential = min(99, self.potential + potential_gain)
+                        print(f"{self.name}'s potential increased to {self.potential:.1f}!")
+
                     # Cap at 99.0
                     self.attributes[attr_type][sub_attr] = min(99.0, self.attributes[attr_type][sub_attr])
             

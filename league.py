@@ -15,6 +15,7 @@ class League:
         self.matches = []
         self.standings = {}
         self.match_reports_dir = "match_reports"
+        self.historical_standings = []
         self.season_year = datetime.now().year
         
         # Initialize managers and coaches for all teams
@@ -24,6 +25,7 @@ class League:
                 team.add_coach(Coach())
         
         # Create directory for match reports
+        self._init_season()
         os.makedirs(self.match_reports_dir, exist_ok=True)
 
     def generate_schedule(self):
@@ -74,7 +76,7 @@ class League:
         report = {
             "match_number": match_number,
             "date": datetime.now().strftime("%Y-%m-%d"),
-            "home_team": match.home_team.name,
+            "season_year": self.season_year,
             "away_team": match.away_team.name,
             "score": result["score"],
             "possession": result.get("possession", [50, 50]),
@@ -83,7 +85,7 @@ class League:
             "intensity": match.intensity
         }
         
-        filename = f"{self.season_year}_Match_{match_number:04d}.json"
+        filename = f"{datetime.now().year}_Match_{match_number:04d}.json"
         path = os.path.join(self.match_reports_dir, filename)
         
         with open(path, 'w') as f:
@@ -210,6 +212,12 @@ class League:
         #    needs = team.get_squad_needs()
         #    print(f"Squad Needs: {needs['needs']}")
     
+    def increment_season(self):
+        """Advance to new season"""
+        self.season_year += 1
+        self._init_season()
+        print(f"Advanced to season {self.season_year}")
+
     def _weekly_team_training(self, team):
         """Handle weekly training and development for a team."""
         # Organize players by position groups
@@ -272,3 +280,8 @@ class League:
                 "best_defense": min(self.standings.items(), key=lambda x: x[1]['ga'])
             }
         }
+    
+    def _init_season(self):
+        """Initialize/reset season-specific data"""
+        self.historical_standings.append((self.season_year, self.standings))
+        self.standings = {}
