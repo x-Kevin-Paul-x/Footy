@@ -324,11 +324,57 @@ class Match:
         else:
             self.possession[1] += 1
         
-        # Update player fatigue
+        # Update player fatigue and development
         for team in [self.home_team, self.away_team]:
             for player in team.players:
+                # Calculate match intensity impact
                 fatigue = random.uniform(0.1, 0.3) * self.intensity
                 player.stats["fitness"] = max(0, player.stats["fitness"] - fatigue)
+                
+                # Development from match experience
+                if player in self.home_lineup or player in self.away_lineup:
+                    player.stats["appearances"] += 1
+                    
+                    # Calculate development chance based on age
+                    development_chance = 0.15 if player.age < 21 else \
+                                       0.10 if player.age < 23 else \
+                                       0.05 if player.age < 27 else \
+                                       0.02  # Very small chance for older players
+                    
+                    # Development bonus decreases with age
+                    development_bonus = 1.2 if player.age < 21 else \
+                                      1.0 if player.age < 23 else \
+                                      0.8 if player.age < 27 else \
+                                      0.5
+                    
+                    # Apply development based on match experience
+                    if random.random() < development_chance:
+                        # Choose random attribute category to improve
+                        category = random.choice(list(player.attributes.keys()))
+                        for attr in player.attributes[category]:
+                            # Smaller base improvement values
+                            improvement = random.uniform(0.01, 0.05) * development_bonus * (player.potential / 100)
+                            current_value = player.attributes[category][attr]
+                            
+                            # Harder to improve as rating gets higher
+                            if current_value > 80:
+                                improvement *= 0.5
+                            elif current_value > 90:
+                                improvement *= 0.25
+                            
+                            # Apply improvement with cap
+                            player.attributes[category][attr] = min(95.0, current_value + improvement)
+                            
+                            if improvement > 0.2:  # Only show significant improvements
+                                self.events.append(MatchEvent(
+                                    self.minute,
+                                    "development",
+                                    player.name,
+                                    "home" if team == self.home_team else "away",
+                                    f"{player.name} shows improvement in {attr}"
+                                ))
+                
+                # Fatigue events
                 if player.stats["fitness"] < 20 and random.random() < 0.3:
                     self.events.append(MatchEvent(
                         self.minute,

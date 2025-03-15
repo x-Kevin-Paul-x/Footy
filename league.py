@@ -350,23 +350,39 @@ class League:
                 coach_specialty = "DEF"
             elif any(pos in coach.specialty for pos in ["ST", "CF", "LW", "RW"]):
                 coach_specialty = "FWD"
-            # Train players in coach's specialty group
-            for player in position_groups[coach_specialty]:
-                # Determine training intensity based on player fitness and upcoming matches
-                if player.stats["fitness"] > 80:
-                    intensity = "high"
-                elif player.stats["fitness"] > 50:
-                    intensity = "medium"
-                else:
-                    intensity = "low"
-                
-                # Apply training with coach bonus
-                coach_bonus = coach.experience_level / 10.0
-                player.train_player(
-                    intensity=intensity,
-                    training_days=3,  # Three sessions per week
-                    coach_bonus=coach_bonus
-                )
+            # Train all players with appropriate intensity
+            for group, players in position_groups.items():
+                for player in players:
+                    # Determine training intensity based on player fitness and upcoming matches
+                    if player.stats["fitness"] > 80:
+                        intensity = "high"
+                    elif player.stats["fitness"] > 50:
+                        intensity = "medium"
+                    else:
+                        intensity = "low"
+                    
+                    # Apply higher coach bonus if player matches coach specialty
+                    coach_bonus = coach.experience_level / 10.0
+                    if group == coach_specialty:
+                        coach_bonus *= 1.5  # 50% bonus for specialized coaching
+                    
+                    # Apply training with focus on position-specific attributes
+                    focus_area = None
+                    if group == "GK":
+                        focus_area = "goalkeeping"
+                    elif group == "DEF":
+                        focus_area = "defending"
+                    elif group == "MID":
+                        focus_area = "passing"
+                    elif group == "FWD":
+                        focus_area = "shooting"
+                    
+                    player.train_player(
+                        intensity=intensity,
+                        training_days=3,  # Three sessions per week
+                        coach_bonus=coach_bonus,
+                        focus_area=focus_area
+                    )
     
     def generate_season_report(self):
         """Compile comprehensive season report"""

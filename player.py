@@ -224,12 +224,26 @@ class FootballPlayer:
                         if final_overall - initial_overall > 0.5:
                             print(f"{self.name} improved from {initial_overall:.1f} to {final_overall:.1f} rating!")
 
-                    # Cap at 99.0
-                    self.attributes[attr_type][sub_attr] = min(99.0, self.attributes[attr_type][sub_attr])
+                    # Cap at 95.0 and track development
+                    old_value = self.attributes[attr_type][sub_attr]
+                    new_value = min(95.0, self.attributes[attr_type][sub_attr])
+                    self.attributes[attr_type][sub_attr] = new_value
+                    
+                    # Update development tracking
+                    if "development" not in self.stats:
+                        self.stats["development"] = []
+                    if new_value > old_value:
+                        self.stats["development"].append({
+                            "attribute": f"{attr_type}.{sub_attr}",
+                            "from": old_value,
+                            "to": new_value,
+                            "age": self.age
+                        })
             
-            # Update fitness
-            self.stats["fitness"] -= fitness_cost
-            results["fitness_impact"] += fitness_cost
+            # Update fitness with age factor
+            age_factor = 1.0 if self.age < 30 else 1.2  # Older players tire faster
+            self.stats["fitness"] -= fitness_cost * age_factor
+            results["fitness_impact"] += fitness_cost * age_factor
         
         # Ensure fitness is within bounds
         self.stats["fitness"] = max(0, min(100, self.stats["fitness"]))
