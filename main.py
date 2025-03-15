@@ -47,10 +47,10 @@ def create_premier_league():
         team = Team(team_name, budgets[team_name])
         premier_league.teams.append(team)
         
-        # Create and assign manager
-        manager = Manager()
+        # Create and assign manager with profile
+        profile = None  # Will use random profile from ManagerProfile.create_random_profile()
+        manager = Manager(profile=profile)
         team.set_manager(manager)
-        #print(f"{team_name} Manager: {manager.name} (Experience: {manager.experience_level})")
         
         # Create squad
         #print(f"\nCreating {team_name} squad:")
@@ -118,21 +118,30 @@ def main():
         champions_manager = next(team.manager for team in premier_league.teams if team.name == champions_team)
         print(f"\nManager of the Season: {champions_manager.name} ({champions_team})")
         print(f"Experience Level: {champions_manager.experience_level}")
-        manager_stats = champions_manager.getstats()
-        # Calculate stats if available
-        matches_played = manager_stats.get('matches_played',38)  # Assuming full season
-        wins = manager_stats.get('wins', 0)
-        draws = manager_stats.get('draws', 0)
-        losses = manager_stats.get('losses', 0)
+        manager_stats = champions_manager.get_stats()
         
-        win_rate = manager_stats.get('win_rate', 0) 
-        draw_rate = manager_stats.get('draw_rate', 0) 
+        # Print performance stats
+        print(f"Experience Level: {champions_manager.experience_level}")
+        print(f"Win Rate: {manager_stats['win_rate']:.1f}%")
+        print(f"Draw Rate: {manager_stats['draw_rate']:.1f}%")
+        print(f"Total Matches: {manager_stats['matches_played']}")
+        print(f"Record: W{manager_stats['wins']}-D{manager_stats['draws']}-L{manager_stats['losses']}")
         
-        print(f"Win Rate: {win_rate:.1f}%")
-        print(f"Draw Rate: {draw_rate:.1f}%")
-        print(f"Total Matches: {matches_played}")
-        print(f"Record: W{wins}-D{draws}-L{losses}")
-        print(f"Preferred Formation: {manager_stats['formation_preferences'][0][0]}")
+        # Print learning stats
+        print("\nLearning Statistics:")
+        print(f"Exploration Rate: {manager_stats['exploration_rate']:.2f}")
+        print(f"Average Recent Reward: {manager_stats.get('average_reward', 0):.2f}")
+        print(f"Transfer Success Rate: {manager_stats.get('transfer_success_rate', 0):.1f}%")
+        
+        # Print preferred formation and tactics
+        if manager_stats.get('formation_preferences'):
+            print(f"\nPreferred Formation: {manager_stats['formation_preferences'][0][0]}")
+            
+        # Print profile info
+        print("\nManager Profile:")
+        print(f"Short-term Focus: {champions_manager.profile.short_term_weight:.2f}")
+        print(f"Long-term Focus: {champions_manager.profile.long_term_weight:.2f}")
+        print(f"Risk Tolerance: {champions_manager.profile.risk_tolerance:.2f}")
         
         # Print team of the season
         print_best_xi(report['best_players'])
@@ -147,7 +156,7 @@ def main():
                 'champions_manager': {
                     'name': champions_manager.name,
                     'experience': champions_manager.experience_level,
-                    'formation': manager_stats['formation_preferences'][0][0]
+                    'formation': manager_stats.get('formation_preferences', [])[0][0] if manager_stats.get('formation_preferences') else '4-4-2'
                 },
                 'table': report['league_table'],
                 'best_players': [

@@ -1,7 +1,7 @@
 import random
 import math
 from dataclasses import dataclass
-from typing import List, Dict, Tuple
+from typing import Any, List, Dict, Tuple
 
 @dataclass
 class MatchEvent:
@@ -349,69 +349,46 @@ class Match:
         """
         #print(f"\nMatch: {self.home_team.name} vs {self.away_team.name}")
         
-        # Get lineups from managers
-        self.home_lineup, self.home_positions = self.home_team.manager.select_lineup(self.home_team.players)
-        self.away_lineup, self.away_positions = self.away_team.manager.select_lineup(self.away_team.players)
-        #print(f"Weather: {self.weather}")
-        #print(f"Intensity: {self.intensity:.2f}")
-        
-        # Pre-match
-        #print("\nStarting Lineups:")
-        
-        for team in [self.home_team, self.away_team]:
-            #print(f"\n{team.name}:")
-            #print(f"Formation: {team.manager.formation if team.manager else '4-4-2'}")
-            
-            # Get all available players by position
-            goalkeepers = [p for p in team.players if p.position == "GK"]
-            defenders = [p for p in team.players if p.position in ["CB", "LB", "RB", "SW", "LWB", "RWB"]]
-            midfielders = [p for p in team.players if p.position in ["CM", "CDM", "CAM", "LM", "RM", "DM"]]
-            forwards = [p for p in team.players if p.position in ["ST", "CF", "SS", "LW", "RW"]]
-            
-            # Select starting lineup
-            lineup = []
-            
-            # Always start with best goalkeeper
-            if goalkeepers:
-                lineup.append(goalkeepers[0])
-            
-            # Get formation numbers
-            formation = team.manager.formation if team.manager else "4-4-2"
-            parts = formation.split('-')
-            def_count = int(parts[0])
-            fwd_count = int(parts[-1])
-            mid_count = sum(int(x) for x in parts[1:-1])
-            
-            # Add players by position
-            lineup.extend(defenders[:def_count])
-            lineup.extend(midfielders[:mid_count])
-            lineup.extend(forwards[:fwd_count])
-            
-            # Fill remaining spots with best available players
-            remaining_spots = 11 - len(lineup)
-            if remaining_spots > 0:
-                available = [p for p in team.players if p not in lineup]
-                lineup.extend(available[:remaining_spots])
-            
-            # Print final lineup
-            #print("\nStarting XI:")
-            for player in lineup[:11]:
-                position_modifier = self._calculate_position_penalty(player, player.position)
-                effectiveness = "Natural" if position_modifier >= 0.9 else f"Out of position ({position_modifier:.1f}x)"
-                #print(f"  {player.name} ({player.position}) - {effectiveness}")
+        # Select lineups using Q-learning managers
+        if self.home_team.manager:
+            self.home_lineup, self.home_positions = self.home_team.manager.select_lineup(
+                self.home_team.players,
+                opponent=self.away_team
+            )
+        else:
+            self.home_lineup, self.home_positions = self._select_default_lineup(self.home_team)
+
+        if self.away_team.manager:
+            self.away_lineup, self.away_positions = self.away_team.manager.select_lineup(
+                self.away_team.players,
+                opponent=self.home_team
+            )
+        else:
+            self.away_lineup, self.away_positions = self._select_default_lineup(self.away_team)
+
+        # Validate and adjust lineups if needed
+        self.home_lineup, self.home_positions = self._validate_lineup(self.home_lineup, self.home_positions, self.home_team)
+        self.away_lineup, self.away_positions = self._validate_lineup(self.away_lineup, self.away_positions, self.away_team)
         
         # Simulate match
         for _ in range(90):  # 90 minutes
             self.simulate_minute()
             
-            # Print significant events
-            while self.events and self.events[-1].minute == self.minute:
+            # Print significant events in debug mode
+            if self.events and self.events[-1].minute == self.minute:
                 event = self.events[-1]
-                #print(f"\n{event.minute}' - {event.details}")
-                
-            # Print score updates
-            #if self.minute % 15 == 0:
-                #print(f"\n{self.minute}' - Score: {self.home_team.name} {self.score[0]} - {self.score[1]} {self.away_team.name}")
+                if hasattr(self.home_team.manager, '_debug') and self.home_team.manager._debug:
+                    if event.type == "goal":
+                        print(f"\n{event.minute}' - GOAL! {self.home_team.name} {self.score[0]}-{self.score[1]} {self.away_team.name}")
+                    elif event.type == "fatigue" and event.minute % 15 == 0:
+                        print(f"\n{event.minute}' - {event.details}")
+            
+            # Print match updates every 15 minutes in debug mode
+            if self.minute % 15 == 0 and hasattr(self.home_team.manager, '_debug') and self.home_team.manager._debug:
+                print(f"\n{self.minute}' Match Update:")
+                print(f"{self.home_team.name} {self.score[0]}-{self.score[1]} {self.away_team.name}")
+                print(f"Possession: {self.possession[0]/self.minute*100:.1f}% - {self.possession[1]/self.minute*100:.1f}%")
+                print(f"Shots (On Target): {self.shots[0]} ({self.shots_on_target[0]}) - {self.shots[1]} ({self.shots_on_target[1]})")
         
         # Match summary
         summary = {
@@ -428,22 +405,38 @@ class Match:
         #print(f"Possession: {summary['possession'][0]:.1f}% - {summary['possession'][1]:.1f}%")
         #print(f"Shots (On Target): {self.shots[0]} ({self.shots_on_target[0]}) - {self.shots[1]} ({self.shots_on_target[1]})")
         
-        # Update manager statistics
-        if self.home_team.manager and self.away_team.manager:
-            # Update matches played
-            self.home_team.manager.matches_played += 1
-            self.away_team.manager.matches_played += 1
+        # Provide detailed feedback to managers for learning
+        if self.home_team.manager:
+            home_result = {
+                "winner": self.score[0] > self.score[1],
+                "draw": self.score[0] == self.score[1],
+                "goals_for": self.score[0],
+                "goals_against": self.score[1],
+                "possession": self.possession[0],
+                "shots": self.shots[0],
+                "shots_on_target": self.shots_on_target[0],
+                "youth_minutes": self._calculate_youth_minutes(self.home_lineup),
+                "player_development": self._calculate_player_development(self.home_lineup),
+                "tactical_success": self._calculate_tactical_success(self.home_team, self.away_team),
+                "formation_effectiveness": self._calculate_formation_effectiveness(self.home_team)
+            }
+            self.home_team.manager.learn_from_match(home_result)
             
-            # Update wins/draws/losses
-            if self.score[0] > self.score[1]:  # Home win
-                self.home_team.manager.wins += 1
-                self.away_team.manager.losses += 1
-            elif self.score[0] < self.score[1]:  # Away win
-                self.away_team.manager.wins += 1
-                self.home_team.manager.losses += 1
-            else:  # Draw
-                self.home_team.manager.draws += 1
-                self.away_team.manager.draws += 1
+        if self.away_team.manager:
+            away_result = {
+                "winner": self.score[1] > self.score[0],
+                "draw": self.score[0] == self.score[1],
+                "goals_for": self.score[1],
+                "goals_against": self.score[0],
+                "possession": self.possession[1],
+                "shots": self.shots[1],
+                "shots_on_target": self.shots_on_target[1],
+                "youth_minutes": self._calculate_youth_minutes(self.away_lineup),
+                "player_development": self._calculate_player_development(self.away_lineup),
+                "tactical_success": self._calculate_tactical_success(self.away_team, self.home_team),
+                "formation_effectiveness": self._calculate_formation_effectiveness(self.away_team)
+            }
+            self.away_team.manager.learn_from_match(away_result)
         
         # Reset player fitness by 50% after match
         for team in [self.home_team, self.away_team]:
@@ -451,3 +444,107 @@ class Match:
                 player.stats["fitness"] = min(100, player.stats["fitness"] + 50)
         
         return summary
+
+    def _calculate_youth_minutes(self, lineup: List[Any]) -> float:
+        """Calculate total minutes played by youth players (under 23)."""
+        youth_minutes = 0
+        for player in lineup:
+            if player.age < 23:
+                youth_minutes += 90  # Assume full match for simplicity
+        return youth_minutes
+
+    def _calculate_player_development(self, lineup: List[Any]) -> float:
+        """Calculate average development potential for squad."""
+        if not lineup:
+            return 0.0
+        
+        total_potential = 0
+        for player in lineup:
+            current = sum(sum(cat.values()) for cat in player.attributes.values()) / \
+                     (len(player.attributes) * len(next(iter(player.attributes.values()))))
+            potential = player.potential
+            room_for_growth = (potential - current) / potential if potential > 0 else 0
+            total_potential += room_for_growth
+            
+        return total_potential / len(lineup)
+
+    def _calculate_tactical_success(self, team: Any, opponent: Any) -> float:
+        """Calculate how well tactics countered the opponent."""
+        if not (team.manager and opponent.manager):
+            return 0.5
+            
+        team_tactics = team.manager.tactics
+        opp_tactics = opponent.manager.tactics
+        
+        # Calculate tactical advantage
+        offensive_success = team_tactics["offensive"] / max(1, opp_tactics["defensive"])
+        defensive_success = team_tactics["defensive"] / max(1, opp_tactics["offensive"])
+        pressure_success = team_tactics["pressure"] / max(1, opp_tactics["pressure"])
+        
+        # Weight and normalize the success rates
+        return (offensive_success + defensive_success + pressure_success) / 6  # Normalized to 0-1
+
+    def _calculate_formation_effectiveness(self, team: Any) -> float:
+        """Calculate how well the formation worked with available players."""
+        if not team.manager:
+            return 0.5
+            
+        formation = team.manager.formation
+        lineup = self.home_lineup if team == self.home_team else self.away_lineup
+        positions = self.home_positions if team == self.home_team else self.away_positions
+        
+        # Calculate average position suitability
+        total_suitability = 0
+        for player, position in zip(lineup, positions):
+            suitability = self._calculate_position_penalty(player, position)
+            total_suitability += suitability
+            
+        return total_suitability / len(lineup) if lineup else 0
+
+    def _select_default_lineup(self, team: Any) -> Tuple[List[Any], List[str]]:
+        """Select a default lineup when no manager is present."""
+        goalkeepers = [p for p in team.players if p.position == "GK"]
+        defenders = [p for p in team.players if p.position in ["CB", "LB", "RB", "SW", "LWB", "RWB"]]
+        midfielders = [p for p in team.players if p.position in ["CM", "CDM", "CAM", "LM", "RM", "DM"]]
+        forwards = [p for p in team.players if p.position in ["ST", "CF", "SS", "LW", "RW"]]
+        
+        lineup = []
+        positions = []
+        
+        # Default 4-4-2 formation
+        if goalkeepers:
+            lineup.append(goalkeepers[0])
+            positions.append("GK")
+        
+        # Add 4 defenders
+        lineup.extend(defenders[:4])
+        positions.extend(["CB", "CB", "LB", "RB"][:len(defenders[:4])])
+        
+        # Add 4 midfielders
+        lineup.extend(midfielders[:4])
+        positions.extend(["CM", "CM", "LM", "RM"][:len(midfielders[:4])])
+        
+        # Add 2 forwards
+        lineup.extend(forwards[:2])
+        positions.extend(["ST", "ST"][:len(forwards[:2])])
+        
+        return lineup[:11], positions[:11]
+
+    def _validate_lineup(self, lineup: List[Any], positions: List[str], team: Any) -> Tuple[List[Any], List[str]]:
+        """Ensure lineup meets minimum requirements."""
+        # Must have at least 1 goalkeeper
+        gk_count = sum(1 for pos in positions if pos == "GK")
+        if gk_count < 1:
+            goalkeepers = [p for p in team.players if p.position == "GK"]
+            if goalkeepers:
+                lineup.insert(0, goalkeepers[0])
+                positions.insert(0, "GK")
+                
+        # Ensure exactly 11 players
+        if len(lineup) > 11:
+            lineup = lineup[:11]
+            positions = positions[:11]
+        elif len(lineup) < 7:  # Absolute minimum players
+            raise ValueError("Insufficient players to form lineup")
+            
+        return lineup, positions

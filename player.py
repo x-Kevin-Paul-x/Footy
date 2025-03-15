@@ -206,11 +206,23 @@ class FootballPlayer:
                         bonus = random.uniform(0.1, 0.3) * (1 + coach_bonus * 0.1)
                         self.attributes[attr_type][sub_attr] += bonus
                     
+                    # Track initial ratings
+                    initial_overall = sum(sum(cat.values()) for cat in self.attributes.values()) / \
+                                   (len(self.attributes) * len(next(iter(self.attributes.values()))))
+                    
                     # Potential progression system
                     if random.random() < 0.15 * (1 + coach_bonus/10):
                         potential_gain = random.uniform(0.1, 0.5) * (improvement * 2)
+                        old_potential = self.potential
                         self.potential = min(99, self.potential + potential_gain)
-                        print(f"{self.name}'s potential increased to {self.potential:.1f}!")
+                        
+                        # Calculate final ratings after all improvements
+                        final_overall = sum(sum(cat.values()) for cat in self.attributes.values()) / \
+                                      (len(self.attributes) * len(next(iter(self.attributes.values()))))
+                        
+                        # Only show significant improvements
+                        if final_overall - initial_overall > 0.5:
+                            print(f"{self.name} improved from {initial_overall:.1f} to {final_overall:.1f} rating!")
 
                     # Cap at 99.0
                     self.attributes[attr_type][sub_attr] = min(99.0, self.attributes[attr_type][sub_attr])
@@ -225,7 +237,19 @@ class FootballPlayer:
         # Complete results
         results["final_attributes"] = {k: {sk: v for sk, v in sv.items()} for k, sv in self.attributes.items()}
         
-        print(f"{self.name} completed {training_days} days of {intensity} intensity training.")
+        # Calculate overall improvement
+        initial_avg = sum(sum(results["initial_attributes"][cat].values()) for cat in results["initial_attributes"]) / \
+                     (len(self.attributes) * len(next(iter(self.attributes.values()))))
+        final_avg = sum(sum(results["final_attributes"][cat].values()) for cat in results["final_attributes"]) / \
+                   (len(self.attributes) * len(next(iter(self.attributes.values()))))
+        
+        if final_avg - initial_avg > 0.5:  # Only show significant improvements
+            print(f"{self.name} completed {training_days} days of {intensity} intensity training:")
+            print(f"Overall Rating: {initial_avg:.1f} → {final_avg:.1f}")
+            print(f"Fitness: {self.stats['fitness']:.1f}%")
+            if focus_area:
+                print(f"Focused on: {focus_area}")
+        
         return results
 
     def get_player_info(self, detail_level="basic"):

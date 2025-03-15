@@ -121,24 +121,50 @@ class TransferMarket:
         return True, "Transfer completed successfully"
     
     def simulate_ai_transfers(self, all_teams):
-        """Simulate AI teams making transfer decisions."""
+        """Simulate AI teams making transfer decisions using Q-learning."""
         for team in all_teams:
             if not team.manager:
                 continue
                 
-            # AI team might list players
-            for player in team.players:
-                if len(team.players) > 18:  # Keep squad size reasonable
-                    if random.random() < 0.3:  # 30% chance to list excess players
-                        self.list_player(player, team)
+            # Get manager's decisions using Q-learning
+            actions = team.manager.make_transfer_decision(self)
             
-            # AI team might buy players
-            if team.budget > 1000000:  # Only if they have sufficient budget
-                available = self.get_available_players(max_price=team.budget * 0.8)
-                for listing in available:
-                    if random.random() < 0.2:  # 20% chance to make offer
-                        offer = listing.asking_price * random.uniform(0.8, 1.0)
-                        self.make_transfer_offer(team, listing, offer)
+            # Process each action with feedback
+            for action_type, *params in actions:
+                if action_type == "list":
+                    player, price = params
+                    if len(team.players) > 18:  # Keep minimum squad size
+                        listing = self.list_player(player, team, price)
+                        if listing:
+                            # Provide feedback for learning
+                            result = {
+                                "type": "list",
+                                "player": player,
+                                "price": price,
+                                "value_ratio": price / self.calculate_player_value(player),
+                                "need_satisfaction": 0.0,  # Listing doesn't satisfy needs
+                                "month": (self.current_day % 30) + 1,
+                                "market": self
+                            }
+                            team.manager.learn_from_transfer(result)
+                            
+                elif action_type == "buy":
+                    listing, offer = params
+                    if team.budget >= offer:
+                        success, _ = self.make_transfer_offer(team, listing, offer)
+                        if success:
+                            # Provide feedback for learning
+                            result = {
+                                "type": "buy",
+                                "player": listing.player,
+                                "price": offer,
+                                "value_ratio": self.calculate_player_value(listing.player) / offer,
+                                "need_satisfaction": 1.0,  # Assume need was identified by manager
+                                "age_impact": (27 - listing.player.age) / 27 if listing.player.age <= 27 else 0,
+                                "month": (self.current_day % 30) + 1,
+                                "market": self
+                            }
+                            team.manager.learn_from_transfer(result)
     
     def advance_day(self):
         """Advance the transfer market by one day."""
