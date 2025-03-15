@@ -1,3 +1,5 @@
+from player import FootballPlayer
+from manager import Manager
 class Team:
     def __init__(self, name, budget):
         """

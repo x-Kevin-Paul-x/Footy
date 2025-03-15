@@ -237,7 +237,6 @@ class League:
                 position_groups["MID"].append(player)
             else:
                 position_groups["FWD"].append(player)
-        
         # Assign best matching coaches to position groups
         for coach in team.coaches:
             # Determine coach's best position group
@@ -248,7 +247,6 @@ class League:
                 coach_specialty = "DEF"
             elif any(pos in coach.specialties for pos in ["ST", "CF", "LW", "RW"]):
                 coach_specialty = "FWD"
-            
             # Train players in coach's specialty group
             for player in position_groups[coach_specialty]:
                 # Determine training intensity based on player fitness and upcoming matches
