@@ -19,6 +19,11 @@ class Manager:
         # Initialize Q-learning brain
         self.brain = ManagerBrain(self.profile)
         
+        # Initialize transfer tracking
+        self.transfer_attempts = []  # List of bools for success/failure
+        self.transfers_made = 0
+        self.successful_transfers = 0
+        
         # All possible formations
         self.formations = [
             "4-4-2", "4-3-3", "4-2-3-1", "3-5-2", "5-3-2",
@@ -210,30 +215,47 @@ class Manager:
         )
         return score
     
-    def _calculate_transfer_reward(self, transfer_action: Dict[str, Any], 
-                                 old_state: Dict[str, Any], 
-                                 new_state: Dict[str, Any]) -> float:
+    def _calculate_transfer_reward(self, transfer_action: Dict[str, Any],
+                                  old_state: Dict[str, Any],
+                                  new_state: Dict[str, Any]) -> float:
         """Calculate comprehensive reward for a transfer action."""
         reward = 0.0
         
-        # Financial impact (30% weight)
+        # Financial impact (25% weight)
         if transfer_action["type"] == "buy":
-            price_value_ratio = self.transfer_value_estimates[transfer_action["player"]] / transfer_action["price"]
-            reward += 0.3 * (price_value_ratio - 1)  # Reward for good value
+            price_value_ratio = self.transfer_value_estimates.get(transfer_action["player"].name, transfer_action["price"]) / transfer_action["price"]
+            reward += 0.25 * (price_value_ratio - 1)  # Reward for good value
         else:  # Selling
-            profit_ratio = (transfer_action["price"] / 
-                          self.transfer_value_estimates[transfer_action["player"]] - 1)
-            reward += 0.3 * profit_ratio
+            sell_price = transfer_action["price"]
+            value_estimate = self.transfer_value_estimates.get(transfer_action["player"].name, sell_price)
+            profit_ratio = (sell_price / value_estimate - 1)
+            reward += 0.25 * profit_ratio
         
-        # Squad balance impact (40% weight)
+        # Squad balance impact (25% weight)
         old_balance = self._calculate_squad_balance(old_state["squad_composition"])
         new_balance = self._calculate_squad_balance(new_state["squad_composition"])
-        reward += 0.4 * (new_balance - old_balance)
+        reward += 0.25 * (new_balance - old_balance)
         
-        # Performance impact (30% weight)
-        old_strength = old_state["squad_composition"]["average_rating"]
-        new_strength = new_state["squad_composition"]["average_rating"]
-        reward += 0.3 * (new_strength - old_strength) / old_strength
+        # Squad needs satisfaction (25% weight)
+        if transfer_action["type"] == "buy":
+            position_group = self._get_position_group(transfer_action["player"].position)
+            current_count = old_state["squad_composition"]["positions"].get(position_group, 0)
+            ideal_counts = {"GK": 2, "DEF": 8, "MID": 8, "FWD": 5}
+            need_satisfaction = max(0, ideal_counts[position_group] - current_count) / ideal_counts[position_group]
+            reward += 0.25 * need_satisfaction
+            
+        # Performance potential (25% weight)
+        if transfer_action["type"] == "buy":
+            player = transfer_action["player"]
+            # Higher reward for young high-potential players
+            age_factor = max(0, (27 - player.age) / 10)  # Peak at age 27
+            potential_score = (player.potential / 100) * age_factor
+            reward += 0.25 * potential_score
+        else:
+            # Reward for selling aging players
+            player = transfer_action["player"]
+            age_decline = max(0, (player.age - 27) / 10)  # Start declining after 27
+            reward += 0.25 * age_decline
         
         return reward
     
@@ -356,21 +378,71 @@ class Manager:
         actions = []
         squad_needs = self.team.get_squad_needs()
         
-        # Add "no action" option
+        # Always include some actions to encourage transfers
         actions.append(("none", None, 0))
         
         # Selling actions
         for player in self.team.players:
             if len(self.team.players) > 18:  # Keep minimum squad size
                 market_value = transfer_market.calculate_player_value(player)
-                actions.append(("sell", player, market_value * 1.2))
+                age = player.age
+                
+                # Consider selling if:
+                # 1. Player is over 30 and not a key performer
+                # 2. Position is overstaffed
+                # 3. Value is high relative to ability
+                position_group = self._get_position_group(player.position)
+                current_in_position = squad_needs["current_distribution"].get(position_group, 0)
+                ideal_in_position = squad_needs["ideal_distribution"].get(position_group, 0)
+                
+                # More aggressive selling strategy
+                should_sell = False
+                sell_price_multiplier = 1.0
+                
+                # List more players for transfer with different conditions
+                if age > 28 and current_in_position >= ideal_in_position:  # Lower age threshold
+                    should_sell = True
+                    sell_price_multiplier = 0.9
+                elif current_in_position > ideal_in_position:  # Remove +1 buffer
+                    should_sell = True
+                    sell_price_multiplier = 1.1
+                elif age < 24 and player.potential < 80:  # Slightly higher potential threshold
+                    should_sell = True
+                    sell_price_multiplier = 1.0
+                elif random.random() < 0.2:  # 20% chance to list any player
+                    should_sell = True
+                    sell_price_multiplier = 1.2
+                
+                if should_sell:
+                    actions.append(("sell", player, market_value * sell_price_multiplier))
         
-        # Buying actions
-        if self.team.budget > 1000000 and len(self.team.players) < 23:
-            available = transfer_market.get_available_players(max_price=self.team.budget)
-            for listing in available:
-                if listing.asking_price <= self.team.budget:
-                    actions.append(("buy", listing, listing.asking_price * 0.9))
+        # Buying actions - lowered budget threshold to allow more transfer activity
+        if self.team.budget > 100000 and len(self.team.players) < 25:
+            # Calculate position needs
+            position_needs = {}
+            ideal_counts = {"GK": 2, "DEF": 8, "MID": 8, "FWD": 5}
+            
+            for pos, ideal in ideal_counts.items():
+                current = squad_needs["current_distribution"].get(pos, 0)
+                if current < ideal:
+                    position_needs[pos] = ideal - current
+            
+            # Get available players filtered by needs
+            for position, need in position_needs.items():
+                if need > 0:
+                    available = transfer_market.get_available_players(
+                        max_price=self.team.budget * 0.8,  # Keep 20% budget buffer
+                        position=position
+                    )
+                    
+                    for listing in available:
+                        player = listing.player
+                        # Prioritize young players with potential
+                        if player.age < 24 and player.potential > 80:
+                            actions.append(("buy", listing, listing.asking_price * 1.1))
+                        # Or established players in prime
+                        elif 24 <= player.age <= 28:
+                            actions.append(("buy", listing, listing.asking_price * 0.9))
         
         return actions
     
@@ -766,12 +838,13 @@ class Manager:
         # Add market analysis
         market_trends = self.analyze_market_trends()
         
-        # Calculate transfer success rate
-        successful_transfers = sum(
-            1 for t in self.transfer_history[-20:]
-            if t.get("reward", 0) > 0
-        )
-        transfer_success_rate = successful_transfers / len(self.transfer_history[-20:]) if self.transfer_history else 0
+        # Calculate transfer success rate from attempts
+        if not hasattr(self, 'transfer_attempts'):
+            self.transfer_attempts = []
+        
+        # Get recent attempts (last 20)
+        recent_attempts = self.transfer_attempts[-20:]
+        transfer_success_rate = (sum(1 for success in recent_attempts if success) / len(recent_attempts)) if recent_attempts else 0
         
         stats = {
             **base_stats,
@@ -852,6 +925,49 @@ class Manager:
             performance["goals_against"] += match.get("goals_against", 0)
         return dict(performance)
     
+    def _evaluate_squad_stability(self) -> float:
+        """Evaluate how stable/balanced the current squad is."""
+        if not self.team:
+            return 0.0
+            
+        squad_needs = self.team.get_squad_needs()
+        
+        # Get distributions from squad needs
+        current_distribution = squad_needs["current_distribution"]
+        ideal_distribution = squad_needs["ideal_distribution"]
+        
+        # Check position balance (40% weight)
+        total_imbalance = 0
+        for pos, ideal in ideal_distribution.items():
+            current = current_distribution.get(pos, 0)
+            total_imbalance += abs(current - ideal)
+        position_score = max(0, 1 - (total_imbalance / 20))
+        
+        # Check age distribution (30% weight)
+        age_groups = self._get_age_distribution()
+        total_players = len(self.team.players)
+        if total_players == 0:
+            return 0.0
+            
+        age_balance = min(
+            age_groups["21_to_25"] / total_players if total_players > 0 else 0,  # Want young players
+            age_groups["26_to_30"] / total_players if total_players > 0 else 0   # Want prime players
+        )
+        
+        # Check squad depth (30% weight)
+        min_size, max_size = 18, 25
+        current_size = len(self.team.players)
+        depth_score = 1.0 if min_size <= current_size <= max_size else 0.0
+        
+        # Calculate final stability score
+        stability = (
+            0.4 * position_score +
+            0.3 * age_balance +
+            0.3 * depth_score
+        )
+        
+        return stability
+
     def _initialize_tactics(self):
         """Initialize tactics with some randomization for exploration."""
         return {

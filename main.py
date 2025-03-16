@@ -59,10 +59,18 @@ def create_premier_league():
             team.add_player(gk)
             #print(f"Signed: {gk.name} ({gk.position}, Age: {gk.age})")
         
-        for _ in range(14):  # 14 outfield players
-            player = FootballPlayer.create_player()
-            team.add_player(player)
-            #print(f"Signed: {player.name} ({player.position}, Age: {player.age})")
+        # Add balanced squad of outfield players
+        positions = {
+            "DEF": ["CB", "LB", "RB", "CB", "LB", "RB", "CB", "CB"],  # 8 defenders
+            "MID": ["CM", "CDM", "CAM", "CM", "LM", "RM", "CM", "CM"],  # 8 midfielders
+            "FWD": ["ST", "CF", "LW", "RW", "ST"]  # 5 forwards
+        }
+        
+        for pos_group, pos_list in positions.items():
+            for position in pos_list:
+                player = FootballPlayer.create_player(position=position)
+                team.add_player(player)
+                #print(f"Signed: {player.name} ({position}, Age: {player.age})")
     
     return premier_league
 
@@ -91,7 +99,7 @@ def print_best_xi(players):
 
 def main():
     
-    num_seasons = 3
+    num_seasons = 2
 
     # Create and simulate league
     premier_league = create_premier_league()
@@ -117,7 +125,6 @@ def main():
         champions_team = report['league_table'][0][0]
         champions_manager = next(team.manager for team in premier_league.teams if team.name == champions_team)
         print(f"\nManager of the Season: {champions_manager.name} ({champions_team})")
-        print(f"Experience Level: {champions_manager.experience_level}")
         manager_stats = champions_manager.get_stats()
         
         # Print performance stats
@@ -156,15 +163,32 @@ def main():
                 'champions_manager': {
                     'name': champions_manager.name,
                     'experience': champions_manager.experience_level,
-                    'formation': manager_stats.get('formation_preferences', [])[0][0] if manager_stats.get('formation_preferences') else '4-4-2'
+                    'formation': manager_stats.get('formation_preferences', [])[0][0] if manager_stats.get('formation_preferences') else '4-4-2',
+                    'transfer_success_rate': manager_stats.get('transfer_success_rate', 0),
+                    'market_trends': manager_stats.get('market_trends', {})
                 },
                 'table': report['league_table'],
+                'transfers': {
+                    'total_transfers': sum(len(team.statistics['transfer_history']) for team in premier_league.teams),
+                    'biggest_spenders': sorted(
+                        [(team.name, sum(t['fee'] for t in team.statistics['transfer_history'] if t['type'] == 'purchase'))
+                         for team in premier_league.teams],
+                        key=lambda x: x[1], reverse=True
+                    )[:5],
+                    'most_active': sorted(
+                        [(team.name, len(team.statistics['transfer_history']))
+                         for team in premier_league.teams],
+                        key=lambda x: x[1], reverse=True
+                    )[:5]
+                },
                 'best_players': [
                     {
                         'name': p.name,
                         'position': p.position,
                         'team': p.team,
-                        'potential': p.potential
+                        'potential': p.potential,
+                        'age': p.age,
+                        'value': premier_league.transfer_market.calculate_player_value(p) if hasattr(premier_league, 'transfer_market') else 0
                     }
                     for p in report['best_players']
                 ]

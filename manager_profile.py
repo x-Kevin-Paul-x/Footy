@@ -9,21 +9,26 @@ class ManagerProfile:
     """Define a manager's strategic preferences and personality."""
     
     # Strategic focus (must sum to 1.0)
-    short_term_weight: float  # Focus on immediate results
-    long_term_weight: float  # Focus on development
+    short_term_weight: float = 0.5  # Focus on immediate results
+    long_term_weight: float = 0.5  # Focus on development
     
     # Risk profile (0.0 to 1.0)
-    risk_tolerance: float  # Higher means more willing to take risks
+    risk_tolerance: float = 0.5  # Higher means more willing to take risks
     
     # Style preferences (0.0 to 1.0)
-    attacking_preference: float
-    defensive_preference: float
-    possession_preference: float
-    youth_preference: float
+    attacking_preference: float = 0.5
+    defensive_preference: float = 0.5
+    possession_preference: float = 0.5
     
-    # Transfer market behavior
-    financial_conservation: float  # How cautious with money (0.0 to 1.0)
-    bargaining_aggression: float  # How aggressive in negotiations (0.0 to 1.0)
+    # Development preferences (0.0 to 1.0)
+    youth_preference: float = 0.5
+    financial_conservation: float = 0.5
+    bargaining_aggression: float = 0.5
+
+    def __post_init__(self):
+        """Validate that strategic focus weights sum to 1.0"""
+        if not 0.99 <= (self.short_term_weight + self.long_term_weight) <= 1.01:
+            raise ValueError("Strategic focus weights must sum to 1.0")
     
     @classmethod
     def create_random_profile(cls) -> 'ManagerProfile':
@@ -66,20 +71,21 @@ class ManagerProfile:
     
     def calculate_transfer_reward(self, transfer: Dict) -> float:
         """Calculate transfer reward based on manager's preferences."""
+        # Increased rewards to encourage more transfer activity
         immediate_impact = (
-            transfer.get("value_for_money", 0) +
-            transfer.get("squad_need_filled", 0)
+            2.0 * transfer.get("value_for_money", 0) +  # Doubled value for money reward
+            2.0 * transfer.get("squad_need_filled", 0)  # Doubled squad need reward
         )
         
         long_term_value = (
-            transfer.get("potential_profit", 0) +
-            transfer.get("age_profile_improvement", 0) +
+            1.5 * transfer.get("potential_profit", 0) +  # Increased potential profit reward
+            1.5 * transfer.get("age_profile_improvement", 0) +  # Increased age profile reward
             transfer.get("wage_structure_impact", 0)
         )
         
         financial_prudence = (
-            transfer.get("budget_efficiency", 0) * self.financial_conservation +
-            transfer.get("negotiation_success", 0) * self.bargaining_aggression
+            0.5 * transfer.get("budget_efficiency", 0) * self.financial_conservation +  # Reduced penalty
+            1.5 * transfer.get("negotiation_success", 0) * self.bargaining_aggression  # Increased negotiation reward
         )
         
         return (

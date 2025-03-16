@@ -7,6 +7,14 @@ from collections import defaultdict
 class StateEncoder:
     """Convert raw states into discrete states for Q-learning."""
     
+    def encode_state(self, raw_state: dict) -> tuple:
+        """Combine all encoded state components into a single tuple"""
+        squad = self.encode_squad_state(raw_state)
+        financial = self.encode_financial_state(raw_state)
+        performance = self.encode_performance_state(raw_state)
+        market = self.encode_market_state(raw_state)
+        return squad + financial + performance + market
+    
     @staticmethod
     def discretize_value(value: float, bins: List[float]) -> int:
         """Convert a continuous value into a discrete bin index."""
@@ -16,70 +24,86 @@ class StateEncoder:
         return len(bins)
 
     def encode_squad_state(self, raw_state: Dict) -> Tuple:
-        """Encode squad-related state information."""
-        # Squad size bins: [15, 18, 21, 23, 25]
-        squad_size = self.discretize_value(
-            raw_state["squad_composition"]["total_players"],
-            [15, 18, 21, 23, 25]
+        """Encode squad state with continuous values and role analysis."""
+        squad_data = raw_state.get("squad_composition", {})
+        market_data = raw_state.get("market_conditions", {})
+        
+        # Continuous squad metrics
+        total_players = squad_data.get("total_players", 0)
+        avg_age = squad_data.get("average_age", 25)  # Default to average age
+        
+        # Squad balance metrics
+        positions = squad_data.get("positions", {"ANY": 1})  # Default to balanced position
+        max_pos = max(positions.values()) if positions else 1
+        position_balance = sum(positions.values()) / max_pos if max_pos > 0 else 0
+        
+        # Squad roles (if available)
+        squad_roles = squad_data.get("squad_roles", {})
+        current_roles = squad_roles.get("current", {})
+        required_roles = squad_roles.get("requirements", {})
+        
+        # Calculate role fulfillment (with defaults)
+        role_gaps = 0
+        if current_roles and required_roles:
+            role_gaps = sum(
+                abs(current_roles.get(role, 0) - required_roles.get(role, 0))
+                for role in set(current_roles) | set(required_roles)
+            )
+            
+        # Market dynamics
+        supply_demand = market_data.get("supply_demand_ratio", {})
+        market_ratio = supply_demand.get("ANY", 0.5)  # Default to balanced market
+        
+        return (
+            total_players / 30,   # Normalized to 0-1 (assuming max squad size 30)
+            avg_age / 40,         # Normalized assuming max age 40
+            role_gaps / 20,       # Normalized by max possible gap
+            position_balance,     # Already normalized 0-1
+            market_ratio         # Already normalized 0-1
         )
-        
-        # Average age bins: [22, 24, 26, 28, 30]
-        age_groups = raw_state["squad_composition"]["age_groups"]
-        avg_age = (
-            21 * age_groups["under_21"] +
-            23 * age_groups["21_to_25"] +
-            28 * age_groups["26_to_30"] +
-            32 * age_groups["over_30"]
-        ) / sum(age_groups.values()) if sum(age_groups.values()) > 0 else 25
-        
-        age_state = self.discretize_value(avg_age, [22, 24, 26, 28, 30])
-        
-        # Squad balance (0 to 1) bins: [0.2, 0.4, 0.6, 0.8]
-        balance = sum(
-            abs(raw_state["squad_composition"]["positions"].get(pos, 0) - ideal)
-            for pos, ideal in {"GK": 2, "DEF": 8, "MID": 8, "FWD": 5}.items()
-        )
-        balance_normalized = 1 - (balance / 20)  # Normalize to 0-1
-        balance_state = self.discretize_value(balance_normalized, [0.2, 0.4, 0.6, 0.8])
-        
-        return (squad_size, age_state, balance_state)
 
     def encode_financial_state(self, raw_state: Dict) -> Tuple:
         """Encode financial state information."""
-        # Budget utilization bins: [0.2, 0.4, 0.6, 0.8]
-        budget_used = 1 - (raw_state["financial_health"]["transfer_budget"] / 
-                          raw_state["financial_health"]["total_budget"])
+        financial = raw_state.get("financial_health", {})
+        
+        # Budget utilization calculation with defaults
+        transfer_budget = financial.get("transfer_budget", 0)
+        total_budget = financial.get("total_budget", 1)  # Avoid division by zero
+        budget_used = 1 - (transfer_budget / total_budget) if total_budget > 0 else 1
         budget_state = self.discretize_value(budget_used, [0.2, 0.4, 0.6, 0.8])
         
-        # Wage utilization bins: [0.4, 0.6, 0.8, 0.9]
-        wage_state = self.discretize_value(
-            raw_state["financial_health"]["wage_utilization"],
-            [0.4, 0.6, 0.8, 0.9]
-        )
+        # Wage utilization calculation with defaults
+        wage_budget = financial.get("wage_budget", 0)
+        wage_utilization = wage_budget / total_budget if total_budget > 0 else 0
+        wage_state = self.discretize_value(wage_utilization, [0.4, 0.6, 0.8, 0.9])
         
         return (budget_state, wage_state)
 
     def encode_performance_state(self, raw_state: Dict) -> Tuple:
         """Encode team performance state."""
+        performance = raw_state.get("team_performance", {})
+        
         # Form bins: [0.2, 0.4, 0.6, 0.8]
-        form = raw_state["team_performance"]["form"]
+        form = performance.get("form", 0.5)  # Default to average form
         form_state = self.discretize_value(form, [0.2, 0.4, 0.6, 0.8])
         
         # Goals per game bins: [0.5, 1.0, 1.5, 2.0]
-        scoring = raw_state["team_performance"]["goals_per_game"]
+        scoring = performance.get("goals_per_game", 1.0)  # Default to 1 goal/game
         scoring_state = self.discretize_value(scoring, [0.5, 1.0, 1.5, 2.0])
         
         # Goals conceded per game bins: [0.5, 1.0, 1.5, 2.0]
-        defending = raw_state["team_performance"]["conceded_per_game"]
+        defending = performance.get("conceded_per_game", 1.0)  # Default to 1 goal/game
         defending_state = self.discretize_value(defending, [0.5, 1.0, 1.5, 2.0])
         
         return (form_state, scoring_state, defending_state)
 
     def encode_market_state(self, raw_state: Dict) -> Tuple:
         """Encode transfer market state."""
+        market_data = raw_state.get("market_conditions", {})
+        
         # Market trend bins: [-0.2, -0.1, 0.0, 0.1, 0.2]
-        trends = raw_state["market_conditions"]["market_trend"]
-        avg_trend = sum(trends.values()) / len(trends) if trends else 0
+        trends = market_data.get("market_trend", {"overall": 0.0})
+        avg_trend = sum(trends.values()) / len(trends) if trends else 0.0
         trend_state = self.discretize_value(avg_trend, [-0.2, -0.1, 0.0, 0.1, 0.2])
         
         # Season progress bins: [0.25, 0.5, 0.75]
@@ -125,9 +149,9 @@ class ManagerBrain:
         self.training_qtable = QTable()
         self.lineup_qtable = QTable()
         
-        # Base exploration rates
-        self.base_exploration_rate = 0.2
-        self.min_exploration_rate = 0.05
+        # Base exploration rates - increased to encourage more exploration
+        self.base_exploration_rate = 0.5
+        self.min_exploration_rate = 0.2
         
         # Track learning progress
         self.episode_rewards = []

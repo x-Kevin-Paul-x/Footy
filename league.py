@@ -243,9 +243,21 @@ class League:
                                 
                         elif action_type == "buy":
                             listing, offer = params
-                            success = market.make_transfer_offer(team, listing, offer)
+                            success, message = market.make_transfer_offer(team, listing, offer)
+                            
+                            # Record the attempt in manager's history
+                            team.statistics["transfer_history"].append({
+                                "type": "buy",
+                                "player": listing.player.name,
+                                "price": offer,
+                                "success": success
+                            })
                             
                             if success:
+                                # Update manager's transfer success stats
+                                if not hasattr(team.manager, 'transfer_attempts'):
+                                    team.manager.transfer_attempts = []
+                                team.manager.transfer_attempts.append(True)
                                 result = {
                                     "type": "buy",
                                     "player": listing.player,

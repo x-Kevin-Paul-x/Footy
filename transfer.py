@@ -1,6 +1,8 @@
 from dataclasses import dataclass
+import os
 from typing import List, Dict, Optional
 import random
+from datetime import datetime
 
 from player import FootballPlayer
 from team import Team
@@ -18,6 +20,12 @@ class TransferMarket:
         self.transfer_list: List[TransferListing] = []
         self.current_day = 0
         self.transfer_history: List[Dict] = []
+        self.season_year = datetime.now().year
+        
+        # Create transfer logs directory
+        os.makedirs("transfer_logs", exist_ok=True)
+        self.current_log = None
+        self._init_transfer_log()
         
         # Value multipliers based on attributes and age
         self.value_modifiers = {
@@ -31,6 +39,45 @@ class TransferMarket:
                 "GK": 1.15  # Goalkeeper slight premium
             }
         }
+        
+    def _init_transfer_log(self):
+        """Initialize log file for current season"""
+        log_path = f"transfer_logs/season_{self.season_year}_transfers.txt"
+        self.current_log = open(log_path, "w", encoding="utf-8")
+        self.current_log.write(f"Transfer Activity for Season {self.season_year}\n")
+        self.current_log.write("=" * 80 + "\n\n")
+        
+    def _log_transfer_attempt(self, action: str, details: Dict):
+        """Log transfer activity"""
+        if not self.current_log:
+            return
+            
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.current_log.write(f"[{timestamp}] {action}\n")
+        for key, value in details.items():
+            self.current_log.write(f"  {key}: {value}\n")
+        self.current_log.write("-" * 40 + "\n")
+        self.current_log.flush()  # Ensure log is written immediately
+        
+    def _init_transfer_log(self):
+        """Initialize log file for current season"""
+        log_path = f"transfer_logs/season_{self.season_year}_transfers.txt"
+        self.current_log = open(log_path, "w", encoding="utf-8")
+        self.current_log.write(f"Transfer Activity for Season {self.season_year}\n")
+        self.current_log.write("=" * 80 + "\n\n")
+        
+    def _log_transfer_attempt(self, action: str, details: Dict):
+        """Log transfer activity"""
+        if not self.current_log:
+            return
+            
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.current_log.write(f"[{timestamp}] {action}\n")
+        for key, value in details.items():
+            self.current_log.write(f"  {key}: {value}\n")
+        self.current_log.write("-" * 40 + "\n")
+        self.current_log.flush()  # Ensure log is written immediately
+
     
     def calculate_player_value(self, player) -> float:
         """Calculate a player's market value based on attributes, age, and position."""
@@ -85,6 +132,7 @@ class TransferMarket:
             if max_age and listing.player.age > max_age:
                 continue
             available.append(listing)
+            print(listing.player.name, listing.asking_price)
         return available
     
     def make_transfer_offer(self, buying_team, listing, offer_amount):
@@ -97,13 +145,20 @@ class TransferMarket:
         if offer_amount < min_acceptable:
             return False, "Offer too low"
         
+        # Check if buying team can afford transfer
+        if not buying_team.can_afford_transfer(offer_amount):
+            return False, "Cannot afford transfer fee and wages"
+            
         # Complete transfer
-        buying_team.budget -= offer_amount
-        listing.selling_team.budget += offer_amount
-        
-        # Update player's team
-        listing.selling_team.remove_player(listing.player)
-        buying_team.add_player(listing.player)
+        transfer_success = listing.selling_team.handle_transfer(listing.player, offer_amount, is_selling=True)
+        if not transfer_success:
+            return False, "Selling team transfer failed"
+            
+        transfer_success = buying_team.handle_transfer(listing.player, offer_amount, is_selling=False)
+        if not transfer_success:
+            # Rollback selling team's transfer if buying fails
+            listing.selling_team.handle_transfer(listing.player, offer_amount, is_selling=False)
+            return False, "Buying team transfer failed"
         
         # Record transfer
         transfer_record = {
@@ -128,7 +183,6 @@ class TransferMarket:
                 
             # Get manager's decisions using Q-learning
             actions = team.manager.make_transfer_decision(self)
-            
             # Process each action with feedback
             for action_type, *params in actions:
                 if action_type == "list":
@@ -151,20 +205,25 @@ class TransferMarket:
                 elif action_type == "buy":
                     listing, offer = params
                     if team.budget >= offer:
-                        success, _ = self.make_transfer_offer(team, listing, offer)
-                        if success:
-                            # Provide feedback for learning
-                            result = {
-                                "type": "buy",
-                                "player": listing.player,
-                                "price": offer,
-                                "value_ratio": self.calculate_player_value(listing.player) / offer,
-                                "need_satisfaction": 1.0,  # Assume need was identified by manager
-                                "age_impact": (27 - listing.player.age) / 27 if listing.player.age <= 27 else 0,
-                                "month": (self.current_day % 30) + 1,
-                                "market": self
-                            }
-                            team.manager.learn_from_transfer(result)
+                        success, message = self.make_transfer_offer(team, listing, offer)
+                        
+                        # Always record attempt, success or failure
+                        team.manager.transfer_attempts.append(success)
+                        
+                        # Provide feedback for learning
+                        result = {
+                            "type": "buy",
+                            "player": listing.player,
+                            "price": offer,
+                            "value_ratio": self.calculate_player_value(listing.player) / offer,
+                            "need_satisfaction": 1.0 if success else 0.0,
+                            "age_impact": (27 - listing.player.age) / 27 if listing.player.age <= 27 else 0,
+                            "month": (self.current_day % 30) + 1,
+                            "market": self,
+                            "success": success,
+                            "reason": message
+                        }
+                        team.manager.learn_from_transfer(result)
     
     def advance_day(self):
         """Advance the transfer market by one day."""

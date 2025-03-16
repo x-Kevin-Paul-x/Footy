@@ -17,6 +17,11 @@ class Team:
         self.players = []
         self.manager = None
         self.coaches = []  # Maximum 5 coaches
+        self.squad_roles_requirements = {
+            "STARTER": 11,
+            "BENCH": 7,
+            "YOUTH": 5
+        }
         self.statistics = {
             "wins": 0,
             "draws": 0,
@@ -26,6 +31,38 @@ class Team:
             "transfer_history": []  # Track transfers
         }
     
+    def get_players_by_position(self, position):
+        """Get all players in a specific position"""
+        return [p for p in self.players if p.position == position]
+
+    def get_squad_data(self):
+        """Get squad composition data for RL state"""
+        current_roles = {
+            "STARTER": sum(1 for p in self.players if p.squad_role == "STARTER"),
+            "BENCH": sum(1 for p in self.players if p.squad_role == "BENCH"),
+            "YOUTH": sum(1 for p in self.players if p.squad_role == "YOUTH")
+        }
+        
+        return {
+            "total_players": len(self.players),
+            "average_age": sum(p.age for p in self.players)/len(self.players) if self.players else 0,
+            "positions": {pos: len(self.get_players_by_position(pos))
+                        for pos in ["GK", "DEF", "MID", "FWD"]},
+            "squad_roles": {
+                "current": current_roles,
+                "requirements": self.squad_roles_requirements
+            }
+        }
+    
+    def get_financials(self):
+        """Get financial data for RL state"""
+        return {
+            "transfer_budget": self.transfer_budget,
+            "wage_budget": self.wage_budget,
+            "total_budget": self.budget,
+            "wage_utilization": sum(p.wage for p in self.players) / self.wage_budget if self.players else 0
+        }
+
     def add_player(self, player):
         """Add a player to the team."""
         if len(self.players) >= 23:
@@ -132,15 +169,16 @@ class Team:
                 })
                 return True
             return False
-    
     def can_afford_transfer(self, fee, include_wages=True):
         """Check if team can afford a transfer fee and wages."""
         if fee > self.transfer_budget:
             return False
         if include_wages:
             estimated_weekly_wage = fee * 0.02 / 52  # Estimate 2% of transfer fee as annual salary
-            if estimated_weekly_wage > self.wage_budget / len(self.players):
+            max_wage_per_player = self.wage_budget / max(1, len(self.players))  # Avoid division by zero
+            if estimated_weekly_wage > max_wage_per_player:
                 return False
+        return True
         return True
     
     def get_transfer_budget_info(self):
@@ -158,6 +196,7 @@ class Team:
     
     def get_squad_needs(self):
         """Analyze squad and determine positions that need strengthening."""
+        # Current distribution
         position_counts = {
             "GK": 0, "DEF": 0, "MID": 0, "FWD": 0
         }
@@ -172,18 +211,27 @@ class Team:
             else:
                 position_counts["FWD"] += 1
         
+        # Ideal distribution
+        ideal_counts = {
+            "GK": 2,
+            "DEF": 8,
+            "MID": 8,
+            "FWD": 5
+        }
+        
+        # Calculate needs based on difference
         needs = []
-        if position_counts["GK"] < 2:
-            needs.append(("GK", "Critical"))
-        if position_counts["DEF"] < 6:
-            needs.append(("DEF", "High" if position_counts["DEF"] < 4 else "Medium"))
-        if position_counts["MID"] < 6:
-            needs.append(("MID", "High" if position_counts["MID"] < 4 else "Medium"))
-        if position_counts["FWD"] < 4:
-            needs.append(("FWD", "High" if position_counts["FWD"] < 2 else "Medium"))
+        for pos in ["GK", "DEF", "MID", "FWD"]:
+            current = position_counts[pos]
+            ideal = ideal_counts[pos]
+            if current < ideal:
+                priority = "Critical" if pos == "GK" and current < 2 else \
+                          "High" if current < ideal * 0.5 else "Medium"
+                needs.append((pos, priority))
         
         return {
             "current_distribution": position_counts,
+            "ideal_distribution": ideal_counts,
             "needs": needs,
             "squad_balance": "Good" if min(position_counts.values()) >= 2 else "Needs Improvement"
         }

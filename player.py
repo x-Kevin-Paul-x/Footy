@@ -5,7 +5,7 @@ import names  # Requires: pip install names
 class FootballPlayer:
     
 
-    def __init__(self, name, age, position, potential=70):
+    def __init__(self, name, age, position, potential=70, wage=1000):
         """
         Initialize a football player with basic attributes.
         
@@ -14,12 +14,27 @@ class FootballPlayer:
             age (int): Player's age
             position (str): Player's position on the field
             potential (int): Player's overall potential, defaults to 70
+            wage (float): Player's weekly wage, defaults to 1000
         """
         self.name = name
         self.age = age
         self.position = position
         self.team = None  # Team will be set separately
         self.potential = potential
+        self.wage = wage
+        self.contract_length = 3  # Years remaining
+        self.form = [0.7] * 10  # Last 10 match ratings (0-1 scale)
+        self.injury_history = []
+        self.squad_role = "RESERVE"  # STARTER/BENCH/YOUTH
+        self.attributes = {
+            "pace": {"acceleration": 1, "sprint_speed": 1},
+            "shooting": {"finishing": 1, "shot_power": 1, "long_shots": 1},
+            "passing": {"vision": 1, "crossing": 1, "free_kick": 1},
+            "dribbling": {"agility": 1, "balance": 1, "ball_control": 1},
+            "defending": {"marking": 1, "standing_tackle": 1, "sliding_tackle": 1},
+            "physical": {"strength": 1, "stamina": 1, "aggression": 1},
+            "goalkeeping": {"diving": 1, "handling": 1, "reflexes": 1, "positioning": 1}
+        }
         self.stats = {
             "goals": 0,
             "assists": 0,
@@ -28,7 +43,11 @@ class FootballPlayer:
             "clean_sheets": 0,
             "yellow_cards": 0,
             "red_cards": 0
-        }
+       }
+       
+    def update_form(self, match_rating):
+        """Update player form with new match rating (0-1 scale)"""
+        self.form = self.form[1:] + [max(0, min(1, match_rating))]
         # Detailed football attributes
         self.attributes = {
             "pace": {
@@ -102,15 +121,21 @@ class FootballPlayer:
         # Generate random potential between 50-99
         potential = random.randint(50, 99)
         
-        # Create the player
-        player = cls(name, age, position, potential)
+        # Calculate base wage based on potential (500-5000 range)
+        base_wage = 500 + (potential * 45)  # Higher potential = higher wage
+        
+        # Age modifier: younger players get slightly lower wages
+        age_modifier = max(0.7, age / 30)  # Scales from 0.7 at age 16 to 1.0 at age 30+
+        
+        # Create the player with calculated wage
+        player = cls(name, age, position, potential, wage=base_wage * age_modifier)
         
         # Set attribute ranges based on position
         position_boosts = {
-            "GK": {"goalkeeping": (50, 90)},
-            "DEF": {"defending": (60, 90), "physical": (55, 85)},
-            "MID": {"passing": (60, 90), "dribbling": (55, 85)},
-            "FWD": {"shooting": (60, 90), "pace": (60, 90)}
+            "GK": {"goalkeeping": (10, 90)},
+            "DEF": {"defending": (10, 90), "physical": (15, 85)},
+            "MID": {"passing": (10, 90), "dribbling": (15, 85)},
+            "FWD": {"shooting": (10, 90), "pace": (10, 90)}
         }
         
         # Position category mapping
@@ -300,3 +325,10 @@ class FootballPlayer:
         else:
             print("Invalid detail level. Using 'basic'")
             return basic_info
+
+if __name__ == "__main__":
+    player = FootballPlayer.create_player()
+    print(player.get_player_info(detail_level="full"))
+    player.train_player('high', focus_area=None, training_days=7, coach_bonus=0)
+    print("+=" * 40)
+    print(player.get_player_info(detail_level="full"))
