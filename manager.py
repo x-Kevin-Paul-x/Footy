@@ -351,7 +351,13 @@ class Manager:
             print(f"Available Actions: {len(possible_actions)}")
             print(f"Team Budget: £{self.team.budget:,.2f}")
             print(f"Squad Size: {len(self.team.players)}")
-        
+            # Print the Q-values for ALL possible actions
+            print("Possible Actions with Q-Values:")
+            qtable = self.brain._get_qtable("transfer")  # Get the transfer Q-table
+            for action in possible_actions:
+                q_value = qtable.get_value(state, action)
+                print(f"  Action: {action}, Q-value: {q_value:.4f}")
+
         # Select action using Q-learning
         action = self.brain.select_action(state, possible_actions, "transfer")
         self.last_transfer_state = state
@@ -374,12 +380,13 @@ class Manager:
         return transfer_actions
     
     def _get_possible_transfer_actions(self, transfer_market):
-        """Generate possible transfer actions based on current state."""
+        """Generate possible transfer actions with enhanced market incentives."""
         actions = []
         squad_needs = self.team.get_squad_needs()
         
-        # Always include some actions to encourage transfers
-        actions.append(("none", None, 0))
+        # Force at least 3 potential actions to encourage exploration
+        actions.extend([("none", None, 0)] * 1)
+        actions.extend([("market_scan", None, 0)] * 2)
         
         # Selling actions
         for player in self.team.players:
@@ -397,7 +404,7 @@ class Manager:
                 
                 # More aggressive selling strategy
                 should_sell = False
-                sell_price_multiplier = 1.0
+                sell_price_multiplier = 0.99
                 
                 # List more players for transfer with different conditions
                 if age > 28 and current_in_position >= ideal_in_position:  # Lower age threshold
@@ -405,63 +412,85 @@ class Manager:
                     sell_price_multiplier = 0.9
                 elif current_in_position > ideal_in_position:  # Remove +1 buffer
                     should_sell = True
-                    sell_price_multiplier = 1.1
+                    sell_price_multiplier = 1.0
                 elif age < 24 and player.potential < 80:  # Slightly higher potential threshold
                     should_sell = True
                     sell_price_multiplier = 1.0
-                elif random.random() < 0.2:  # 20% chance to list any player
+                elif random.random() < 0.1:  # Increased to 40% chance to list any player
                     should_sell = True
                     sell_price_multiplier = 1.2
                 
                 if should_sell:
                     actions.append(("sell", player, market_value * sell_price_multiplier))
         
-        # Buying actions - lowered budget threshold to allow more transfer activity
-        if self.team.budget > 100000 and len(self.team.players) < 25:
+        # Buying actions - lowered budget threshold and relaxed player criteria
+        if self.team.budget > 50000 and len(self.team.players) < 25:  # Even lower budget threshold
             # Calculate position needs
             position_needs = {}
             ideal_counts = {"GK": 2, "DEF": 8, "MID": 8, "FWD": 5}
-            
+
             for pos, ideal in ideal_counts.items():
                 current = squad_needs["current_distribution"].get(pos, 0)
                 if current < ideal:
                     position_needs[pos] = ideal - current
-            
-            # Get available players filtered by needs
-            for position, need in position_needs.items():
-                if need > 0:
-                    available = transfer_market.get_available_players(
-                        max_price=self.team.budget * 0.8,  # Keep 20% budget buffer
-                        position=position
-                    )
-                    
-                    for listing in available:
-                        player = listing.player
-                        # Prioritize young players with potential
-                        if player.age < 24 and player.potential > 80:
-                            actions.append(("buy", listing, listing.asking_price * 1.1))
-                        # Or established players in prime
-                        elif 24 <= player.age <= 28:
-                            actions.append(("buy", listing, listing.asking_price * 0.9))
-        
+
+            # Get all available players, regardless of position
+            available = transfer_market.get_available_players(
+                max_price=self.team.budget * 0.8,  # Keep 20% budget buffer
+                max_age=32
+            )
+
+            for listing in available:
+                player = listing.player
+                # Consider players based on a combination of age, potential, and market value
+
+                # Base score on market value (higher score = better value)
+                market_value = transfer_market.calculate_player_value(player)
+                value_score = market_value / listing.asking_price if listing.asking_price > 0 else 0
+
+                # Age and potential score (higher is better)
+                age_score = max(0, (28 - player.age) / 10) if player.age <= 28 else max(0, (35 - player.age) / 20)
+                potential_score = player.potential / 100
+
+                # Combine scores (adjust weights as needed)
+                combined_score = 0.4 * value_score + 0.3 * age_score + 0.3 * potential_score
+
+                # Add buy action if combined score is above a threshold
+                if combined_score > 0.7:
+                    # Use listing_id instead of the listing object itself
+                    actions.append(("buy", listing.listing_id, listing.asking_price * (0.9 + random.random() * 0.2)))  # Offer between 90-110% of asking price
+
         return actions
-    
+
     def _convert_q_action_to_transfer_actions(self, q_action, transfer_market):
         """Convert Q-learning action to actual transfer actions."""
-        action_type, target, price = q_action
+        action_type, target, _ = q_action  # Ignore the Q-value 'price'
         if action_type == "none":
             return []
-            
+
         actions = []
         if action_type == "sell":
-            if target in self.team.players:
-                actions.append(("list", target, price))
+            # Find the corresponding "sell" action in possible_actions to get the intended price
+            for possible_action in self._get_possible_transfer_actions(transfer_market):
+                if possible_action[0] == "sell" and possible_action[1] == target:
+                    actions.append(("list", target, possible_action[2])) # Use the price from possible_actions
+                    break  # Exit inner loop once found
         elif action_type == "buy":
-            if isinstance(target, object) and hasattr(target, 'asking_price'):
-                if target.asking_price <= self.team.budget:
-                    actions.append(("buy", target, price))
-        
+            # Find the listing by ID
+            listing = None
+            for l in transfer_market.transfer_list:
+                if l.listing_id == target:
+                    listing = l
+                    break
+            if listing:
+                # Find the corresponding "buy" action to get offer price.
+                for possible_action in self._get_possible_transfer_actions(transfer_market):
+                     if possible_action[0] == "buy" and possible_action[1] == target:
+                        actions.append(("buy", listing, possible_action[2]))
+                        break
+
         return actions
+
 
     def set_debug(self, enabled=True):
         """Enable or disable debug output."""

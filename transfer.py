@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 from typing import List, Dict, Optional
 import random
@@ -14,19 +14,35 @@ class TransferListing:
     selling_team: 'Team'
     listed_date: int  # Transfer window day
     expires_in: int = 30  # Days until listing expires
+    listing_id: int = field(default_factory=lambda: TransferListing.next_id(), init=False) # Add unique ID
+
+    _next_id = 1 # Class variable to track the next available ID
+
+    @classmethod
+    def next_id(cls):
+        result = cls._next_id
+        cls._next_id += 1
+        return result
 
 class TransferMarket:
-    def __init__(self):
+    def __init__(self ,log_path = None):
         self.transfer_list: List[TransferListing] = []
         self.current_day = 0
         self.transfer_history: List[Dict] = []
         self.season_year = datetime.now().year
-        
+
         # Create transfer logs directory
         os.makedirs("transfer_logs", exist_ok=True)
+
+        log_path = f'transfer_logs/season_{self.season_year}_transfers.txt' if log_path is None else log_path
+
         self.current_log = None
-        self._init_transfer_log()
-        
+        if log_path:
+            self.current_log = open(log_path, "a", encoding="utf-8") # Open in append mode
+        else:
+            self._init_transfer_log() # Keep the original init for tests
+
+
         # Value multipliers based on attributes and age
         self.value_modifiers = {
             "potential": 1.5,  # High potential increases value
@@ -39,54 +55,46 @@ class TransferMarket:
                 "GK": 1.15  # Goalkeeper slight premium
             }
         }
-        
-    def _init_transfer_log(self):
-        """Initialize log file for current season"""
-        log_path = f"transfer_logs/season_{self.season_year}_transfers.txt"
-        self.current_log = open(log_path, "w", encoding="utf-8")
-        self.current_log.write(f"Transfer Activity for Season {self.season_year}\n")
-        self.current_log.write("=" * 80 + "\n\n")
-        
-    def _log_transfer_attempt(self, action: str, details: Dict):
-        """Log transfer activity"""
-        if not self.current_log:
-            return
-            
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.current_log.write(f"[{timestamp}] {action}\n")
-        for key, value in details.items():
-            self.current_log.write(f"  {key}: {value}\n")
-        self.current_log.write("-" * 40 + "\n")
-        self.current_log.flush()  # Ensure log is written immediately
-        
-    def _init_transfer_log(self):
-        """Initialize log file for current season"""
-        log_path = f"transfer_logs/season_{self.season_year}_transfers.txt"
-        self.current_log = open(log_path, "w", encoding="utf-8")
-        self.current_log.write(f"Transfer Activity for Season {self.season_year}\n")
-        self.current_log.write("=" * 80 + "\n\n")
-        
-    def _log_transfer_attempt(self, action: str, details: Dict):
-        """Log transfer activity"""
-        if not self.current_log:
-            return
-            
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.current_log.write(f"[{timestamp}] {action}\n")
-        for key, value in details.items():
-            self.current_log.write(f"  {key}: {value}\n")
-        self.current_log.write("-" * 40 + "\n")
-        self.current_log.flush()  # Ensure log is written immediately
 
-    
+    def _init_transfer_log(self):
+        """Initialize log file for current season with proper resource handling"""
+        log_path = f"transfer_logs/season_{self.season_year}_transfers.txt"
+        # Write header with context manager for auto-close
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(f"Transfer Activity for Season {self.season_year}\n")
+            f.write("=" * 80 + "\n\n")
+        # Open in append mode for subsequent writes
+        self.current_log = open(log_path, "a", encoding="utf-8")
+
+
+    def close_log(self):
+        """Ensure proper file closure"""
+        if self.current_log and not self.current_log.closed:
+            self.current_log.close()
+
+
+    def _log_transfer_attempt(self, action: str, details: Dict):
+        """Enhanced transfer logging with full details"""
+        if not self.current_log or self.current_log.closed:
+            self._init_transfer_log()
+
+        details["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        details["market_state"] = self.get_market_analysis() # Add market analysis
+        if "player" in details and isinstance(details["player"], FootballPlayer):
+          details["value"] = self.calculate_player_value(details["player"])
+          details["player"] = details["player"].name # Replace with just the name
+        self.current_log.write(f"{action}: {str(details)}\n")
+        self.current_log.flush()
+
+
     def calculate_player_value(self, player) -> float:
         """Calculate a player's market value based on attributes, age, and position."""
         # Base value from attributes
         base_value = 0
         for category in player.attributes.values():
             base_value += sum(category.values())
-        base_value = base_value * 10000  # Convert to currency
-        
+        base_value = base_value * 100  # Convert to currency
+
         # Age modifier
         if player.age > 30:
             age_discount = (player.age - 30) * self.value_modifiers["age_discount"]
@@ -94,33 +102,41 @@ class TransferMarket:
         elif 23 <= player.age <= 27:
             age_premium = (27 - player.age) * self.value_modifiers["age_premium"]
             base_value *= (1 + age_premium)
-        
+
         # Potential modifier
         potential_boost = (player.potential / 50) * self.value_modifiers["potential"]
         base_value *= potential_boost
-        
+
         # Position modifier
         position_mod = self.value_modifiers["position_premium"].get(player.position, 1.0)
         base_value *= position_mod
-        
+
         return round(base_value)
-    
+
+
     def list_player(self, player, team, asking_price=None):
-        """List a player on the transfer market."""
+        """List a player on the transfer market with more accessible pricing."""
         if asking_price is None:
-            # Set default asking price based on calculated value
             base_value = self.calculate_player_value(player)
-            asking_price = base_value * random.uniform(1.1, 1.3)  # Add 10-30% markup
-        
+            # More aggressive pricing strategy to encourage sales
+            asking_price = base_value * random.uniform(0.6, 0.8)  # 60-90% of value
+
+        self._log_transfer_attempt("LIST", {
+            "player": player.name,
+            "team": team.name,
+            "price": asking_price * 0.99,  # 1% commission
+            "value" : self.calculate_player_value(player)
+        })
         listing = TransferListing(
             player=player,
-            asking_price=asking_price,
+            asking_price=asking_price * 0.99,
             selling_team=team,
-            listed_date=self.current_day
+            listed_date=self.current_day,
         )
         self.transfer_list.append(listing)
         return listing
-    
+
+
     def get_available_players(self, max_price=None, position=None, max_age=None):
         """Get list of available players matching criteria."""
         available = []
@@ -132,34 +148,34 @@ class TransferMarket:
             if max_age and listing.player.age > max_age:
                 continue
             available.append(listing)
-            print(listing.player.name, listing.asking_price)
         return available
-    
+
+
     def make_transfer_offer(self, buying_team, listing, offer_amount):
         """Attempt to buy a player from the transfer list."""
         if buying_team.budget < offer_amount:
             return False, "Insufficient funds"
-        
+
         # Check if offer is acceptable
         min_acceptable = listing.asking_price * 0.8  # Will accept 20% below asking
         if offer_amount < min_acceptable:
             return False, "Offer too low"
-        
+
         # Check if buying team can afford transfer
         if not buying_team.can_afford_transfer(offer_amount):
             return False, "Cannot afford transfer fee and wages"
-            
+
         # Complete transfer
         transfer_success = listing.selling_team.handle_transfer(listing.player, offer_amount, is_selling=True)
         if not transfer_success:
             return False, "Selling team transfer failed"
-            
+
         transfer_success = buying_team.handle_transfer(listing.player, offer_amount, is_selling=False)
         if not transfer_success:
             # Rollback selling team's transfer if buying fails
             listing.selling_team.handle_transfer(listing.player, offer_amount, is_selling=False)
             return False, "Buying team transfer failed"
-        
+
         # Record transfer
         transfer_record = {
             "player": listing.player.name,
@@ -169,18 +185,27 @@ class TransferMarket:
             "day": self.current_day
         }
         self.transfer_history.append(transfer_record)
-        
+
+        # Log transfer
+        self._log_transfer_attempt("BUY", {
+            "player": listing.player.name,
+            "from_team": listing.selling_team.name,
+            "to_team": buying_team.name,
+            "amount": offer_amount,
+            "day": self.current_day
+        })
+
         # Remove listing
         self.transfer_list.remove(listing)
-        
+
         return True, "Transfer completed successfully"
-    
+
     def simulate_ai_transfers(self, all_teams):
         """Simulate AI teams making transfer decisions using Q-learning."""
         for team in all_teams:
             if not team.manager:
                 continue
-                
+
             # Get manager's decisions using Q-learning
             actions = team.manager.make_transfer_decision(self)
             # Process each action with feedback
@@ -201,15 +226,16 @@ class TransferMarket:
                                 "market": self
                             }
                             team.manager.learn_from_transfer(result)
-                            
+
                 elif action_type == "buy":
+                    print(12)
                     listing, offer = params
                     if team.budget >= offer:
+                        print(1)
                         success, message = self.make_transfer_offer(team, listing, offer)
-                        
                         # Always record attempt, success or failure
                         team.manager.transfer_attempts.append(success)
-                        
+
                         # Provide feedback for learning
                         result = {
                             "type": "buy",
@@ -224,11 +250,11 @@ class TransferMarket:
                             "reason": message
                         }
                         team.manager.learn_from_transfer(result)
-    
+
     def advance_day(self):
         """Advance the transfer market by one day."""
         self.current_day += 1
-        
+
         # Remove expired listings
         self.transfer_list = [
             listing for listing in self.transfer_list
@@ -240,7 +266,7 @@ class TransferMarket:
         total_listings = len(self.transfer_list)
         total_value = sum(listing.asking_price for listing in self.transfer_list)
         avg_value = total_value / total_listings if total_listings > 0 else 0
-        
+
         positions = {}
         for listing in self.transfer_list:
             pos = listing.player.position
@@ -248,9 +274,9 @@ class TransferMarket:
                 positions[pos] = {"count": 0, "total_value": 0}
             positions[pos]["count"] += 1
             positions[pos]["total_value"] += listing.asking_price
-        
+
         return {
-            "total_listings": total_listings,
+            "total_l_istings": total_listings,
             "total_market_value": total_value,
             "average_player_value": avg_value,
             "positions": {

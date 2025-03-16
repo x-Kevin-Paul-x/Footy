@@ -54,25 +54,31 @@ class League:
         self.matches = fixtures
 
     def play_season(self):
-        """Play all matches in the season"""
+        """Play all matches in the season and close the transfer log."""
         match_day = 1
-        
+
+        # Initialize the transfer log for the season
+        log_path = f"transfer_logs/season_{self.season_year}_transfers.txt"
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(f"Transfer Activity for Season {self.season_year}\n")
+            f.write("=" * 80 + "\n\n")
+
         for idx, (home, away) in enumerate(self.matches):
             # Weekly training and development for both teams
             for team in [home, away]:
                 self._weekly_team_training(team)
-            
+
             # Play the match
             #print(f"\nMatch Day {match_day}")
             match = Match(home, away)
             result = match.play_match()
-            
+
             # Save match report
             self.save_match_report(match, result, idx+1)
-            
+
             # Update standings
             self.update_standings(home, away, result)
-            
+
             # Provide learning feedback to managers
             if home.manager:
                 home_result = {
@@ -85,7 +91,7 @@ class League:
                     "player_development": self._calculate_player_development(home.players)
                 }
                 home.manager.learn_from_match(home_result)
-                
+
             if away.manager:
                 away_result = {
                     "winner": result["score"][1] > result["score"][0],
@@ -97,13 +103,18 @@ class League:
                     "player_development": self._calculate_player_development(away.players)
                 }
                 away.manager.learn_from_match(away_result)
-            
+
             # Every 7 matches is considered a new week
             if idx % 7 == 6:
                 match_day += 1
                 if match_day in [13, 26]:  # Transfer windows
                     #print(f"\nTransfer Window Opens!")
-                    self._run_transfer_window(days=7)
+                    self._run_transfer_window(days=7, log_path=log_path) # Pass the log_path
+
+        # Close the transfer log at the end of the season
+        if hasattr(self, 'transfer_market') and self.transfer_market:
+            self.transfer_market.close_log()
+
 
     def save_match_report(self, match, result, match_number):
         """Save match details to JSON file"""
@@ -210,9 +221,9 @@ class League:
                     ) / sum(len(category) for category in p.attributes.values()),
                     reverse=True)[:num]
 
-    def _run_transfer_window(self, days=7):
+    def _run_transfer_window(self, days=7 ,log_path = None):
         """Run a transfer window period."""
-        market = TransferMarket()
+        market = TransferMarket(log_path=log_path)
         
         for day in range(days):
             #print(f"\nTransfer Window - Day {day + 1}")
@@ -272,15 +283,6 @@ class League:
             
             # Update market
             market.advance_day()
-        
-        # Print window summary
-        #print("\nTransfer Window Summary:")
-        #for team in self.teams:
-        #   print(f"\n{team.name}:")
-        #    print(f"Remaining Budget: £{team.budget:,.2f}")
-        #    print(f"Squad Size: {len(team.players)}")
-        #    needs = team.get_squad_needs()
-        #    print(f"Squad Needs: {needs['needs']}")
     
     def increment_season(self):
         """Advance to new season"""
@@ -314,7 +316,16 @@ class League:
             total_progress += progress
             
         return total_progress / len(players)
-
+    def _get_position_group(self, postions):
+        for postion in postions:
+            if postion == "GK":
+                return "GK"
+            elif postion in ["CB", "LB", "RB", "LWB", "RWB", "SW"]:
+                return "DEF"
+            elif postion in ["CM", "CDM", "CAM", "LM", "RM", "DM"]:
+                return "MID"
+            else:
+                return "FWD"
     def _calculate_need_satisfaction(self, team: Team, player) -> float:
         """Calculate how well a player satisfies team needs."""
         squad_needs = team.get_squad_needs()
@@ -515,39 +526,5 @@ if __name__ == "__main__":
                     stats = team.manager.get_stats()
                     debug_print(f"Exploration Rate: {stats['current_exploration_rate']:.2f}")
                     debug_print(f"Transfer Success: {stats['transfer_success_rate']*100:.1f}%")
-        
-        league.increment_season()
-
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--seasons", type=int, default=1, help="Number of seasons to simulate")
-    parser.add_argument("--debug", action="store_true", help="Enable debug output")
-    args = parser.parse_args()
-
-    def debug_print(*msg, **kwargs):
-        if args.debug:
-            print(*msg, **kwargs)
-
-    # Create and run league simulation
-    league = League("Debug League", num_teams=6)  # Smaller league for testing
-    debug_print(f"\nStarting {args.seasons} season simulation...")
-
-    for season in range(args.seasons):
-        debug_print(f"\nSeason {season + 1}")
-        league.generate_schedule()
-        league.play_season()
-        
-        # Print season summary in debug mode
-        if args.debug:
-            standings = league.get_league_table()
-            debug_print("\nFinal Standings:")
-            for team_name, stats in standings:
-                debug_print(f"{team_name}: {stats['points']} pts (W{stats['won']}-D{stats['drawn']}-L{stats['lost']})")
-            
-            champion_team, champion_manager = league.get_best_manager()
-            debug_print(f"\nChampion Manager: {champion_manager.name}")
-            debug_print(f"Team: {champion_team.name}")
-            debug_print(f"Win Rate: {(champion_manager.wins/champion_manager.matches_played)*100:.1f}%")
         
         league.increment_season()

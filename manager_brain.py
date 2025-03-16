@@ -117,8 +117,8 @@ class QTable:
     
     def __init__(self):
         self.q_values = defaultdict(lambda: defaultdict(float))
-        self.learning_rate = 0.1
-        self.gamma = 0.95
+        self.learning_rate = 0.3  # Faster learning
+        self.gamma = 0.85  # Slightly more short-term focus
     
     def get_value(self, state: Tuple, action: Any) -> float:
         """Get Q-value for a state-action pair."""
@@ -150,8 +150,8 @@ class ManagerBrain:
         self.lineup_qtable = QTable()
         
         # Base exploration rates - increased to encourage more exploration
-        self.base_exploration_rate = 0.5
-        self.min_exploration_rate = 0.2
+        self.base_exploration_rate = 0.8  # High initial exploration
+        self.min_exploration_rate = 0.4   # Maintain higher minimum
         
         # Track learning progress
         self.episode_rewards = []

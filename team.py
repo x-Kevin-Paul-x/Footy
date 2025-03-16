@@ -175,10 +175,11 @@ class Team:
             return False
         if include_wages:
             estimated_weekly_wage = fee * 0.02 / 52  # Estimate 2% of transfer fee as annual salary
-            max_wage_per_player = self.wage_budget / max(1, len(self.players))  # Avoid division by zero
-            if estimated_weekly_wage > max_wage_per_player:
+            # Calculate the *total* current wage bill
+            current_wage_bill = sum(player.wage for player in self.players)
+            # Check if the new total wage bill exceeds the wage budget
+            if current_wage_bill + estimated_weekly_wage > self.wage_budget:
                 return False
-        return True
         return True
     
     def get_transfer_budget_info(self):
