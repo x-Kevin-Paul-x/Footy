@@ -27,8 +27,8 @@ class League:
         for team in self.teams:
             # Initialize manager with random profile for varied strategies
             profile = None  # Will use random profile from ManagerProfile.create_random_profile()
-            team.manager = Manager(profile=profile)
-            
+            team.set_manager(Manager(profile=profile))
+
             # Add coaches
             for _ in range(3):
                 team.add_coach(Coach())

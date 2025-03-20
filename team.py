@@ -65,11 +65,11 @@ class Team:
 
     def add_player(self, player):
         """Add a player to the team."""
-        if len(self.players) >= 23:
-            raise ValueError("Squad size cannot exceed 23 players")
+        if len(self.players) >= 40:
+            raise ValueError("Squad size cannot exceed 40 players")
         self.players.append(player)
         player.team = self.name
-    
+
     def remove_player(self, player):
         """Remove a player from the team."""
         if player in self.players:
