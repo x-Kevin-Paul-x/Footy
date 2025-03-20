@@ -10,3 +10,10 @@ match_reports/
 .qodo
 season_reports/
 transfer_logs/
+football_sim.db
+implementation_plan.md
+test_data.py
+test_database.py
+test_transfers.log
+test_training.py
+test_transfers.py
