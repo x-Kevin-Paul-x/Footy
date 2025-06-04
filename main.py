@@ -112,87 +112,41 @@ def main():
         premier_league.play_season()
         
         # Generate final reports
-        report = premier_league.generate_season_report()
+        full_season_report = premier_league.generate_season_report() # This now returns the rich dictionary
         
-        # Print results
-        print_league_table(report['league_table'])
+        # Print results (can use data from full_season_report)
+        print_league_table(full_season_report['table'])
         
         # Print champions info
-        champions = report['league_table'][0][0]
-        print(f"\nPremier League Champions: {champions}!")
+        champions_name = full_season_report['champions']
+        print(f"\nPremier League Champions: {champions_name}!")
         
-        # Print best manager
-        champions_team = report['league_table'][0][0]
-        champions_manager = next(team.manager for team in premier_league.teams if team.name == champions_team)
-        print(f"\nManager of the Season: {champions_manager.name} ({champions_team})")
-        manager_stats = champions_manager.get_stats()
-        
-        # Print performance stats
-        print(f"Experience Level: {champions_manager.experience_level}")
-        print(f"Win Rate: {manager_stats['win_rate']:.1f}%")
-        print(f"Draw Rate: {manager_stats['draw_rate']:.1f}%")
-        print(f"Total Matches: {manager_stats['matches_played']}")
-        print(f"Record: W{manager_stats['wins']}-D{manager_stats['draws']}-L{manager_stats['losses']}")
-        
-        # Print learning stats
-        print("\nLearning Statistics:")
-        print(f"Exploration Rate: {manager_stats['exploration_rate']:.2f}")
-        print(f"Average Recent Reward: {manager_stats.get('average_reward', 0):.2f}")
-        print(f"Transfer Success Rate: {manager_stats.get('transfer_success_rate', 0):.1f}%")
-        
-        # Print preferred formation and tactics
-        if manager_stats.get('formation_preferences'):
-            print(f"\nPreferred Formation: {manager_stats['formation_preferences'][0][0]}")
-            
-        # Print profile info
-        print("\nManager Profile:")
-        print(f"Short-term Focus: {champions_manager.profile.short_term_weight:.2f}")
-        print(f"Long-term Focus: {champions_manager.profile.long_term_weight:.2f}")
-        print(f"Risk Tolerance: {champions_manager.profile.risk_tolerance:.2f}")
-        
-        # Print team of the season
-        print_best_xi(report['best_players'])
-        
+        # Print best manager (using the already prepared dict from the report)
+        champion_manager_details = full_season_report['champions_manager']
+        print(f"\nManager of the Season: {champion_manager_details['name']} ({champions_name})")
+        print(f"Experience Level: {champion_manager_details['experience']}")
+        print(f"Formation: {champion_manager_details['formation']}")
+        print(f"Transfer Success Rate: {champion_manager_details['transfer_success_rate']:.1f}%")
+        # Note: Detailed manager stats like win rate, specific profile weights, etc.,
+        # would need to be added to the manager dict in generate_season_report if desired for console output here.
+        # For now, focusing on what's in the example JSON.
+
+        # Print team of the season (using the already prepared list of dicts)
+        # The print_best_xi function expects player objects, but report['best_players'] is now dicts.
+        # We can adjust print_best_xi or print directly. For simplicity, let's print directly.
+        print("\nPremier League Team of the Season")
+        print("=" * 75)
+        print(f"{'Position':<10} {'Name':<25} {'Team':<20} {'Potential':<9} {'Age':<3} {'Value':<10}")
+        print("-" * 75)
+        for player_data in full_season_report['best_players']:
+            print(f"{player_data.get('position', 'N/A'):<10} {player_data.get('name', 'N/A'):<25} {player_data.get('team', 'N/A'):<20} "
+                  f"{player_data.get('potential', 0):<9} {player_data.get('age', 0):<3} {player_data.get('value', 0):<10}")
+
         # Save detailed report for each season
         report_filename = f'season_reports/season_report_{premier_league.season_year}.json'
         print(f"\nSaving detailed season {premier_league.season_year} report to '{report_filename}'...")
         with open(report_filename, 'w') as f:
-            json.dump({
-                'season': premier_league.season_year,
-                'champions': champions_team,
-                'champions_manager': {
-                    'name': champions_manager.name,
-                    'experience': champions_manager.experience_level,
-                    'formation': manager_stats.get('formation_preferences', [])[0][0] if manager_stats.get('formation_preferences') else '4-4-2',
-                    'transfer_success_rate': manager_stats.get('transfer_success_rate', 0),
-                    'market_trends': manager_stats.get('market_trends', {})
-                },
-                'table': report['league_table'],
-                'transfers': {
-                    'total_transfers': sum(len(team.statistics['transfer_history']) for team in premier_league.teams),
-                    'biggest_spenders': sorted(
-                        [(team.name, sum(t['fee'] for t in team.statistics['transfer_history'] if t['type'] == 'purchase'))
-                         for team in premier_league.teams],
-                        key=lambda x: x[1], reverse=True
-                    )[:5],
-                    'most_active': sorted(
-                        [(team.name, len(team.statistics['transfer_history']))
-                         for team in premier_league.teams],
-                        key=lambda x: x[1], reverse=True
-                    )[:5]
-                },
-                'best_players': [
-                    {
-                        'name': p.name,
-                        'position': p.position,
-                        'team': p.team,
-                        'potential': p.potential,
-                        'age': p.age,
-                        'value': premier_league.transfer_market.calculate_player_value(p) if hasattr(premier_league, 'transfer_market') else 0
-                    }
-                    for p in report['best_players']
-                ]
-            }, f, indent=2)
+            json.dump(full_season_report, f, indent=2) # Directly save the comprehensive report
         
         # Increment to next season
         premier_league.increment_season()

@@ -36,6 +36,9 @@ class League:
         # Create directory for match reports
         self._init_season()
         os.makedirs(self.match_reports_dir, exist_ok=True)
+        
+        # Initialize TransferMarket for the league instance
+        self.transfer_market = TransferMarket(log_path=f"transfer_logs/season_{self.season_year}_transfers.txt")
 
     def generate_schedule(self):
         """Create a proper double round-robin schedule"""
@@ -190,40 +193,84 @@ class League:
         return sorted_table
 
     def get_best_manager(self):
-        """Find manager with best performance metrics"""
-        # Get team with best points from standings
-        champions = max(self.standings.items(), key=lambda x: x[1]['points'])
-        champion_team = next(t for t in self.teams if t.name == champions[0])
+        """Find manager with best performance metrics and return as a dictionary."""
+        if not self.standings: # Handle case where season hasn't been played
+            return {
+                "name": "N/A",
+                "experience": 0,
+                "formation": "N/A",
+                "transfer_success_rate": 0.0,
+                "market_trends": {}
+            }
+
+        champions_data = max(self.standings.items(), key=lambda x: x[1]['points'])
+        champion_team_name = champions_data[0]
+        champion_team = next((t for t in self.teams if t.name == champion_team_name), None)
+
+        if champion_team and champion_team.manager:
+            manager = champion_team.manager
+            manager_stats = manager.get_stats() # Assuming get_stats() provides success_rate
+            return {
+                "name": manager.name,
+                "experience": manager.experience_level,
+                "formation": manager.formation,
+                "transfer_success_rate": manager_stats.get("transfer_success_rate", 0.0),
+                "market_trends": manager.analyze_market_trends() 
+            }
         
-        if champion_team.manager:
-            return champion_team, champion_team.manager
+        # Fallback if champion manager not found (should ideally not happen in a full season)
+        # Find the manager with the highest win rate as a fallback
+        best_fallback_manager = None
+        highest_win_rate = -1
+
+        for team_obj in self.teams:
+            if team_obj.manager:
+                manager = team_obj.manager
+                if manager.matches_played > 0:
+                    win_rate = manager.wins / manager.matches_played
+                    if win_rate > highest_win_rate:
+                        highest_win_rate = win_rate
+                        best_fallback_manager = manager
+                elif best_fallback_manager is None: # If no one played, pick first one
+                    best_fallback_manager = manager
         
-        # Fallback to highest win rate if no champion manager
-        return max(
-            [(team, team.manager) for team in self.teams if team.manager],
-            key=lambda x: (
-                x[1].wins / x[1].matches_played if x[1].matches_played > 0 else 0,
-                x[0].get_squad_strength()
-            )
-        )
+        if best_fallback_manager:
+            manager_stats = best_fallback_manager.get_stats()
+            return {
+                "name": best_fallback_manager.name,
+                "experience": best_fallback_manager.experience_level,
+                "formation": best_fallback_manager.formation,
+                "transfer_success_rate": manager_stats.get("transfer_success_rate", 0.0),
+                "market_trends": best_fallback_manager.analyze_market_trends()
+            }
+        return { "name": "N/A", "experience": 0, "formation": "N/A", "transfer_success_rate": 0.0, "market_trends": {}}
+
 
     def get_best_players(self, num=11):
-        """Select best players from all teams"""
-        all_players = []
+        """Select best players from all teams and return as a list of dictionaries."""
+        all_players_objects = []
         for team in self.teams:
-            all_players.extend(team.players)
+            all_players_objects.extend(team.players)
             
         # Sort players by average attribute rating
-        return sorted(all_players,
-                    key=lambda p: sum(
-                        sum(category.values()) 
-                        for category in p.attributes.values()
-                    ) / sum(len(category) for category in p.attributes.values()),
-                    reverse=True)[:num]
+        sorted_players = sorted(all_players_objects,
+                                key=lambda p: sum(
+                                    sum(category.values()) for category in p.attributes.values()
+                                ) / sum(len(category) for category in p.attributes.values()),
+                                reverse=True)[:num]
 
-    def _run_transfer_window(self, days=7 ,log_path = None):
-        """Run a transfer window period."""
-        market = TransferMarket(log_path=log_path)
+        best_players_data = []
+        for player_obj in sorted_players:
+            player_info = player_obj.get_player_info(detail_level="basic") # Basic info is enough for this list
+            player_info["value"] = self.transfer_market.calculate_player_value(player_obj)
+            # Ensure team name is present
+            player_info["team"] = player_obj.team if player_obj.team else "N/A"
+            best_players_data.append(player_info)
+        return best_players_data
+
+    def _run_transfer_window(self, days=7 ,log_path = None): # log_path is passed but we use self.transfer_market
+        """Run a transfer window period using the league's transfer_market instance."""
+        # market = TransferMarket(log_path=log_path) # We now use self.transfer_market
         
         for day in range(days):
             #print(f"\nTransfer Window - Day {day + 1}")
@@ -232,57 +279,59 @@ class League:
             for team in self.teams:
                 if team.manager:
                     # Get manager's decisions using Q-learning
-                    actions = team.manager.make_transfer_decision(market)
+                    actions = team.manager.make_transfer_decision(self.transfer_market)
                     
                     # Process transfer actions and collect results
                     for action_type, *params in actions:
                         if action_type == "list":
                             player, price = params
-                            listed = market.list_player(player, team, price)
+                            listed = self.transfer_market.list_player(player, team, price)
                             
                             if listed:
                                 result = {
                                     "type": "list",
                                     "player": player,
                                     "price": price,
-                                    "value_ratio": price / market.calculate_player_value(player),
+                                    "value_ratio": price / self.transfer_market.calculate_player_value(player),
                                     "need_satisfaction": 0.0,
-                                    "month": (self.season_year % 12) + 1,
-                                    "market": market
+                                    "month": (self.season_year % 12) + 1, # This month calculation might need review for realism
+                                    "market": self.transfer_market 
                                 }
                                 team.manager.learn_from_transfer(result)
                                 
                         elif action_type == "buy":
                             listing, offer = params
-                            success, message = market.make_transfer_offer(team, listing, offer)
+                            success, message = self.transfer_market.make_transfer_offer(team, listing, offer)
                             
                             # Record the attempt in manager's history
                             team.statistics["transfer_history"].append({
                                 "type": "buy",
-                                "player": listing.player.name,
+                                "player_name": listing.player.name, # Store name for easier serialization
                                 "price": offer,
-                                "success": success
+                                "success": success,
+                                "message": message,
+                                "day_of_window": day +1
                             })
                             
                             if success:
                                 # Update manager's transfer success stats
-                                if not hasattr(team.manager, 'transfer_attempts'):
+                                if not hasattr(team.manager, 'transfer_attempts'): # Ensure attribute exists
                                     team.manager.transfer_attempts = []
                                 team.manager.transfer_attempts.append(True)
                                 result = {
                                     "type": "buy",
                                     "player": listing.player,
                                     "price": offer,
-                                    "value_ratio": market.calculate_player_value(listing.player) / offer,
+                                    "value_ratio": self.transfer_market.calculate_player_value(listing.player) / offer if offer > 0 else 0,
                                     "need_satisfaction": self._calculate_need_satisfaction(team, listing.player),
                                     "age_impact": (27 - listing.player.age) / 27 if listing.player.age <= 27 else 0,
-                                    "month": (self.season_year % 12) + 1,
-                                    "market": market
+                                    "month": (self.season_year % 12) + 1, # This month calculation might need review
+                                    "market": self.transfer_market
                                 }
                                 team.manager.learn_from_transfer(result)
             
             # Update market
-            market.advance_day()
+            self.transfer_market.advance_day()
     
     def increment_season(self):
         """Advance to new season"""
@@ -408,18 +457,72 @@ class League:
                     )
     
     def generate_season_report(self):
-        """Compile comprehensive season report"""
-        return {
-            "league_table": self.get_league_table(),
-            "best_manager": self.get_best_manager(),
-            "best_players": self.get_best_players(),
+        """Compile comprehensive season report with detailed team and player information."""
+        
+        all_teams_details = []
+        for team_obj in self.teams:
+            players_data = []
+            for player_obj in team_obj.players:
+                player_info = player_obj.get_player_info(detail_level="full")
+                player_info["market_value"] = self.transfer_market.calculate_player_value(player_obj)
+                player_info["squad_role"] = player_obj.squad_role
+                # Ensure 'team' field in player_info is just the name string
+                player_info["team"] = team_obj.name 
+                players_data.append(player_info)
+            
+            team_detail = {
+                "name": team_obj.name,
+                "budget": team_obj.budget,
+                "manager_formation": team_obj.manager.formation if team_obj.manager else "N/A",
+                "squad_strength": team_obj.get_squad_strength(),
+                "players": players_data,
+                "team_season_stats": self.standings.get(team_obj.name, {}), # Get from final standings
+                "team_transfer_history": team_obj.statistics["transfer_history"] # Already collected during _run_transfer_window
+            }
+            all_teams_details.append(team_detail)
+
+        # Consolidate transfer summary for the report (as in the original example)
+        total_transfer_spending = {}
+        total_transfer_activity = {}
+        for tf_record in self.transfer_market.transfer_history:
+            # Spending
+            if tf_record['to_team'] not in total_transfer_spending:
+                total_transfer_spending[tf_record['to_team']] = 0
+            total_transfer_spending[tf_record['to_team']] += tf_record['amount']
+            # Activity (counting unique teams involved in successful buys)
+            if tf_record['to_team'] not in total_transfer_activity:
+                total_transfer_activity[tf_record['to_team']] = 0
+            total_transfer_activity[tf_record['to_team']] +=1
+            if tf_record['from_team'] not in total_transfer_activity: # also count selling team activity
+                total_transfer_activity[tf_record['from_team']] = 0
+            total_transfer_activity[tf_record['from_team']] +=1
+
+
+        biggest_spenders_list = sorted(total_transfer_spending.items(), key=lambda item: item[1], reverse=True)[:5]
+        most_active_list = sorted(total_transfer_activity.items(), key=lambda item: item[1], reverse=True)[:5]
+
+        report = {
+            "season": self.season_year,
+            "champions": self.get_league_table()[0][0] if self.get_league_table() else "N/A", # Team name of champion
+            "champions_manager": self.get_best_manager(), # Already returns a dict
+            "table": self.get_league_table(), # Already returns a list of [team_name, stats_dict]
+            "transfers": { # Mimicking the structure from the example JSON
+                "total_transfers": len(self.transfer_market.transfer_history),
+                "biggest_spenders": biggest_spenders_list,
+                "most_active": most_active_list,
+                "all_completed_transfers": self.transfer_market.transfer_history # Detailed list of all transfers
+            },
+            "best_players": self.get_best_players(), # Already returns list of dicts
             "season_stats": {
                 "total_matches": len(self.matches),
-                "total_goals": sum(t['gf'] for t in self.standings.values()),
-                "best_attack": max(self.standings.items(), key=lambda x: x[1]['gf']),
-                "best_defense": min(self.standings.items(), key=lambda x: x[1]['ga'])
-            }
+                "total_goals": sum(t_stats['gf'] for _, t_stats in self.standings.items()),
+                "average_goals_per_match": (sum(t_stats['gf'] for _, t_stats in self.standings.items()) / len(self.matches)) if self.matches else 0,
+                "best_attack": max(self.standings.items(), key=lambda x: x[1]['gf']) if self.standings else ("N/A", {"gf": 0}),
+                "best_defense": min(self.standings.items(), key=lambda x: x[1]['ga']) if self.standings else ("N/A", {"ga": 0})
+            },
+            "all_teams_details": all_teams_details
         }
+        return report
     
     def _init_season(self):
         """Initialize/reset season-specific data"""
