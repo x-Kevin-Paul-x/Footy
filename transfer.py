@@ -165,15 +165,15 @@ class TransferMarket:
         if not buying_team.can_afford_transfer(offer_amount):
             return False, "Cannot afford transfer fee and wages"
 
-        # Complete transfer
-        transfer_success = listing.selling_team.handle_transfer(listing.player, offer_amount, is_selling=True)
+        # Complete transfer with day of window
+        transfer_success = listing.selling_team.handle_transfer(listing.player, offer_amount, is_selling=True, day_of_window=self.current_day)
         if not transfer_success:
             return False, "Selling team transfer failed"
 
-        transfer_success = buying_team.handle_transfer(listing.player, offer_amount, is_selling=False)
+        transfer_success = buying_team.handle_transfer(listing.player, offer_amount, is_selling=False, day_of_window=self.current_day)
         if not transfer_success:
             # Rollback selling team's transfer if buying fails
-            listing.selling_team.handle_transfer(listing.player, offer_amount, is_selling=False)
+            listing.selling_team.handle_transfer(listing.player, offer_amount, is_selling=False, day_of_window=self.current_day)
             return False, "Buying team transfer failed"
 
         # Record transfer

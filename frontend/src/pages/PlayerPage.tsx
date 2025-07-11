@@ -1,7 +1,28 @@
 import React, { useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useSimulationStore } from '../store/simulationStore';
-import type { Player, PlayerAttributes } from '../services/api'; // Import types
+import type { Player } from '../services/api'; // Import types
+
+// Define local fallback interfaces
+interface PlayerAttributes {
+  pace?: Record<string, number>;
+  shooting?: Record<string, number>;
+  passing?: Record<string, number>;
+  dribbling?: Record<string, number>;
+  defending?: Record<string, number>;
+  physical?: Record<string, number>;
+  goalkeeping?: Record<string, number>;
+}
+
+interface PlayerStats {
+  goals?: number;
+  assists?: number;
+  appearances?: number;
+  fitness?: number;
+  clean_sheets?: number;
+  yellow_cards?: number;
+  red_cards?: number;
+}
 import { Radar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -87,8 +108,49 @@ const PlayerPage: React.FC = () => {
     );
   }
 
-  const { name, age, position, team, potential, wage, contract_length, form, injury_history, squad_role, attributes, stats, market_value } = playerData;
+  // Safely extract properties with default values and proper typing
+  const { 
+    name = "Unknown", 
+    age = 0, 
+    position = "Unknown", 
+    team = "Free Agent", 
+    potential = 0, 
+    wage = 0, 
+    contract_length = 0, 
+    form = [],
+    injury_history = [],
+    squad_role = "RESERVE", 
+    market_value = 0 
+  } = playerData;
+  
+  // Handle attributes with proper typing
+  const attributes: PlayerAttributes = playerData.attributes || {};
+  
+  // Handle stats with proper typing
+  const stats: PlayerStats = playerData.stats || {};
 
+  // Calculate overall rating from attributes
+  let overallRating = 0;
+  if (attributes) {
+    const allAttributeValues: number[] = [];
+    for (const categoryKey in attributes) {
+      const category = attributes[categoryKey as keyof PlayerAttributes];
+      if (category && typeof category === 'object') {
+        for (const attrKey in category) {
+          const value = category[attrKey];
+          if (typeof value === 'number') {
+            allAttributeValues.push(value);
+          }
+        }
+      }
+    }
+    if (allAttributeValues.length > 0) {
+      overallRating = allAttributeValues.reduce((a, b) => a + b, 0) / allAttributeValues.length;
+    }
+  }
+
+  const overallDisplay = overallRating > 0 ? overallRating.toFixed(1) : 'N/A';
+  
   const attributeCategories = attributes ? Object.keys(attributes) as (keyof PlayerAttributes)[] : [];
   
   const radarChartData: ChartData<'radar'> = {
@@ -204,10 +266,10 @@ const PlayerPage: React.FC = () => {
               {[
                 { label: "Position", value: position },
                 { label: "Age", value: age },
-                { label: "Potential", value: potential, highlight: "text-accent-green font-bold text-2xl" }, // Highlight potential
+                { label: "Overall", value: overallDisplay, highlight: "text-accent-green font-bold text-2xl" },
                 { label: "Team", value: <Link to={`/club/${encodeURIComponent(team)}/${selectedSeason}`} className="text-accent-cyan hover:underline">{team}</Link> },
                 { label: "Value", value: `€${market_value?.toLocaleString()}` },
-                { label: "Wage", value: `€${wage?.toLocaleString()} / week` },
+                { label: "Wage", value: `€${wage.toLocaleString()} / week` },
                 { label: "Contract", value: `${contract_length} years` },
                 { label: "Role", value: squad_role },
               ].map(stat => (

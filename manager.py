@@ -279,8 +279,16 @@ class Manager:
 
     def update_market_memory(self, transfer_data: Dict[str, Any]):
         """Update market memory with new transfer data."""
-        player = transfer_data["player"]
-        price = transfer_data["price"]
+        player = transfer_data.get("player") # Use .get() for safety
+        price = transfer_data.get("price", 0) # Default price if not found
+
+        if player is None:
+            # If there's no player object (e.g., a failed buy attempt for a non-existent listing),
+            # we can't update market memory based on player specifics.
+            # We could log this or simply return.
+            # print(f"Debug: update_market_memory called with no player object. Transfer data: {transfer_data}")
+            return
+
         position = self._get_position_group(player.position)
         
         # Update price history
@@ -327,12 +335,21 @@ class Manager:
         budget_ratio = asking_price / self.team.transfer_budget if self.team.transfer_budget > 0 else float('inf')
         financial_score = 1 - min(1, budget_ratio)
         
+        # Wage impact score (10% penalty if over wage budget)
+        current_wages = self.team.calculate_weekly_expenses()["total"]
+        new_wages = current_wages + player.wage
+        wage_budget_ratio = new_wages / self.team.wage_budget if self.team.wage_budget > 0 else float('inf')
+        wage_score = 1 - min(1, wage_budget_ratio)
+        if wage_budget_ratio > 1:
+            wage_score = -0.1  # Penalty for exceeding wage budget
+        
         # Weighted total score
         total_score = (
             0.3 * value_score +
             0.3 * need_score +
             0.2 * potential_score +
-            0.2 * financial_score
+            0.2 * financial_score +
+            0.1 * wage_score
         )
         
         return total_score
@@ -482,12 +499,32 @@ class Manager:
                 if l.listing_id == target:
                     listing = l
                     break
-            if listing:
-                # Find the corresponding "buy" action to get offer price.
-                for possible_action in self._get_possible_transfer_actions(transfer_market):
-                     if possible_action[0] == "buy" and possible_action[1] == target:
-                        actions.append(("buy", listing, possible_action[2]))
+            if listing: # 'listing' is the TransferListing object, 'target' is the listing_id (int)
+                # Find the corresponding "buy" action in possible_actions to get the intended offer price
+                # The 'target' (listing_id) is what league.py expects.
+                # The price should come from the Q-action's parameters or be re-evaluated.
+                # Let's assume the price from the original q_action is what we want to offer.
+                # q_action was (action_type, target_id, price_from_q_value)
+                # So, the price is q_action[2]
+                
+                # We need to find the original offer price associated with this listing_id from _get_possible_transfer_actions
+                # as the q_action's price component might be a Q-value, not the offer.
+                # The q_action is ("buy", listing_id_int, q_value_or_price_indicator)
+                # The actual offer price was determined in _get_possible_transfer_actions.
+                
+                original_offer_price = None
+                for pa in self._get_possible_transfer_actions(transfer_market):
+                    if pa[0] == "buy" and pa[1] == target: # target is listing_id_int
+                        original_offer_price = pa[2] # This is the offer price
                         break
+                
+                if original_offer_price is not None:
+                    actions.append(("buy", target, original_offer_price)) # target is listing_id (int)
+                else:
+                    # This case should ideally not happen if target was in possible_actions
+                    # Fallback or log error
+                    print(f"Warning (Manager): Could not find original offer price for listing ID {target}. Using listing asking price.")
+                    actions.append(("buy", target, listing.asking_price)) # Fallback to asking price
 
         return actions
 
@@ -659,15 +696,18 @@ class Manager:
         midfielders = [p for p in available_players if p.position in ["CM", "CDM", "CAM", "LM", "RM", "DM"]]
         forwards = [p for p in available_players if p.position in ["ST", "CF", "SS", "LW", "RW"]]
         
-        # Sort players by rating in each position
-        def get_player_rating(player):
-            return sum(sum(cat.values()) for cat in player.attributes.values()) / \
-                   (len(player.attributes) * len(next(iter(player.attributes.values()))))
+        # Sort players by role (STARTER first) then by rating
+        role_priority = {"STARTER": 0, "BENCH": 1, "YOUTH": 2}
         
-        sorted_gk = sorted(goalkeepers, key=get_player_rating, reverse=True)
-        sorted_def = sorted(defenders, key=get_player_rating, reverse=True)
-        sorted_mid = sorted(midfielders, key=get_player_rating, reverse=True)
-        sorted_fwd = sorted(forwards, key=get_player_rating, reverse=True)
+        def get_player_priority(player):
+            rating = sum(sum(cat.values()) for cat in player.attributes.values()) / \
+                     (len(player.attributes) * len(next(iter(player.attributes.values()))))
+            return (role_priority.get(player.squad_role, 3), -rating)  # Negative for descending sort
+        
+        sorted_gk = sorted(goalkeepers, key=get_player_priority)
+        sorted_def = sorted(defenders, key=get_player_priority)
+        sorted_mid = sorted(midfielders, key=get_player_priority)
+        sorted_fwd = sorted(forwards, key=get_player_priority)
         
         # Build lineup based on formation
         lineup = []

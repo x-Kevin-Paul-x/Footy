@@ -128,7 +128,7 @@ class Team:
         
         return round(total_rating / len(self.players), 2)
     
-    def handle_transfer(self, player, fee, is_selling=True):
+    def handle_transfer(self, player, fee, is_selling=True, day_of_window=None): # Added day_of_window
         """
         Process a transfer transaction (buying or selling a player).
         
@@ -136,6 +136,7 @@ class Team:
             player: Player being transferred
             fee: Transfer fee
             is_selling: True if selling, False if buying
+            day_of_window (int, optional): The day of the transfer window this occurred. Defaults to None.
             
         Returns:
             bool: Whether transfer was successful
@@ -147,38 +148,47 @@ class Team:
                 self.transfer_budget += fee * 0.4  # 40% of fee goes to transfer budget
                 self.wage_budget += fee * 0.6  # 60% of fee goes to wage budget
                 
+                player_name_str = str(player.name) if hasattr(player, 'name') and player.name is not None else "Unknown Player"
+                price_val = float(fee) if fee is not None else 0.0
+
                 self.statistics["transfer_history"].append({
                     "type": "sale",
-                    "player": player.name,
-                    "fee": fee,
-                    "position": player.position
+                    "player_name": player_name_str,
+                    "price": price_val,
+                    "success": True,
+                    "day_of_window": day_of_window, # Use passed day_of_window
+                    "message": "Player sold successfully." 
                 })
                 return True
             return False
-        else:
+        else: # This is a purchase
             if fee <= self.transfer_budget:
                 self.players.append(player)
                 self.budget -= fee
                 self.transfer_budget -= fee
                 
+                player_name_str = str(player.name) if hasattr(player, 'name') and player.name is not None else "Unknown Player"
+                price_val = float(fee) if fee is not None else 0.0
+
                 self.statistics["transfer_history"].append({
                     "type": "purchase",
-                    "player": player.name,
-                    "fee": fee,
-                    "position": player.position
+                    "player_name": player_name_str,
+                    "price": price_val,
+                    "success": True,
+                    "day_of_window": day_of_window, # Use passed day_of_window
+                    "message": "Player purchased successfully."
                 })
                 return True
             return False
-    def can_afford_transfer(self, fee, include_wages=True):
-        """Check if team can afford a transfer fee and wages."""
+    def can_afford_transfer(self, fee, player_wage=None, include_wages=True):
+        """Check if team can afford a transfer fee and player wages."""
         if fee > self.transfer_budget:
             return False
         if include_wages:
-            estimated_weekly_wage = fee * 0.02 / 52  # Estimate 2% of transfer fee as annual salary
-            # Calculate the *total* current wage bill
+            # Use actual player wage if provided, otherwise estimate
+            new_wage = player_wage if player_wage is not None else fee * 0.02 / 52
             current_wage_bill = sum(player.wage for player in self.players)
-            # Check if the new total wage bill exceeds the wage budget
-            if current_wage_bill + estimated_weekly_wage > self.wage_budget:
+            if current_wage_bill + new_wage > self.wage_budget:
                 return False
         return True
     

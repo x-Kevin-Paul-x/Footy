@@ -300,19 +300,66 @@ class League:
                                 team.manager.learn_from_transfer(result)
                                 
                         elif action_type == "buy":
-                            listing, offer = params
-                            success, message = self.transfer_market.make_transfer_offer(team, listing, offer)
+                            listing_id, offer = params # listing_id from manager's action
                             
-                            # Record the attempt in manager's history
+                            # Find the actual listing object from the market
+                            actual_listing = None
+                            for l_item in self.transfer_market.transfer_list:
+                                if l_item.listing_id == listing_id:
+                                    actual_listing = l_item
+                                    break
+                            
+                            if not actual_listing:
+                                print(f"Warning: Listing ID {listing_id} not found in transfer market for team {team.name} during buy attempt.")
+                                # Log a failed attempt because the listing disappeared or was invalid
+                                team.statistics["transfer_history"].append({
+                                    "type": "buy_attempt", # Indicate it's an attempt
+                                    "player_name": f"Unknown Player (Listing ID: {listing_id})",
+                                    "price": offer,
+                                    "success": False,
+                                    "message": f"Listing ID {listing_id} not found or invalid at time of offer.",
+                                    "day_of_window": day + 1
+                                })
+                                # Update manager's transfer success stats for this attempt
+                                if not hasattr(team.manager, 'transfer_attempts'):
+                                    team.manager.transfer_attempts = []
+                                team.manager.transfer_attempts.append(False) # Record failure
+                                
+                                # Manager learning for the failed attempt due to missing listing
+                                result = {
+                                    "type": "buy", # Keep type as "buy" for learning consistency
+                                    "player": None, # No player object available
+                                    "price": offer,
+                                    "value_ratio": 0, # No value if no player
+                                    "need_satisfaction": 0, # No need satisfied
+                                    "age_impact": 0,
+                                    "month": (self.season_year % 12) + 1,
+                                    "market": self.transfer_market,
+                                    "success": False, # Explicitly state failure
+                                    "reason": f"Listing ID {listing_id} not found."
+                                }
+                                if hasattr(team.manager, 'learn_from_transfer'): # Check if manager has this method
+                                     team.manager.learn_from_transfer(result)
+                                continue # Skip to next action if listing not found
+
+                            # Now make the offer using the actual_listing object
+                            success, message = self.transfer_market.make_transfer_offer(team, actual_listing, offer)
+                            
+                            # Record the attempt in team's history AFTER the attempt is made
                             team.statistics["transfer_history"].append({
-                                "type": "buy",
-                                "player_name": listing.player.name, # Store name for easier serialization
+                                "type": "buy", 
+                                "player_name": actual_listing.player.name, 
                                 "price": offer,
-                                "success": success,
-                                "message": message,
-                                "day_of_window": day +1
+                                "success": success, 
+                                "message": message, 
+                                "day_of_window": day + 1
                             })
                             
+                            # Update manager's transfer success stats for this attempt
+                            if not hasattr(team.manager, 'transfer_attempts'):
+                                team.manager.transfer_attempts = []
+                            team.manager.transfer_attempts.append(success) # Record success/failure of this attempt
+
                             if success:
                                 # Update manager's transfer success stats
                                 if not hasattr(team.manager, 'transfer_attempts'): # Ensure attribute exists
@@ -320,13 +367,14 @@ class League:
                                 team.manager.transfer_attempts.append(True)
                                 result = {
                                     "type": "buy",
-                                    "player": listing.player,
+                                    "player": actual_listing.player, # Corrected: use actual_listing
                                     "price": offer,
-                                    "value_ratio": self.transfer_market.calculate_player_value(listing.player) / offer if offer > 0 else 0,
-                                    "need_satisfaction": self._calculate_need_satisfaction(team, listing.player),
-                                    "age_impact": (27 - listing.player.age) / 27 if listing.player.age <= 27 else 0,
+                                    "value_ratio": self.transfer_market.calculate_player_value(actual_listing.player) / offer if offer > 0 else 0,
+                                    "need_satisfaction": self._calculate_need_satisfaction(team, actual_listing.player),
+                                    "age_impact": (27 - actual_listing.player.age) / 27 if actual_listing.player.age <= 27 else 0,
                                     "month": (self.season_year % 12) + 1, # This month calculation might need review
-                                    "market": self.transfer_market
+                                    "market": self.transfer_market,
+                                    "success": True # Explicitly state success for manager learning
                                 }
                                 team.manager.learn_from_transfer(result)
             
@@ -470,6 +518,41 @@ class League:
                 player_info["team"] = team_obj.name 
                 players_data.append(player_info)
             
+            raw_team_transfer_history = team_obj.statistics["transfer_history"]
+            processed_team_transfer_history = []
+            for item in raw_team_transfer_history:
+                if isinstance(item, dict):
+                    # Ensure essential keys are present, provide defaults if not
+                    processed_item = {
+                        "type": item.get("type", "unknown"),
+                        "player_name": item.get("player_name", "N/A"),
+                        "price": item.get("price", 0.0),
+                        "success": item.get("success", False), # Default to False
+                        "day_of_window": item.get("day_of_window", None),
+                        "message": item.get("message", "")
+                    }
+                    # Ensure price is a number
+                    if not isinstance(processed_item["price"], (int, float)):
+                        try:
+                            processed_item["price"] = float(processed_item["price"])
+                        except (ValueError, TypeError):
+                            processed_item["price"] = 0.0
+                            
+                    processed_team_transfer_history.append(processed_item)
+                elif isinstance(item, str):
+                    # Handle rogue strings: convert to a minimal dict
+                    print(f"Warning: Found a string '{item}' in transfer_history for team {team_obj.name}. Converting to minimal entry.")
+                    processed_team_transfer_history.append({
+                        "type": item, # The string itself becomes the type
+                        "player_name": "N/A (Malformed Entry)",
+                        "price": 0.0,
+                        "success": False,
+                        "day_of_window": None,
+                        "message": "Original entry was a malformed string."
+                    })
+                else:
+                    print(f"Warning: Found unexpected data type '{type(item)}' in transfer_history for team {team_obj.name}. Skipping.")
+            
             team_detail = {
                 "name": team_obj.name,
                 "budget": team_obj.budget,
@@ -477,7 +560,7 @@ class League:
                 "squad_strength": team_obj.get_squad_strength(),
                 "players": players_data,
                 "team_season_stats": self.standings.get(team_obj.name, {}), # Get from final standings
-                "team_transfer_history": team_obj.statistics["transfer_history"] # Already collected during _run_transfer_window
+                "team_transfer_history": processed_team_transfer_history # Use the processed list
             }
             all_teams_details.append(team_detail)
 

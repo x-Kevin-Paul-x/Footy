@@ -288,10 +288,36 @@ class Match:
                     self.shots_on_target[score_idx] += 1
                     
                     # Find scorer
-                    scorers = [p for p in attacking_team.players if p.position in ["ST", "CF", "SS", "RW", "LW"]]
-                    if scorers:
+                    # Find potential passers and shooters
+                    passers = [p for p in attacking_team.players if p.position in ["CM", "CAM", "LM", "RM", "LW", "RW"]]
+                    scorers = [p for p in attacking_team.players if p.position in ["ST", "CF", "SS"]]
+                    
+                    if passers and scorers:
+                        passer = random.choice(passers)
                         scorer = random.choice(scorers)
-                        self._update_player_stats(scorer, "shot", True)
+                        
+                        # Update goal for scorer
+                        scorer.stats["goals"] += 1
+                        
+                        # Update assist for passer
+                        passer.stats["assists"] += 1
+                        
+                        # Create event description
+                        event_details = f"Goal! {scorer.name} scores!"
+                        if passer != scorer:
+                            event_details += f" Assisted by {passer.name}."
+                        
+                        self.events.append(MatchEvent(
+                            self.minute,
+                            "goal",
+                            scorer.name,
+                            "home" if attacking_team == self.home_team else "away",
+                            event_details
+                        ))
+                    elif scorers:
+                        # If no passers but have scorers
+                        scorer = random.choice(scorers)
+                        scorer.stats["goals"] += 1
                         self.events.append(MatchEvent(
                             self.minute,
                             "goal",
@@ -333,8 +359,6 @@ class Match:
                 
                 # Development from match experience
                 if player in self.home_lineup or player in self.away_lineup:
-                    player.stats["appearances"] += 1
-                    
                     # Calculate development chance based on age
                     development_chance = 0.15 if player.age < 21 else \
                                        0.10 if player.age < 23 else \
@@ -436,6 +460,12 @@ class Match:
                 print(f"Possession: {self.possession[0]/self.minute*100:.1f}% - {self.possession[1]/self.minute*100:.1f}%")
                 print(f"Shots (On Target): {self.shots[0]} ({self.shots_on_target[0]}) - {self.shots[1]} ({self.shots_on_target[1]})")
         
+        # Increment appearance for starting players
+        for player in self.home_lineup:
+            player.stats["appearances"] += 1
+        for player in self.away_lineup:
+            player.stats["appearances"] += 1
+            
         # Match summary
         summary = {
             "score": self.score,
@@ -484,6 +514,12 @@ class Match:
             }
             self.away_team.manager.learn_from_match(away_result)
         
+        # Update player appearances for the starting lineups
+        for player in self.home_lineup:
+            player.stats["appearances"] += 1
+        for player in self.away_lineup:
+            player.stats["appearances"] += 1
+            
         # Reset player fitness by 50% after match
         for team in [self.home_team, self.away_team]:
             for player in team.players:

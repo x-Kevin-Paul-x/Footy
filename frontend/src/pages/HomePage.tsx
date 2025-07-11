@@ -2,7 +2,11 @@ import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom'; // Import Link
 import { useSimulationStore } from '../store/simulationStore';
 
-const HomePage: React.FC = () => {
+interface HomePageProps {
+  showToast?: (message: string, type?: "success" | "error" | "info") => void;
+}
+
+const HomePage: React.FC<HomePageProps> = ({ showToast }) => {
   const {
     availableSeasons,
     selectedSeason,
@@ -32,6 +36,14 @@ const HomePage: React.FC = () => {
   return (
     <div className="container mx-auto p-4">
       <h1 className="text-3xl font-bold mb-6 text-center">Football Simulation Dashboard</h1>
+      {showToast && (
+        <button
+          className="mb-4 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded transition"
+          onClick={() => showToast("This is a demo notification!", "success")}
+        >
+          Show Demo Toast
+        </button>
+      )}
 
       <div className="mb-8 p-6 bg-gray-800 rounded-lg shadow-xl">
         <h2 className="text-2xl font-semibold mb-4 text-blue-400">Simulation Control</h2>

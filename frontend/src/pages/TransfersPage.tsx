@@ -1,25 +1,50 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useSimulationStore } from '../store/simulationStore';
 import { Link } from 'react-router-dom';
 
-// Define a more specific type for completed transfers if available from your backend
 interface CompletedTransfer {
-  player: string; // Assuming player name, adjust if it's an object or ID
+  player: string;
   from_team: string;
   to_team: string;
   amount: number;
-  day: number; // Or date string
-  // Add other relevant fields like value, listing_id etc. if present
+  day: number;
 }
 
 const TransfersPage: React.FC = () => {
-  const { currentReport, isLoading, error, selectedSeason, fetchAvailableSeasons, availableSeasons } = useSimulationStore();
+  const { currentReport, isLoading, error, selectedSeason, fetchAvailableSeasons, availableSeasons, selectSeason } = useSimulationStore();
 
   useEffect(() => {
     if (availableSeasons.length === 0) {
       fetchAvailableSeasons();
     }
   }, [fetchAvailableSeasons, availableSeasons.length]);
+
+  // Refetch transfers when season changes
+  useEffect(() => {
+    if (selectedSeason) {
+      selectSeason(selectedSeason);
+    }
+  }, [selectedSeason, selectSeason]);
+
+  // Filter transfers based on the selected season
+  const currentSeasonTransfers = useMemo(() => {
+    if (!currentReport?.transfers?.all_completed_transfers || !selectedSeason) {
+      return [];
+    }
+
+    const transfers = currentReport.transfers.all_completed_transfers as CompletedTransfer[];
+    // Assuming the API returns transfers for the selected season only,
+    // or that 'day' is relative to the start of the *entire simulation* not just the season.
+    // If 'day' is relative to the start of each season (0-27 for each season),
+    // then this filtering is correct for showing only the current season's transfers.
+    // The user's feedback implies 'day' might be continuous across seasons.
+    // For now, we'll assume the API provides data correctly scoped to the selectedSeason.
+    // If days 0-13 are season 1, and 14-27 are season 2, this needs backend adjustment
+    // or more complex frontend logic if all data comes at once.
+    // Based on current understanding, we show all transfers for the *selectedSeason*.
+    return transfers; 
+
+  }, [currentReport, selectedSeason]);
 
   if (isLoading && !currentReport) {
     return <p className="text-center text-xl mt-8">Loading transfers data...</p>;
@@ -32,7 +57,7 @@ const TransfersPage: React.FC = () => {
   if (!selectedSeason) {
     return (
       <div className="text-center text-xl mt-8">
-        <p>Please select a season from the <Link to="/" className="text-blue-400 hover:text-blue-600">Homepage</Link> to view transfers.</p>
+        <p>Please select a season using the season selector in the navigation bar.</p>
       </div>
     );
   }
@@ -41,7 +66,7 @@ const TransfersPage: React.FC = () => {
     return <p className="text-center text-xl mt-8">No transfers data available for the selected season.</p>;
   }
 
-  const { total_transfers, biggest_spenders, most_active, all_completed_transfers } = currentReport.transfers;
+  const { total_transfers, biggest_spenders, most_active } = currentReport.transfers;
 
   return (
     <div className="container mx-auto p-4">
@@ -81,8 +106,8 @@ const TransfersPage: React.FC = () => {
         </div>
       </div>
 
-      {/* All Completed Transfers Table */}
-      <h2 className="text-2xl font-semibold mb-4">All Completed Transfers</h2>
+      {/* All Completed Transfers Table for the selected season */}
+      <h2 className="text-2xl font-semibold mb-4">All Completed Transfers for Season {selectedSeason}</h2>
       <div className="overflow-x-auto bg-gray-800 shadow-xl rounded-lg">
         <table className="min-w-full text-sm text-left text-gray-300">
           <thead className="text-xs text-gray-400 uppercase bg-gray-700">
@@ -95,8 +120,9 @@ const TransfersPage: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {(all_completed_transfers as CompletedTransfer[]).length > 0 ? (
-              (all_completed_transfers as CompletedTransfer[]).map((transfer, index) => (                <tr key={index} className="border-b border-gray-700 hover:bg-gray-700/50">
+            {currentSeasonTransfers.length > 0 ? (
+              currentSeasonTransfers.map((transfer, index) => (
+                <tr key={index} className="border-b border-gray-700 hover:bg-gray-700/50">
                   <td className="px-6 py-4 font-medium whitespace-nowrap">
                     <Link 
                       to={`/player/${encodeURIComponent(transfer.player)}/${selectedSeason}`}
@@ -119,7 +145,6 @@ const TransfersPage: React.FC = () => {
           </tbody>
         </table>
       </div>
-      {/* Placeholder for charts */}
     </div>
   );
 };

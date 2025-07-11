@@ -48,44 +48,7 @@ class FootballPlayer:
     def update_form(self, match_rating):
         """Update player form with new match rating (0-1 scale)"""
         self.form = self.form[1:] + [max(0, min(1, match_rating))]
-        # Detailed football attributes
-        self.attributes = {
-            "pace": {
-            "acceleration": 1, 
-            "sprint_speed": 1
-            },
-            "shooting": {
-            "finishing": 1,
-            "shot_power": 1,
-            "long_shots": 1
-            },
-            "passing": {
-            "vision": 1,
-            "crossing": 1,
-            "free_kick": 1
-            },
-            "dribbling": {
-            "agility": 1,
-            "balance": 1,
-            "ball_control": 1
-            },
-            "defending": {
-            "marking": 1,
-            "standing_tackle": 1,
-            "sliding_tackle": 1
-            },
-            "physical": {
-            "strength": 1,
-            "stamina": 1,
-            "aggression": 1
-            },
-            "goalkeeping": {
-            "diving": 1,
-            "handling": 1,
-            "reflexes": 1,
-            "positioning": 1
-            }
-        }
+        # Attribute updates removed to prevent resetting attributes
 
     @classmethod
     def create_player(cls, name=None, age=None, position=None):
@@ -306,7 +269,10 @@ class FootballPlayer:
             "age": self.age,
             "position": self.position,
             "team": self.team,
-            "potential": self.potential
+            "potential": self.potential,
+            "wage": self.wage,
+            "contract_length": self.contract_length,
+            "squad_role": self.squad_role
         }
         
         if detail_level == "basic":

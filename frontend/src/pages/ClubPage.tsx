@@ -3,6 +3,18 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useSimulationStore } from '../store/simulationStore';
 import type { TeamDetail, Player } from '../services/api'; // Import types
 
+// Define a more specific type for team transfer history items
+interface TeamTransferHistoryItem {
+  type: 'buy' | 'sale' | 'purchase'; // Assuming 'purchase' is a type based on feedback
+  player_name: string;
+  price: number;
+  success: boolean;
+  day_of_window: number;
+  // If the structure is an array/tuple, we'll adjust access below
+  // For now, let's assume it *should* be an object with these keys.
+  // The feedback suggests it might be an array or malformed.
+}
+
 const ClubPage: React.FC = () => {
   const { clubName, season: seasonParam } = useParams<{ clubName: string; season: string }>();
   const navigate = useNavigate();
@@ -105,7 +117,7 @@ const ClubPage: React.FC = () => {
                 <th scope="col" className="px-6 py-3">Name</th>
                 <th scope="col" className="px-6 py-3">Position</th>
                 <th scope="col" className="px-6 py-3 text-center">Age</th>
-                <th scope="col" className="px-6 py-3 text-center">Potential</th>
+                <th scope="col" className="px-6 py-3 text-center">Overall</th>
                 <th scope="col" className="px-6 py-3 text-right">Value</th>
                 <th scope="col" className="px-6 py-3">Role</th>
               </tr>
@@ -120,7 +132,17 @@ const ClubPage: React.FC = () => {
                   </td>
                   <td className="px-6 py-4">{player.position}</td>
                   <td className="px-6 py-4 text-center">{player.age}</td>
-                  <td className="px-6 py-4 text-center">{player.potential}</td>
+                <td className="px-6 py-4 text-center">
+                  {player.attributes ? (
+                    (Object.values(player.attributes).reduce((sum, category) => {
+                      if (typeof category === 'object') {
+                        const values = Object.values(category).filter(val => typeof val === 'number');
+                        return sum + values.reduce((catSum, val) => catSum + val, 0) / values.length;
+                      }
+                      return sum;
+                    }, 0) / Object.keys(player.attributes).length).toFixed(1)
+                  ) : 'N/A'}
+                </td>
                   <td className="px-6 py-4 text-right">€{player.market_value?.toLocaleString()}</td>
                   <td className="px-6 py-4">{player.squad_role}</td>
                 </tr>
@@ -146,17 +168,74 @@ const ClubPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {team_transfer_history.map((transfer: any, index: number) => (
-                  <tr key={index} className="border-b border-gray-700 hover:bg-gray-700/50">
-                    <td className="px-6 py-4 capitalize">{transfer.type}</td>
-                    <td className="px-6 py-4">{transfer.player_name}</td>
-                    <td className="px-6 py-4 text-right">€{transfer.price?.toLocaleString()}</td>
-                    <td className={`px-6 py-4 text-center ${transfer.success ? 'text-green-400' : 'text-red-400'}`}>
-                      {transfer.success ? 'Yes' : 'No'}
-                    </td>
-                    <td className="px-6 py-4 text-center">{transfer.day_of_window}</td>
-                  </tr>
-                ))}
+                {team_transfer_history.map((transferItem: any, index: number) => {
+                  // Attempt to handle both object and array structures based on feedback
+                  let type, player_name, price, success, day_of_window;
+
+                  if (typeof transferItem === 'object' && transferItem !== null && !Array.isArray(transferItem)) {
+                    // Standard object structure
+                    type = transferItem.type;
+                    player_name = transferItem.player_name;
+                    price = transferItem.price;
+                    success = transferItem.success;
+                    day_of_window = transferItem.day_of_window;
+                  } else if (Array.isArray(transferItem)) {
+                    // Array/tuple structure
+                    type = transferItem[0];
+                    player_name = transferItem[1]; // Might be undefined if array is short
+                    price = transferItem[2];       // Might be undefined
+                    success = transferItem[3];     // Might be undefined
+                    day_of_window = transferItem[4]; // Might be undefined
+                  } else if (typeof transferItem === 'string') {
+                    // Simple string type, e.g., "purchase" or "sale"
+                    type = transferItem;
+                    // Other fields will be undefined, leading to "N/A"
+                    player_name = undefined;
+                    price = undefined;
+                    success = undefined;
+                    day_of_window = undefined;
+                     console.log(`Transfer item is a simple string: ${transferItem}`);
+                  } else {
+                    console.warn("Unknown transfer history item structure:", transferItem);
+                    return (
+                      <tr key={index} className="border-b border-gray-700 hover:bg-gray-700/50">
+                        <td colSpan={5} className="px-6 py-4 text-center text-yellow-400">
+                          Unknown transfer data structure.
+                        </td>
+                      </tr>
+                    );
+                  }
+                  
+                  // Normalize 'purchase' to 'buy' if needed, or handle as distinct type
+                  let displayType = type;
+                  if (typeof type === 'string') {
+                    if (type.toLowerCase() === 'purchase') displayType = 'Buy (Listed)';
+                    else displayType = type.charAt(0).toUpperCase() + type.slice(1); // Capitalize
+                  } else {
+                    displayType = 'N/A';
+                  }
+                  
+
+                  return (
+                    <tr key={index} className="border-b border-gray-700 hover:bg-gray-700/50">
+                      <td className="px-6 py-4">{displayType}</td>
+                      <td className="px-6 py-4">
+                        {player_name ? (
+                          <Link to={`/player/${encodeURIComponent(player_name)}/${selectedSeason}`} className="hover:text-blue-400">
+                            {player_name}
+                          </Link>
+                        ) : 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        {typeof price === 'number' ? `€${price.toLocaleString()}` : 'N/A'}
+                      </td>
+                      <td className={`px-6 py-4 text-center ${success ? 'text-green-400' : 'text-red-400'}`}>
+                        {typeof success === 'boolean' ? (success ? 'Yes' : 'No') : 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 text-center">{day_of_window ?? 'N/A'}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
