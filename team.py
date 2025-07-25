@@ -22,6 +22,7 @@ class Team:
             "BENCH": 7,
             "YOUTH": 5
         }
+        self.youth_academy = []  # List of youth players (FootballPlayer)
         self.statistics = {
             "wins": 0,
             "draws": 0,
@@ -30,6 +31,29 @@ class Team:
             "goals_against": 0,
             "transfer_history": []  # Track transfers
         }
+
+    def generate_youth_player(self):
+        """Generate a new youth player and add to the academy."""
+        from player import FootballPlayer
+        import random
+        # Youth players are 15-18, lower initial ability, wider potential
+        age = random.randint(15, 18)
+        potential = random.randint(60, 90)
+        # Lower initial ability by setting potential but letting attributes be random/low
+        player = FootballPlayer.create_player(age=age, potential=potential)
+        player.squad_role = "YOUTH"
+        self.youth_academy.append(player)
+        return player
+
+    def promote_youth_player(self, player):
+        """Promote a youth player to the senior squad."""
+        if player in self.youth_academy:
+            self.youth_academy.remove(player)
+            player.squad_role = "RESERVE"
+            player.age = max(player.age, 17)
+            self.add_player(player)
+            return True
+        return False
     
     def get_players_by_position(self, position):
         """Get all players in a specific position"""

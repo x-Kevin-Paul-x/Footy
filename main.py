@@ -43,6 +43,7 @@ def create_premier_league():
     premier_league.teams = []  # Clear default teams
     
     print("Creating Premier League teams...")
+    import random
     for team_name in teams:
         team = Team(team_name, budgets[team_name])
         premier_league.teams.append(team)
@@ -71,6 +72,10 @@ def create_premier_league():
                 player = FootballPlayer.create_player(position=position)
                 team.add_player(player)
                 #print(f"Signed: {player.name} ({position}, Age: {player.age})")
+        
+        # Generate initial youth academy players for the first season
+        for _ in range(random.randint(1, 3)):
+            team.generate_youth_player()
     
     return premier_league
 
@@ -96,6 +101,42 @@ def print_best_xi(players):
         avg_rating = sum(sum(cat.values()) for cat in player.attributes.values()) / \
                     sum(len(cat) for cat in player.attributes.values())
         print(f"{player.position:<10} {player.name:<25} {player.team:<20} {avg_rating:>6.2f}")
+
+def print_rising_talents(league):
+    """Print the best youth academy players in the league."""
+    all_youth = []
+    for team in league.teams:
+        for player in getattr(team, "youth_academy", []):
+            if getattr(player, "age", 0) <= 19 and getattr(player, "squad_role", "") == "YOUTH":
+                # Calculate actual ability (average attribute rating)
+                try:
+                    ability = sum(sum(cat.values()) for cat in player.attributes.values()) / sum(len(cat) for cat in player.attributes.values())
+                except Exception:
+                    ability = 0
+                all_youth.append({
+                    "name": player.name,
+                    "team": team.name,
+                    "potential": player.potential,
+                    "ability": ability,
+                    "age": player.age,
+                    "position": player.position,
+                    "value": getattr(league.transfer_market, "calculate_player_value", lambda x: 0)(player)
+                })
+    # Sort by potential, then value
+    rising = sorted(all_youth, key=lambda p: (p["potential"], p["value"]), reverse=True)[:10]
+    print("\nRising Talents: Best Youth Academy Players")
+    print("=" * 90)
+    print(f"{'Name':<25} {'Team':<20} {'Potential':<9} {'Ability':<8} {'Age':<3} {'Position':<10} {'Value':<10}")
+    print("-" * 90)
+    for p in rising:
+        name_str = str(p['name']) if p['name'] is not None else "N/A"
+        team_str = str(p['team']) if p['team'] is not None else "N/A"
+        potential_str = str(p['potential']) if p['potential'] is not None else "N/A"
+        ability_str = f"{p['ability']:.1f}" if p.get('ability') is not None else "N/A"
+        age_str = str(p['age']) if p['age'] is not None else "N/A"
+        position_str = str(p['position']) if p['position'] is not None else "N/A"
+        value_str = str(p['value']) if p['value'] is not None else "N/A"
+        print(f"{name_str:<25} {team_str:<20} {potential_str:<9} {ability_str:<8} {age_str:<3} {position_str:<10} {value_str:<10}")
 
 def main():
     
@@ -127,20 +168,28 @@ def main():
         print(f"Experience Level: {champion_manager_details['experience']}")
         print(f"Formation: {champion_manager_details['formation']}")
         print(f"Transfer Success Rate: {champion_manager_details['transfer_success_rate']:.1f}%")
-        # Note: Detailed manager stats like win rate, specific profile weights, etc.,
-        # would need to be added to the manager dict in generate_season_report if desired for console output here.
-        # For now, focusing on what's in the example JSON.
 
         # Print team of the season (using the already prepared list of dicts)
-        # The print_best_xi function expects player objects, but report['best_players'] is now dicts.
-        # We can adjust print_best_xi or print directly. For simplicity, let's print directly.
         print("\nPremier League Team of the Season")
-        print("=" * 75)
-        print(f"{'Position':<10} {'Name':<25} {'Team':<20} {'Potential':<9} {'Age':<3} {'Value':<10}")
-        print("-" * 75)
+        print("=" * 95)
+        print(f"{'Position':<10} {'Name':<25} {'Team':<20} {'Potential':<9} {'Ability':<8} {'Age':<3} {'Value':<10}")
+        print("-" * 95)
         for player_data in full_season_report['best_players']:
+            # Calculate actual ability (average attribute rating)
+            ability = 0
+            try:
+                if "attributes" in player_data and player_data["attributes"]:
+                    ability = sum(sum(cat.values()) for cat in player_data["attributes"].values()) / sum(len(cat) for cat in player_data["attributes"].values())
+                else:
+                    # If not present, fallback to 0
+                    ability = 0
+            except Exception:
+                ability = 0
             print(f"{player_data.get('position', 'N/A'):<10} {player_data.get('name', 'N/A'):<25} {player_data.get('team', 'N/A'):<20} "
-                  f"{player_data.get('potential', 0):<9} {player_data.get('age', 0):<3} {player_data.get('value', 0):<10}")
+                  f"{player_data.get('potential', 0):<9} {ability:<8.1f} {player_data.get('age', 0):<3} {player_data.get('value', 0):<10}")
+
+        # Print Rising Talents
+        print_rising_talents(premier_league)
 
         # Save detailed report for each season
         report_filename = f'season_reports/season_report_{premier_league.season_year}.json'

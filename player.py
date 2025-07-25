@@ -24,8 +24,17 @@ class FootballPlayer:
         self.wage = wage
         self.contract_length = 3  # Years remaining
         self.form = [0.7] * 10  # Last 10 match ratings (0-1 scale)
-        self.injury_history = []
+        self.is_injured = False
+        self.injury_type = None
+        self.recovery_time = 0
+        self.injury_history = []  # List of dicts: {"type": ..., "duration": ..., "start_age": ...}
         self.squad_role = "RESERVE"  # STARTER/BENCH/YOUTH
+
+        # Transfer/contract negotiation attributes
+        self.desired_wage = self.wage * random.uniform(1.05, 1.25)
+        self.contract_offer = None
+        self.negotiation_state = None  # e.g., "open", "accepted", "rejected"
+        self.transfer_interest = False  # Willingness to move
         self.attributes = {
             "pace": {"acceleration": 1, "sprint_speed": 1},
             "shooting": {"finishing": 1, "shot_power": 1, "long_shots": 1},
@@ -51,7 +60,7 @@ class FootballPlayer:
         # Attribute updates removed to prevent resetting attributes
 
     @classmethod
-    def create_player(cls, name=None, age=None, position=None):
+    def create_player(cls, name=None, age=None, position=None, potential=None):
         """
         Factory method to create a player with randomized attributes.
         
@@ -59,6 +68,7 @@ class FootballPlayer:
             name (str, optional): Player's name, randomized if None
             age (int, optional): Player's age, randomized between 16-20 if None
             position (str, optional): Player's position on the field, randomized if None
+            potential (int, optional): Player's potential, randomized if None
         
         Returns:
             A new FootballPlayer instance with randomized stats
@@ -67,9 +77,18 @@ class FootballPlayer:
         if name is None:
             name = names.get_full_name()
             
-        # Generate random age between 16-20 if not provided
+        # Generate random age with realistic distribution if not provided
         if age is None:
-            age = random.randint(16, 20)
+            # Weighted: 10% (16-19), 40% (20-25), 30% (26-30), 20% (31-35)
+            r = random.random()
+            if r < 0.10:
+                age = random.randint(16, 19)
+            elif r < 0.50:
+                age = random.randint(20, 25)
+            elif r < 0.80:
+                age = random.randint(26, 30)
+            else:
+                age = random.randint(31, 35)
             
         # Generate random position if not provided
         if position is None:
@@ -81,8 +100,9 @@ class FootballPlayer:
             ]
             position = random.choice(positions)
             
-        # Generate random potential between 50-99
-        potential = random.randint(50, 99)
+        # Generate random potential between 50-99 if not provided
+        if potential is None:
+            potential = random.randint(50, 99)
         
         # Calculate base wage based on potential (500-5000 range)
         base_wage = 500 + (potential * 45)  # Higher potential = higher wage
@@ -155,22 +175,20 @@ class FootballPlayer:
         # Set improvement and fitness cost based on intensity and coach influence
         if intensity == "low":
             improvement = 0.1 + (coach_bonus * 0.05)
-            fitness_cost = max(1, 3 - coach_bonus)
+            fitness_cost = max(0.5, 1.5 - coach_bonus * 0.2)  # Reduced cost
         elif intensity == "medium":
             improvement = 0.2 + (coach_bonus * 0.08)
-            fitness_cost = max(2, 5 - coach_bonus)
+            fitness_cost = max(1, 2.5 - coach_bonus * 0.3)    # Reduced cost
         elif intensity == "high":
             improvement = 0.3 + (coach_bonus * 0.1)
-            fitness_cost = max(3, 7 - coach_bonus)
+            fitness_cost = max(1.5, 4 - coach_bonus * 0.5)    # Reduced cost
         else:
-            print("Invalid intensity level. Use 'low', 'medium', or 'high'")
             return None
         
         # Apply training over multiple days
         for day in range(training_days):
-            # Check if player has enough fitness
-            if self.stats["fitness"] < fitness_cost:
-                print(f"Training stopped: {self.name} is too tired to continue after {day} days")
+            # Skip training if player is too tired
+            if self.stats["fitness"] < 40:
                 break
             
             # Apply focused improvement if specified
@@ -183,40 +201,32 @@ class FootballPlayer:
                 weight = 2 if attr_type == focus_area else 0.5
                 for sub_attr in self.attributes[attr_type]:
                     # Base improvement with coach and potential influence
-                    base_improvement = improvement * weight * 1.5  # Increased multiplier
+                    base_improvement = improvement * weight * 1.0  # Lowered multiplier for realism
                     potential_factor = self.potential / 100.0
-                    
+
                     # Apply improvement with potential scaling
                     self.attributes[attr_type][sub_attr] += base_improvement * (1 + potential_factor)
-                    
+
                     # Random chance for bonus improvement based on potential
-                    if random.random() < 0.15 * (1 + coach_bonus/10):
-                        bonus = random.uniform(0.1, 0.3) * (1 + coach_bonus * 0.1)
+                    if random.random() < 0.05 * (1 + coach_bonus/10):
+                        bonus = random.uniform(0.01, 0.03) * (1 + coach_bonus * 0.1)
                         self.attributes[attr_type][sub_attr] += bonus
-                    
-                    # Track initial ratings
+
+                    # Track initial ratings (for potential progression system)
                     initial_overall = sum(sum(cat.values()) for cat in self.attributes.values()) / \
                                    (len(self.attributes) * len(next(iter(self.attributes.values()))))
-                    
-                    # Potential progression system
-                    if random.random() < 0.15 * (1 + coach_bonus/10):
-                        potential_gain = random.uniform(0.1, 0.5) * (improvement * 2)
+
+                    # Potential progression system (kept, but less frequent and smaller gain)
+                    if random.random() < 0.03 * (1 + coach_bonus/10):
+                        potential_gain = random.uniform(0.01, 0.05) * (improvement * 2)
                         old_potential = self.potential
                         self.potential = min(99, self.potential + potential_gain)
-                        
-                        # Calculate final ratings after all improvements
-                        final_overall = sum(sum(cat.values()) for cat in self.attributes.values()) / \
-                                      (len(self.attributes) * len(next(iter(self.attributes.values()))))
-                        
-                        # Only show significant improvements
-                        if final_overall - initial_overall > 0.5:
-                            print(f"{self.name} improved from {initial_overall:.1f} to {final_overall:.1f} rating!")
 
-                    # Cap at 95.0 and track development
+                    # Cap at 99.0 and track development
                     old_value = self.attributes[attr_type][sub_attr]
-                    new_value = min(95.0, self.attributes[attr_type][sub_attr])
+                    new_value = min(99.0, self.attributes[attr_type][sub_attr])
                     self.attributes[attr_type][sub_attr] = new_value
-                    
+
                     # Update development tracking
                     if "development" not in self.stats:
                         self.stats["development"] = []
@@ -244,14 +254,9 @@ class FootballPlayer:
                      (len(self.attributes) * len(next(iter(self.attributes.values()))))
         final_avg = sum(sum(results["final_attributes"][cat].values()) for cat in results["final_attributes"]) / \
                    (len(self.attributes) * len(next(iter(self.attributes.values()))))
-        
-        if final_avg - initial_avg > 0.5:  # Only show significant improvements
-            print(f"{self.name} completed {training_days} days of {intensity} intensity training:")
-            print(f"Overall Rating: {initial_avg:.1f} → {final_avg:.1f}")
-            print(f"Fitness: {self.stats['fitness']:.1f}%")
-            if focus_area:
-                print(f"Focused on: {focus_area}")
-        
+
+        # Debug print removed for realism
+
         return results
 
     def get_player_info(self, detail_level="basic"):

@@ -67,56 +67,71 @@ class League:
             f.write("=" * 80 + "\n\n")
 
         for idx, (home, away) in enumerate(self.matches):
+            # Ensure both teams have enough players before the match
+            for team in [home, away]:
+                self._ensure_minimum_squad(team, min_players=11)
+
             # Weekly training and development for both teams
             for team in [home, away]:
+                # Calculate team performance multiplier (e.g., based on league position or recent form)
+                team_perf = self.standings.get(team.name, {}).get("points", 0)
+                max_points = max([self.standings[t.name]["points"] for t in self.teams if t.name in self.standings], default=1)
+                perf_multiplier = 1.0 + 0.5 * (team_perf / max_points) if max_points > 0 else 1.0
+                # All training handled by coaches only
                 self._weekly_team_training(team)
 
             # Play the match
             #print(f"\nMatch Day {match_day}")
             match = Match(home, away)
-            result = match.play_match()
+            try:
+                result = match.play_match()
+                self.save_match_report(match, result, idx+1)
+                self.update_standings(home, away, result)
+            except ValueError as e:
+                # Log forfeit due to insufficient players
+                forfeit_result = {
+                    "score": [0, 0],
+                    "possession": [0, 0],
+                    "shots": [0, 0],
+                    "shots_on_target": [0, 0],
+                    "weather": getattr(match, "weather", "N/A"),
+                    "events": [str(e)]
+                }
+                print(f"Match {idx+1}: Forfeit - {e}")
+                self.save_match_report(match, forfeit_result, idx+1)
+                self.update_standings(home, away, forfeit_result)
+
+    def _ensure_minimum_squad(self, team, min_players=11):
+        """Ensure the team has at least min_players healthy/fit players by promoting youth or generating bad youth."""
+        def healthy_players():
+            return [p for p in team.players if not getattr(p, "is_injured", False) and p.stats.get("fitness", 100) > 30]
+
+        while len(healthy_players()) < min_players:
+            # Prevent exceeding squad size limit
+            if len(team.players) >= 40:
+                break
+            # Try to promote the oldest youth player
+            if team.youth_academy:
+                oldest = max(team.youth_academy, key=lambda p: p.age)
+                team.promote_youth_player(oldest)
+                oldest.stats["fitness"] = 100
+                oldest.is_injured = False
+            else:
+                # Generate a bad youth player (potential 50-60, low ability)
+                from player import FootballPlayer
+                import random
+                age = random.randint(15, 18)
+                potential = random.randint(50, 60)
+                bad_youth = FootballPlayer.create_player(age=age, potential=potential)
+                bad_youth.squad_role = "YOUTH"
+                bad_youth.stats["fitness"] = 100
+                bad_youth.is_injured = False
+                team.youth_academy.append(bad_youth)
+                team.promote_youth_player(bad_youth)
 
             # Save match report
-            self.save_match_report(match, result, idx+1)
 
-            # Update standings
-            self.update_standings(home, away, result)
-
-            # Provide learning feedback to managers
-            if home.manager:
-                home_result = {
-                    "winner": result["score"][0] > result["score"][1],
-                    "draw": result["score"][0] == result["score"][1],
-                    "goals_for": result["score"][0],
-                    "goals_against": result["score"][1],
-                    "possession": result.get("possession", [50, 50])[0],
-                    "youth_minutes": self._calculate_youth_minutes(home.players, match),
-                    "player_development": self._calculate_player_development(home.players)
-                }
-                home.manager.learn_from_match(home_result)
-
-            if away.manager:
-                away_result = {
-                    "winner": result["score"][1] > result["score"][0],
-                    "draw": result["score"][0] == result["score"][1],
-                    "goals_for": result["score"][1],
-                    "goals_against": result["score"][0],
-                    "possession": result.get("possession", [50, 50])[1],
-                    "youth_minutes": self._calculate_youth_minutes(away.players, match),
-                    "player_development": self._calculate_player_development(away.players)
-                }
-                away.manager.learn_from_match(away_result)
-
-            # Every 7 matches is considered a new week
-            if idx % 7 == 6:
-                match_day += 1
-                if match_day in [13, 26]:  # Transfer windows
-                    #print(f"\nTransfer Window Opens!")
-                    self._run_transfer_window(days=7, log_path=log_path) # Pass the log_path
-
-        # Close the transfer log at the end of the season
-        if hasattr(self, 'transfer_market') and self.transfer_market:
-            self.transfer_market.close_log()
+            # All match-related logic removed from here; this function only ensures minimum squad size.
 
 
     def save_match_report(self, match, result, match_number):
@@ -261,7 +276,7 @@ class League:
 
         best_players_data = []
         for player_obj in sorted_players:
-            player_info = player_obj.get_player_info(detail_level="basic") # Basic info is enough for this list
+            player_info = player_obj.get_player_info(detail_level="full") # Include attributes for ability calculation
             player_info["value"] = self.transfer_market.calculate_player_value(player_obj)
             # Ensure team name is present
             player_info["team"] = player_obj.team if player_obj.team else "N/A"
@@ -382,10 +397,92 @@ class League:
             self.transfer_market.advance_day()
     
     def increment_season(self):
-        """Advance to new season"""
+        """Advance to new season and age all players."""
         self.season_year += 1
+
+        # Age all players and retire old ones
+        retirement_age = 36
+        for team in self.teams:
+            # Age main squad players
+            players_to_remove = []
+            for player in team.players:
+                player.age += 1
+                if player.age >= retirement_age:
+                    players_to_remove.append(player)
+            for player in players_to_remove:
+                team.remove_player(player)
+
+            # Age youth academy players
+            youth_to_remove = []
+            for player in team.youth_academy:
+                player.age += 1
+                if player.age >= retirement_age:
+                    youth_to_remove.append(player)
+            for player in youth_to_remove:
+                team.youth_academy.remove(player)
+
+            # Each team gets 1-3 new youth players per season
+            import random
+            for _ in range(random.randint(1, 3)):
+                team.generate_youth_player()
+            # Let manager decide youth promotions (ML agent)
+            if team.manager:
+                team.manager.decide_promotions()
+
+        # Simulate youth tournament and apply growth
+        self.simulate_youth_tournament()
+
         self._init_season()
         print(f"Advanced to season {self.season_year}")
+
+    def simulate_youth_tournament(self):
+        """Simulate a youth tournament for all teams' youth academies."""
+        # Each team fields up to 5 youth players (or as many as available)
+        youth_teams = []
+        for team in self.teams:
+            youth_team = team.youth_academy[:5] if len(team.youth_academy) >= 5 else team.youth_academy[:]
+            youth_teams.append((team, youth_team))
+
+        # Simple round-robin: each youth team plays each other once
+        results = {team.name: 0 for team, _ in youth_teams}
+        for i, (team_a, players_a) in enumerate(youth_teams):
+            for j, (team_b, players_b) in enumerate(youth_teams):
+                if i >= j:
+                    continue
+                # Simulate match: random winner, or draw
+                outcome = random.choices(["A", "B", "D"], weights=[0.4, 0.4, 0.2])[0]
+                if outcome == "A":
+                    results[team_a.name] += 3
+                    self._apply_youth_growth(players_a, win=True)
+                    self._apply_youth_growth(players_b, win=False)
+                elif outcome == "B":
+                    results[team_b.name] += 3
+                    self._apply_youth_growth(players_b, win=True)
+                    self._apply_youth_growth(players_a, win=False)
+                else:
+                    results[team_a.name] += 1
+                    results[team_b.name] += 1
+                    self._apply_youth_growth(players_a, win=False, draw=True)
+                    self._apply_youth_growth(players_b, win=False, draw=True)
+
+        # Optionally print or store youth tournament results
+
+    def _apply_youth_growth(self, players, win=False, draw=False):
+        """Apply attribute growth to youth players based on match result."""
+        for player in players:
+            # Winners get more growth, draw gets some, loss gets little
+            if win:
+                growth = 0.7
+            elif draw:
+                growth = 0.4
+            else:
+                growth = 0.2
+            # Apply growth to all attributes
+            for attr_type in player.attributes:
+                for sub_attr in player.attributes[attr_type]:
+                    player.attributes[attr_type][sub_attr] = min(
+                        95.0, player.attributes[attr_type][sub_attr] + growth + random.uniform(0, 0.3)
+                    )
 
     def _calculate_youth_minutes(self, players: list, match: Match) -> float:
         """Calculate minutes played by youth players (under 23)."""
@@ -473,6 +570,11 @@ class League:
             # Train all players with appropriate intensity
             for group, players in position_groups.items():
                 for player in players:
+                    # If player is too fatigued, do recovery instead of training
+                    if player.stats["fitness"] < 60:
+                        player.stats["fitness"] = min(100, player.stats["fitness"] + 20)
+                        continue
+
                     # Determine training intensity based on player fitness and upcoming matches
                     if player.stats["fitness"] > 80:
                         intensity = "high"
@@ -514,6 +616,11 @@ class League:
                 player_info = player_obj.get_player_info(detail_level="full")
                 player_info["market_value"] = self.transfer_market.calculate_player_value(player_obj)
                 player_info["squad_role"] = player_obj.squad_role
+                # Add current injury status
+                player_info["is_injured"] = getattr(player_obj, "is_injured", False)
+                player_info["injury_type"] = getattr(player_obj, "injury_type", None)
+                player_info["recovery_time"] = getattr(player_obj, "recovery_time", 0)
+                player_info["injury_history"] = getattr(player_obj, "injury_history", [])
                 # Ensure 'team' field in player_info is just the name string
                 player_info["team"] = team_obj.name 
                 players_data.append(player_info)

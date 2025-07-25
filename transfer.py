@@ -42,7 +42,6 @@ class TransferMarket:
         else:
             self._init_transfer_log() # Keep the original init for tests
 
-
         # Value multipliers based on attributes and age
         self.value_modifiers = {
             "potential": 1.5,  # High potential increases value
@@ -55,6 +54,19 @@ class TransferMarket:
                 "GK": 1.15  # Goalkeeper slight premium
             }
         }
+
+    def get_transfer_rumors(self, teams):
+        """Generate random transfer rumors for players interested in moving."""
+        rumors = []
+        for team in teams:
+            for player in team.players:
+                if getattr(player, "transfer_interest", False) and random.random() < 0.5:
+                    rumor = f"Rumor: {player.name} ({team.name}) is seeking a move this window."
+                    rumors.append(rumor)
+        # Add some random rumors for realism
+        if random.random() < 0.2:
+            rumors.append("Rumor: A top club is preparing a record-breaking bid for a star striker.")
+        return rumors
 
     def _init_transfer_log(self):
         """Initialize log file for current season with proper resource handling"""
@@ -152,7 +164,7 @@ class TransferMarket:
 
 
     def make_transfer_offer(self, buying_team, listing, offer_amount):
-        """Attempt to buy a player from the transfer list."""
+        """Attempt to buy a player from the transfer list, with contract negotiation."""
         if buying_team.budget < offer_amount:
             return False, "Insufficient funds"
 
@@ -165,40 +177,61 @@ class TransferMarket:
         if not buying_team.can_afford_transfer(offer_amount):
             return False, "Cannot afford transfer fee and wages"
 
+        # Simulate contract negotiation
+        player = listing.player
+        wage_offer = player.desired_wage  # Default to desired_wage if not specified elsewhere
+        # If buying_team proposes a wage, use that; else, use desired_wage
+        # For now, use desired_wage as the minimum acceptable wage
+
+        # If the buying team can't meet the wage demand, reject or counter
+        if wage_offer > buying_team.wage_budget / max(1, len(buying_team.players)):
+            player.negotiation_state = "rejected"
+            player.contract_offer = None
+            return False, f"Player {player.name} rejected contract: wage demand too high"
+
+        # Accept the contract
+        player.negotiation_state = "accepted"
+        player.contract_offer = wage_offer
+        player.wage = wage_offer
+        player.contract_length = 3  # Reset contract length on transfer
+        player.transfer_interest = False
+
         # Complete transfer with day of window
-        transfer_success = listing.selling_team.handle_transfer(listing.player, offer_amount, is_selling=True, day_of_window=self.current_day)
+        transfer_success = listing.selling_team.handle_transfer(player, offer_amount, is_selling=True, day_of_window=self.current_day)
         if not transfer_success:
             return False, "Selling team transfer failed"
 
-        transfer_success = buying_team.handle_transfer(listing.player, offer_amount, is_selling=False, day_of_window=self.current_day)
+        transfer_success = buying_team.handle_transfer(player, offer_amount, is_selling=False, day_of_window=self.current_day)
         if not transfer_success:
             # Rollback selling team's transfer if buying fails
-            listing.selling_team.handle_transfer(listing.player, offer_amount, is_selling=False, day_of_window=self.current_day)
+            listing.selling_team.handle_transfer(player, offer_amount, is_selling=False, day_of_window=self.current_day)
             return False, "Buying team transfer failed"
 
         # Record transfer
         transfer_record = {
-            "player": listing.player.name,
+            "player": player.name,
             "from_team": listing.selling_team.name,
             "to_team": buying_team.name,
             "amount": offer_amount,
-            "day": self.current_day
+            "day": self.current_day,
+            "wage": wage_offer
         }
         self.transfer_history.append(transfer_record)
 
         # Log transfer
         self._log_transfer_attempt("BUY", {
-            "player": listing.player.name,
+            "player": player.name,
             "from_team": listing.selling_team.name,
             "to_team": buying_team.name,
             "amount": offer_amount,
+            "wage": wage_offer,
             "day": self.current_day
         })
 
         # Remove listing
         self.transfer_list.remove(listing)
 
-        return True, "Transfer completed successfully"
+        return True, f"Transfer completed. Contract accepted at wage {wage_offer:.0f}"
 
     def simulate_ai_transfers(self, all_teams):
         """Simulate AI teams making transfer decisions using Q-learning."""

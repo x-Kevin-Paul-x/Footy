@@ -7,11 +7,16 @@ from manager_profile import ManagerProfile
 from manager_brain import ManagerBrain, StateEncoder
 
 class Manager:
-    def __init__(self, name=None, experience_level=None, profile=None):
+    def __init__(self, name=None, experience_level=None, profile=None,
+                 youth_promotion_ability_threshold=65, youth_promotion_age_threshold=19):
         """Initialize a manager with Q-learning capabilities."""
         self.name = names.get_full_name() if not name else name
         self.experience_level = min(10, max(1, experience_level if experience_level else random.randint(1, 10)))
         self.team = None
+
+        # Youth promotion thresholds (can be set per manager)
+        self.youth_promotion_ability_threshold = youth_promotion_ability_threshold
+        self.youth_promotion_age_threshold = youth_promotion_age_threshold
         
         # Create or use provided manager profile
         self.profile = profile if profile else ManagerProfile.create_random_profile()
@@ -74,6 +79,59 @@ class Manager:
             "defensive": list(range(30, 81, 5)),
             "pressure": list(range(30, 81, 5))
         }
+
+    def train_players(self, perf_multiplier=1.0):
+        """Train all players (senior and youth) with performance-based improvement."""
+        # Train senior squad
+        for player in self.team.players:
+            player.train_player(
+                intensity="medium",
+                training_days=3,
+                coach_bonus=0,
+                focus_area=None
+            )
+            # Apply performance multiplier
+            for attr_type in player.attributes:
+                for sub_attr in player.attributes[attr_type]:
+                    player.attributes[attr_type][sub_attr] *= perf_multiplier
+
+        # Train youth academy
+        for player in getattr(self.team, "youth_academy", []):
+            player.train_player(
+                intensity="medium",
+                training_days=3,
+                coach_bonus=0,
+                focus_area=None
+            )
+            for attr_type in player.attributes:
+                for sub_attr in player.attributes[attr_type]:
+                    player.attributes[attr_type][sub_attr] *= perf_multiplier
+
+    def decide_promotions(self):
+        """Promote youth players who meet manager's ability or age threshold, or if squad is thin."""
+        if not self.team.youth_academy:
+            return
+
+        def get_ability(player):
+            try:
+                return sum(sum(cat.values()) for cat in player.attributes.values()) / sum(len(cat) for cat in player.attributes.values())
+            except Exception:
+                return 0
+
+        to_promote = []
+        min_squad_size = 18
+        # If squad is thin, be more aggressive in promoting youth
+        for player in self.team.youth_academy:
+            ability = get_ability(player)
+            if (
+                ability >= self.youth_promotion_ability_threshold
+                or player.age >= self.youth_promotion_age_threshold
+                or len(self.team.players) < min_squad_size
+            ):
+                to_promote.append(player)
+
+        for player in to_promote:
+            self.team.promote_youth_player(player)
 
     def get_state(self) -> Dict[str, Any]:
         """Get enhanced state representation for learning."""
@@ -355,13 +413,24 @@ class Manager:
         return total_score
 
     def make_transfer_decision(self, transfer_market):
-        """Make transfer decisions using Q-learning."""
+        """Make transfer decisions using Q-learning. Aggressively buy if squad is thin."""
         raw_state = self.get_state()
         state = self.brain.encode_state(raw_state)
         
         # Get all possible actions
         possible_actions = self._get_possible_transfer_actions(transfer_market)
-        
+
+        # If squad is thin, add more buy actions
+        min_squad_size = 18
+        if len(self.team.players) < min_squad_size:
+            # Add extra buy actions for any available player
+            available = transfer_market.get_available_players(
+                max_price=self.team.budget * 0.95,  # Use most of budget if desperate
+                max_age=35
+            )
+            for listing in available:
+                possible_actions.append(("buy", listing.listing_id, listing.asking_price * (0.95 + random.random() * 0.1)))
+
         # Debug output possible actions if enabled
         if hasattr(self, '_debug') and self._debug:
             print(f"\n{self.name} - Transfer Decision Making:")
@@ -661,17 +730,19 @@ class Manager:
     
     def select_lineup(self, available_players: List[Any], opponent=None) -> Tuple[List[Any], List[str]]:
         """Select team lineup using Q-learning."""
+        # Exclude injured players
+        healthy_players = [p for p in available_players if not getattr(p, "is_injured", False)]
         raw_state = self.get_state()
         if raw_state is None:
             # Fallback to basic selection if no state available
-            return self._select_basic_lineup(available_players)
+            return self._select_basic_lineup(healthy_players)
             
         state = self.brain.encode_state(raw_state)
         
         # Get all possible lineup combinations
-        possible_actions = self._get_lineup_actions(available_players)
+        possible_actions = self._get_lineup_actions(healthy_players)
         if not possible_actions:
-            return self._select_basic_lineup(available_players)
+            return self._select_basic_lineup(healthy_players)
         
         # Select action using Q-learning
         action = self.brain.select_action(state, possible_actions, "lineup")
@@ -687,14 +758,16 @@ class Manager:
     
     def _select_basic_lineup(self, available_players: List[Any]) -> Tuple[List[Any], List[str]]:
         """Basic lineup selection without Q-learning."""
+        # Exclude injured players
+        healthy_players = [p for p in available_players if not getattr(p, "is_injured", False)]
         formation = self.formation
         positions = self._get_positions_for_formation(formation)
         
         # Group players by position
-        goalkeepers = [p for p in available_players if p.position == "GK"]
-        defenders = [p for p in available_players if p.position in ["CB", "LB", "RB", "LWB", "RWB", "SW"]]
-        midfielders = [p for p in available_players if p.position in ["CM", "CDM", "CAM", "LM", "RM", "DM"]]
-        forwards = [p for p in available_players if p.position in ["ST", "CF", "SS", "LW", "RW"]]
+        goalkeepers = [p for p in healthy_players if p.position == "GK"]
+        defenders = [p for p in healthy_players if p.position in ["CB", "LB", "RB", "LWB", "RWB", "SW"]]
+        midfielders = [p for p in healthy_players if p.position in ["CM", "CDM", "CAM", "LM", "RM", "DM"]]
+        forwards = [p for p in healthy_players if p.position in ["ST", "CF", "SS", "LW", "RW"]]
         
         # Sort players by role (STARTER first) then by rating
         role_priority = {"STARTER": 0, "BENCH": 1, "YOUTH": 2}
@@ -722,6 +795,10 @@ class Manager:
                 lineup.append(sorted_fwd.pop(0))
         
         # Fill remaining spots with best available players
+        def get_player_rating(player):
+            return sum(sum(cat.values()) for cat in player.attributes.values()) / (
+                len(player.attributes) * len(next(iter(player.attributes.values())))
+            )
         while len(lineup) < 11 and (sorted_def or sorted_mid or sorted_fwd):
             best_remaining = []
             if sorted_def:

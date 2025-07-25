@@ -29,7 +29,7 @@ class Match:
         self.events: List[MatchEvent] = []
         self.minute = 0
         self.current_possession = "home"  # Who has the ball
-        self.fatigue_factor = 0.98  # Player stamina reduction per action
+        self.fatigue_factor = 0.88  # Player stamina reduction per action
         
         # Match intensity affects player fatigue
         self.intensity = random.uniform(0.8, 1.2)
@@ -261,6 +261,42 @@ class Match:
             if not success and random.random() < 0.3:  # 30% chance of yellow card on failed tackle
                 player.stats["yellow_cards"] += 1
     
+    def _maybe_injure_player(self, player):
+        """Randomly injure a player based on fatigue and randomness."""
+        if player.is_injured:
+            return
+        # Injury probability increases with low fitness (further reduced rates)
+        base_chance = 0.0001  # Even lower baseline
+        fatigue_factor = max(0, (100 - player.stats["fitness"]) / 100)
+        injury_chance = base_chance + 0.0007 * fatigue_factor  # Lower multiplier
+        if random.random() < injury_chance:
+            # Determine injury severity
+            roll = random.random()
+            if roll < 0.6:
+                injury_type = "minor"
+                recovery = random.randint(2, 7)  # days
+            elif roll < 0.9:
+                injury_type = "moderate"
+                recovery = random.randint(8, 21)
+            else:
+                injury_type = "severe"
+                recovery = random.randint(22, 60)
+            player.is_injured = True
+            player.injury_type = injury_type
+            player.recovery_time = recovery
+            player.injury_history.append({
+                "type": injury_type,
+                "duration": recovery,
+                "start_age": player.age
+            })
+            self.events.append(MatchEvent(
+                self.minute,
+                "injury",
+                player.name,
+                "home" if player in self.home_team.players else "away",
+                f"{player.name} suffers a {injury_type} injury (out {recovery} days)"
+            ))
+
     def simulate_minute(self):
         """Simulate one minute of the match."""
         # Determine action type
@@ -353,9 +389,13 @@ class Match:
         # Update player fatigue and development
         for team in [self.home_team, self.away_team]:
             for player in team.players:
-                # Calculate match intensity impact
-                fatigue = random.uniform(0.1, 0.3) * self.intensity
+                # Calculate match intensity impact (reduced fatigue)
+                fatigue = random.uniform(0.03, 0.08) * self.intensity  # Less fatigue per minute
                 player.stats["fitness"] = max(0, player.stats["fitness"] - fatigue)
+
+                # Injury check (only for players on the pitch)
+                if player in self.home_lineup or player in self.away_lineup:
+                    self._maybe_injure_player(player)
                 
                 # Development from match experience
                 if player in self.home_lineup or player in self.away_lineup:
@@ -417,8 +457,12 @@ class Match:
         Returns:
             dict: Match statistics and events
         """
-        #print(f"\nMatch: {self.home_team.name} vs {self.away_team.name}")
-        
+        # Debug: Print available players before lineup selection
+        for team, label in [(self.home_team, "Home"), (self.away_team, "Away")]:
+            total = len(team.players)
+            healthy = [p for p in team.players if not getattr(p, "is_injured", False) and p.stats.get("fitness", 100) > 30]
+            # print(f"{label} team {team.name}: {total} total, {len(healthy)} healthy/fit players")
+
         # Select lineups using Q-learning managers
         if self.home_team.manager:
             self.home_lineup, self.home_positions = self.home_team.manager.select_lineup(
