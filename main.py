@@ -55,7 +55,12 @@ def create_premier_league():
     
     print("Creating Premier League teams with enhanced financial system...")
     
+    from team_db import get_all_teams
+    existing_team_names = set(t[1] for t in get_all_teams())
     for team_name in teams:
+        if team_name in existing_team_names:
+            print(f"Team '{team_name}' already exists in database, skipping creation.")
+            continue
         team = Team(team_name, budgets[team_name])
         
         # Save team to database
@@ -123,7 +128,7 @@ def create_premier_league():
         #      f"Expenses £{financial_summary['expenses']:,.0f}, "
         #      f"Net £{financial_summary['net']:,.0f}")
     
-    return premier_league
+    return premier_league   
 
 def print_league_table(table):
     """Print formatted league table with enhanced information"""
@@ -363,16 +368,16 @@ def main():
         
         # Enhanced reporting
         champions_name = full_season_report['champions']
-        print(f"\n🏆 Premier League Champions: {champions_name}!")
+        print(f"\n Premier League Champions: {champions_name}!")
         
         champion_manager_details = full_season_report['champions_manager']
-        print(f"\n👨‍💼 Manager of the Season: {champion_manager_details['name']} ({champions_name})")
+        print(f"\n Manager of the Season: {champion_manager_details['name']} ({champions_name})")
         print(f"   Experience Level: {champion_manager_details['experience']}")
         print(f"   Formation: {champion_manager_details['formation']}")
         print(f"   Transfer Success Rate: {champion_manager_details['transfer_success_rate']:.1f}%")
         
         # Print team of the season
-        print(f"\n⭐ Premier League Team of the Season")
+        print(f"\n Premier League Team of the Season")
         print("=" * 85)
         print(f"{'Position':<8} {'Name':<20} {'Team':<15} {'Age':<4} {'Rating':<7} {'Value':<10}")
         print("-" * 85)
@@ -397,7 +402,7 @@ def main():
         
         # Save comprehensive season report
         report_filename = f'season_reports/season_report_{premier_league.season_year}.json'
-        print(f"\n💾 Saving detailed season {premier_league.season_year} report to '{report_filename}'...")
+        print(f"\n Saving detailed season {premier_league.season_year} report to '{report_filename}'...")
         
         # Enhanced report with financial data
         enhanced_report = {
@@ -432,7 +437,7 @@ def main():
         premier_league.increment_season()
         transfer_market.season_year = premier_league.season_year
         
-        print(f"\n✅ Season {premier_league.season_year - 1} completed successfully!")
+        print(f"\n Season {premier_league.season_year - 1} completed successfully!")
 
 if __name__ == "__main__":
     main()

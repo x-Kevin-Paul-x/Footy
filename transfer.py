@@ -512,23 +512,30 @@ class TransferMarket:
                                 "price": price,
                                 "value_ratio": price / self.calculate_player_value(player),
                                 "success": True,
-                                "window": self.get_current_window()
+                                "window": self.get_current_window(),
+                                "market": self
                             }
                             team.manager.learn_from_transfer(result)
 
                 elif action_type == "buy":
-                    listing, offer = params
-                    success, message = self.make_transfer_offer(team, listing, offer)
+                    listing_id, offer = params
+                    # Convert listing_id to TransferListing object
+                    listing_obj = next((l for l in self.transfer_list if l.listing_id == listing_id), None)
+                    if listing_obj is None:
+                        print(f"Warning: TransferListing with ID {listing_id} not found.")
+                        continue
+                    success, message = self.make_transfer_offer(team, listing_obj, offer)
                     team.manager.transfer_attempts.append(success)
 
                     result = {
                         "type": "buy",
-                        "player": listing.player,
+                        "player": listing_obj.player,
                         "price": offer,
-                        "value_ratio": self.calculate_player_value(listing.player) / offer,
+                        "value_ratio": self.calculate_player_value(listing_obj.player) / offer,
                         "success": success,
                         "window": self.get_current_window(),
-                        "reason": message
+                        "reason": message,
+                        "market": self
                     }
                     team.manager.learn_from_transfer(result)
 
