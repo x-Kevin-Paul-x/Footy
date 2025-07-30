@@ -14,9 +14,9 @@ class TransferListing:
     selling_team: 'Team'
     listed_date: int  # Transfer window day
     expires_in: int = 30  # Days until listing expires
-    listing_id: int = field(default_factory=lambda: TransferListing.next_id(), init=False) # Add unique ID
+    listing_id: int = field(default_factory=lambda: TransferListing.next_id(), init=False)
 
-    _next_id = 1 # Class variable to track the next available ID
+    _next_id = 1
 
     @classmethod
     def next_id(cls):
@@ -24,12 +24,34 @@ class TransferListing:
         cls._next_id += 1
         return result
 
+@dataclass
+class LoanListing:
+    player: 'FootballPlayer'
+    loan_fee: float
+    wage_contribution: float  # Percentage of wages parent club pays
+    selling_team: 'Team'
+    duration: int  # Months
+    buy_back_clause: Optional[float]  # Optional buy-back price
+    listed_date: int
+    expires_in: int = 30
+
 class TransferMarket:
-    def __init__(self ,log_path = None):
+    def __init__(self, log_path=None):
         self.transfer_list: List[TransferListing] = []
+        self.loan_list: List[LoanListing] = []
         self.current_day = 0
         self.transfer_history: List[Dict] = []
+        self.loan_history: List[Dict] = []
         self.season_year = datetime.now().year
+
+        # Enhanced transfer windows
+        self.transfer_windows = {
+            "summer": {"start": 1, "end": 61, "active": True},  # 61 days (2 months)
+            "january": {"start": 183, "end": 214, "active": False}  # 31 days (1 month)
+        }
+        
+        self.current_window = None
+        self.free_agents: List[FootballPlayer] = []  # Players with expired contracts
 
         # Create transfer logs directory
         os.makedirs("transfer_logs", exist_ok=True)
@@ -38,119 +60,206 @@ class TransferMarket:
 
         self.current_log = None
         if log_path:
-            self.current_log = open(log_path, "a", encoding="utf-8") # Open in append mode
+            self.current_log = open(log_path, "a", encoding="utf-8")
         else:
-            self._init_transfer_log() # Keep the original init for tests
+            self._init_transfer_log()
 
-        # Value multipliers based on attributes and age
+        # Enhanced value multipliers
         self.value_modifiers = {
-            "potential": 1.5,  # High potential increases value
-            "age_discount": 0.95,  # Value decreases per year over 30
-            "age_premium": 1.1,  # Value increases per year of prime (23-27)
+            "potential": 1.8,  # Higher weight for potential
+            "age_discount": 0.95,
+            "age_premium": 1.15,  # Higher premium for peak age
+            "form_bonus": 1.2,  # Good form increases value
+            "contract_discount": 0.8,  # Short contracts reduce value
             "position_premium": {
-                "ST": 1.3, "CF": 1.3, "RW": 1.2, "LW": 1.2,  # Attackers premium
-                "CAM": 1.2, "CM": 1.1, "CDM": 1.0,  # Midfielders standard
-                "CB": 1.1, "LB": 1.0, "RB": 1.0,  # Defenders standard
-                "GK": 1.15  # Goalkeeper slight premium
+                "ST": 1.4, "CF": 1.4, "RW": 1.3, "LW": 1.3,  # Higher striker premium
+                "CAM": 1.25, "CM": 1.1, "CDM": 1.05,
+                "CB": 1.15, "LB": 1.05, "RB": 1.05,
+                "GK": 1.2
             }
         }
 
+    def get_current_window(self):
+        """Determine which transfer window is currently active"""
+        for window_name, window_info in self.transfer_windows.items():
+            if window_info["start"] <= self.current_day <= window_info["end"]:
+                return window_name
+        return None
+
+    def is_transfer_window_open(self):
+        """Check if any transfer window is currently open"""
+        return self.get_current_window() is not None
+
     def get_transfer_rumors(self, teams):
-        """Generate random transfer rumors for players interested in moving."""
+        """Generate enhanced transfer rumors including loan rumors"""
         rumors = []
         for team in teams:
             for player in team.players:
-                if getattr(player, "transfer_interest", False) and random.random() < 0.5:
+                if getattr(player, "transfer_interest", False) and random.random() < 0.3:
                     rumor = f"Rumor: {player.name} ({team.name}) is seeking a move this window."
                     rumors.append(rumor)
-        # Add some random rumors for realism
-        if random.random() < 0.2:
-            rumors.append("Rumor: A top club is preparing a record-breaking bid for a star striker.")
+                    
+                # Contract expiry rumors
+                if player.contract_length <= 1 and random.random() < 0.4:
+                    rumors.append(f"Contract Watch: {player.name}'s deal with {team.name} expires soon.")
+                    
+                # Loan rumors for young players
+                if player.age < 23 and player.squad_role in ["RESERVE", "YOUTH"] and random.random() < 0.2:
+                    rumors.append(f"Loan Watch: {player.name} could be available on loan from {team.name}.")
+        
+        # Add some general market rumors
+        if random.random() < 0.15:
+            rumors.append("Market News: Several clubs are reportedly preparing significant bids.")
+        if random.random() < 0.1:
+            rumors.append("Loan Market: Expect increased loan activity as clubs look to develop young talent.")
+            
         return rumors
 
     def _init_transfer_log(self):
-        """Initialize log file for current season with proper resource handling"""
+        """Initialize log file for current season"""
         log_path = f"transfer_logs/season_{self.season_year}_transfers.txt"
-        # Write header with context manager for auto-close
         with open(log_path, "w", encoding="utf-8") as f:
             f.write(f"Transfer Activity for Season {self.season_year}\n")
             f.write("=" * 80 + "\n\n")
-        # Open in append mode for subsequent writes
         self.current_log = open(log_path, "a", encoding="utf-8")
-
 
     def close_log(self):
         """Ensure proper file closure"""
         if self.current_log and not self.current_log.closed:
             self.current_log.close()
 
-
     def _log_transfer_attempt(self, action: str, details: Dict):
-        """Enhanced transfer logging with full details"""
+        """Enhanced transfer logging"""
         if not self.current_log or self.current_log.closed:
             self._init_transfer_log()
 
         details["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        details["market_state"] = self.get_market_analysis() # Add market analysis
+        details["day"] = self.current_day
+        details["window"] = self.get_current_window()
+        
         if "player" in details and isinstance(details["player"], FootballPlayer):
-          details["value"] = self.calculate_player_value(details["player"])
-          details["player"] = details["player"].name # Replace with just the name
+            details["value"] = self.calculate_player_value(details["player"])
+            details["player"] = details["player"].name
+            
         self.current_log.write(f"{action}: {str(details)}\n")
         self.current_log.flush()
 
-
     def calculate_player_value(self, player) -> float:
-        """Calculate a player's market value based on attributes, age, and position."""
-        # Base value from attributes
-        base_value = 0
-        for category in player.attributes.values():
-            base_value += sum(category.values())
-        base_value = base_value * 100  # Convert to currency
+        """Enhanced player valuation with more factors"""
+        # Base value from attributes and overall rating
+        overall_rating = player.get_overall_rating()
+        base_value = overall_rating * 1000  # More realistic base scaling
 
-        # Age modifier
-        if player.age > 30:
-            age_discount = (player.age - 30) * self.value_modifiers["age_discount"]
-            base_value *= (1 - age_discount)
-        elif 23 <= player.age <= 27:
-            age_premium = (27 - player.age) * self.value_modifiers["age_premium"]
-            base_value *= (1 + age_premium)
+        # Age modifier (peak at 25-28)
+        if player.age <= 20:
+            age_factor = 0.7 + (player.potential / 200)  # Young with potential
+        elif 21 <= player.age <= 24:
+            age_factor = 0.9 + (player.potential / 300)  # Developing
+        elif 25 <= player.age <= 28:
+            age_factor = 1.2  # Peak years
+        elif 29 <= player.age <= 31:
+            age_factor = 1.0  # Still good
+        elif 32 <= player.age <= 34:
+            age_factor = 0.7  # Declining
+        else:
+            age_factor = 0.4  # Veteran
 
         # Potential modifier
-        potential_boost = (player.potential / 50) * self.value_modifiers["potential"]
-        base_value *= potential_boost
+        potential_gap = max(0, player.potential - overall_rating)
+        potential_factor = 1 + (potential_gap / 100) * self.value_modifiers["potential"]
+
+        # Form modifier
+        form_rating = player.get_form_rating()
+        form_factor = 0.8 + (form_rating * 0.4)  # 0.8 to 1.2 range
+
+        # Contract length modifier
+        if player.contract_length <= 1:
+            contract_factor = self.value_modifiers["contract_discount"]
+        elif player.contract_length >= 4:
+            contract_factor = 1.1  # Long contracts increase value
+        else:
+            contract_factor = 1.0
 
         # Position modifier
         position_mod = self.value_modifiers["position_premium"].get(player.position, 1.0)
-        base_value *= position_mod
 
-        return round(base_value)
+        # Squad role modifier
+        role_modifier = {
+            "STARTER": 1.2,
+            "RESERVE": 1.0,
+            "YOUTH": 0.7,
+            "BENCH": 0.9
+        }.get(player.squad_role, 1.0)
 
+        # Injury history modifier
+        recent_injuries = len([inj for inj in player.injury_history if inj.get("start_age", 0) >= player.age - 2])
+        injury_factor = max(0.7, 1.0 - (recent_injuries * 0.1))
+
+        # Calculate final value
+        final_value = (base_value * age_factor * potential_factor * 
+                      form_factor * contract_factor * position_mod * 
+                      role_modifier * injury_factor)
+
+        return max(50000, round(final_value))  # Minimum value of 50k
 
     def list_player(self, player, team, asking_price=None):
-        """List a player on the transfer market with more accessible pricing."""
+        """Enhanced player listing with window checks"""
+        if not self.is_transfer_window_open():
+            return None, "Transfer window is closed"
+
         if asking_price is None:
             base_value = self.calculate_player_value(player)
-            # More aggressive pricing strategy to encourage sales
-            asking_price = base_value * random.uniform(0.6, 0.8)  # 60-90% of value
+            asking_price = base_value * random.uniform(0.8, 1.2)  # 80-120% of value
 
         self._log_transfer_attempt("LIST", {
             "player": player.name,
             "team": team.name,
-            "price": asking_price * 0.99,  # 1% commission
-            "value" : self.calculate_player_value(player)
+            "price": asking_price,
+            "value": self.calculate_player_value(player),
+            "contract_length": player.contract_length
         })
+
         listing = TransferListing(
             player=player,
-            asking_price=asking_price * 0.99,
+            asking_price=asking_price,
             selling_team=team,
             listed_date=self.current_day,
         )
         self.transfer_list.append(listing)
-        return listing
+        return listing, "Player listed successfully"
 
+    def list_player_for_loan(self, player, team, loan_fee=None, wage_contribution=0.5, 
+                           duration=6, buy_back_clause=None):
+        """List a player for loan"""
+        if not self.is_transfer_window_open():
+            return None, "Transfer window is closed"
 
-    def get_available_players(self, max_price=None, position=None, max_age=None):
-        """Get list of available players matching criteria."""
+        if loan_fee is None:
+            loan_fee = player.wage * duration * 0.1  # Small loan fee
+
+        listing = LoanListing(
+            player=player,
+            loan_fee=loan_fee,
+            wage_contribution=wage_contribution,
+            selling_team=team,
+            duration=duration,
+            buy_back_clause=buy_back_clause,
+            listed_date=self.current_day
+        )
+        self.loan_list.append(listing)
+        
+        self._log_transfer_attempt("LOAN_LIST", {
+            "player": player.name,
+            "team": team.name,
+            "loan_fee": loan_fee,
+            "duration": duration,
+            "wage_contribution": wage_contribution
+        })
+        
+        return listing, "Player listed for loan"
+
+    def get_available_players(self, max_price=None, position=None, max_age=None, min_potential=None):
+        """Enhanced player search with more filters"""
         available = []
         for listing in self.transfer_list:
             if max_price and listing.asking_price > max_price:
@@ -159,53 +268,91 @@ class TransferMarket:
                 continue
             if max_age and listing.player.age > max_age:
                 continue
+            if min_potential and listing.player.potential < min_potential:
+                continue
             available.append(listing)
         return available
 
+    def get_available_loans(self, position=None, max_age=None, max_duration=None):
+        """Get available loan players"""
+        available = []
+        for listing in self.loan_list:
+            if position and listing.player.position != position:
+                continue
+            if max_age and listing.player.age > max_age:
+                continue
+            if max_duration and listing.duration > max_duration:
+                continue
+            available.append(listing)
+        return available
+
+    def get_free_agents(self, position=None, max_age=None):
+        """Get available free agents"""
+        available = []
+        for player in self.free_agents:
+            if position and player.position != position:
+                continue
+            if max_age and player.age > max_age:
+                continue
+            available.append(player)
+        return available
 
     def make_transfer_offer(self, buying_team, listing, offer_amount):
-        """Attempt to buy a player from the transfer list, with contract negotiation."""
+        """Enhanced transfer system with agent fees and installments"""
+        if not self.is_transfer_window_open():
+            return False, "Transfer window is closed"
+
         if buying_team.budget < offer_amount:
             return False, "Insufficient funds"
 
+        # Agent fees (5-10% of transfer fee)
+        agent_fee = offer_amount * random.uniform(0.05, 0.10)
+        total_cost = offer_amount + agent_fee
+
+        if buying_team.budget < total_cost:
+            return False, "Cannot afford transfer fee plus agent fees"
+
         # Check if offer is acceptable
-        min_acceptable = listing.asking_price * 0.8  # Will accept 20% below asking
+        min_acceptable = listing.asking_price * 0.75  # Will accept 25% below asking
         if offer_amount < min_acceptable:
             return False, "Offer too low"
 
-        # Check if buying team can afford transfer
-        if not buying_team.can_afford_transfer(offer_amount):
-            return False, "Cannot afford transfer fee and wages"
-
-        # Simulate contract negotiation
+        # Enhanced contract negotiation
         player = listing.player
-        wage_offer = player.desired_wage  # Default to desired_wage if not specified elsewhere
-        # If buying_team proposes a wage, use that; else, use desired_wage
-        # For now, use desired_wage as the minimum acceptable wage
+        
+        # Player wage demands based on new club and performance
+        base_wage_demand = player.desired_wage
+        
+        # Adjust based on buying team's budget and league status
+        team_wage_factor = min(2.0, buying_team.budget / 100000000)  # Up to 2x for rich clubs
+        wage_demand = base_wage_demand * team_wage_factor * random.uniform(0.9, 1.3)
 
-        # If the buying team can't meet the wage demand, reject or counter
-        if wage_offer > buying_team.wage_budget / max(1, len(buying_team.players)):
-            player.negotiation_state = "rejected"
-            player.contract_offer = None
-            return False, f"Player {player.name} rejected contract: wage demand too high"
+        # Check if team can afford wages
+        if wage_demand > buying_team.wage_budget / max(1, len(buying_team.players)):
+            return False, f"Player wage demands too high: £{wage_demand:,.0f}/week"
 
-        # Accept the contract
-        player.negotiation_state = "accepted"
-        player.contract_offer = wage_offer
-        player.wage = wage_offer
-        player.contract_length = 3  # Reset contract length on transfer
+        # Contract length negotiation
+        if player.age < 25:
+            contract_length = random.randint(3, 5)  # Young players longer contracts
+        elif player.age < 30:
+            contract_length = random.randint(2, 4)
+        else:
+            contract_length = random.randint(1, 3)  # Older players shorter
+
+        # Complete transfer
+        player.wage = wage_demand
+        player.contract_length = contract_length
         player.transfer_interest = False
+        player.team = buying_team.name
 
-        # Complete transfer with day of window
-        transfer_success = listing.selling_team.handle_transfer(player, offer_amount, is_selling=True, day_of_window=self.current_day)
-        if not transfer_success:
-            return False, "Selling team transfer failed"
+        # Handle team finances
+        if not buying_team.handle_transfer(player, total_cost, is_selling=False, day_of_window=self.current_day):
+            return False, "Buying team financial failure"
 
-        transfer_success = buying_team.handle_transfer(player, offer_amount, is_selling=False, day_of_window=self.current_day)
-        if not transfer_success:
-            # Rollback selling team's transfer if buying fails
-            listing.selling_team.handle_transfer(player, offer_amount, is_selling=False, day_of_window=self.current_day)
-            return False, "Buying team transfer failed"
+        if not listing.selling_team.handle_transfer(player, offer_amount, is_selling=True, day_of_window=self.current_day):
+            # Rollback if selling team transaction fails
+            buying_team.handle_transfer(player, total_cost, is_selling=True, day_of_window=self.current_day)
+            return False, "Selling team financial failure"
 
         # Record transfer
         transfer_record = {
@@ -213,79 +360,193 @@ class TransferMarket:
             "from_team": listing.selling_team.name,
             "to_team": buying_team.name,
             "amount": offer_amount,
+            "agent_fee": agent_fee,
+            "total_cost": total_cost,
+            "wage": wage_demand,
+            "contract_length": contract_length,
             "day": self.current_day,
-            "wage": wage_offer
+            "window": self.get_current_window()
         }
         self.transfer_history.append(transfer_record)
 
-        # Log transfer
-        self._log_transfer_attempt("BUY", {
-            "player": player.name,
-            "from_team": listing.selling_team.name,
-            "to_team": buying_team.name,
-            "amount": offer_amount,
-            "wage": wage_offer,
-            "day": self.current_day
-        })
+        self._log_transfer_attempt("COMPLETED", transfer_record)
 
         # Remove listing
         self.transfer_list.remove(listing)
 
-        return True, f"Transfer completed. Contract accepted at wage {wage_offer:.0f}"
+        return True, f"Transfer completed! {player.name} signs {contract_length}-year deal worth £{wage_demand:,.0f}/week"
+
+    def make_loan_offer(self, borrowing_team, listing):
+        """Handle loan transfers"""
+        if not self.is_transfer_window_open():
+            return False, "Transfer window is closed"
+
+        player = listing.player
+        loan_fee = listing.loan_fee
+        
+        if borrowing_team.budget < loan_fee:
+            return False, "Cannot afford loan fee"
+
+        # Calculate wage split
+        weekly_wage_cost = player.wage * (1 - listing.wage_contribution)
+        
+        if weekly_wage_cost * 4 > borrowing_team.wage_budget / max(1, len(borrowing_team.players)):
+            return False, "Cannot afford wage contribution"
+
+        # Complete loan
+        player.team = f"{borrowing_team.name} (on loan)"
+        
+        # Handle finances
+        borrowing_team.budget -= loan_fee
+        listing.selling_team.budget += loan_fee
+
+        # Record loan
+        loan_record = {
+            "player": player.name,
+            "from_team": listing.selling_team.name,
+            "to_team": borrowing_team.name,
+            "loan_fee": loan_fee,
+            "duration": listing.duration,
+            "wage_contribution": listing.wage_contribution,
+            "buy_back_clause": listing.buy_back_clause,
+            "day": self.current_day
+        }
+        self.loan_history.append(loan_record)
+
+        self._log_transfer_attempt("LOAN_COMPLETED", loan_record)
+        
+        # Remove listing
+        self.loan_list.remove(listing)
+        
+        return True, f"Loan completed! {player.name} joins on {listing.duration}-month loan"
+
+    def sign_free_agent(self, team, player):
+        """Sign a free agent player"""
+        if player not in self.free_agents:
+            return False, "Player not available as free agent"
+
+        # No transfer fee, but potential signing bonus
+        signing_bonus = player.desired_wage * random.randint(10, 26)  # 10-26 weeks wages
+        
+        if team.budget < signing_bonus:
+            return False, "Cannot afford signing bonus"
+
+        # Contract negotiation
+        wage_demand = player.desired_wage * random.uniform(1.1, 1.4)  # Free agents demand more
+        
+        if wage_demand > team.wage_budget / max(1, len(team.players)):
+            return False, "Wage demands too high"
+
+        # Contract length
+        if player.age < 25:
+            contract_length = random.randint(2, 4)
+        elif player.age < 30:
+            contract_length = random.randint(1, 3)
+        else:
+            contract_length = random.randint(1, 2)
+
+        # Complete signing
+        player.wage = wage_demand
+        player.contract_length = contract_length
+        player.team = team.name
+        team.budget -= signing_bonus
+        team.add_player(player)
+
+        # Record signing
+        signing_record = {
+            "player": player.name,
+            "team": team.name,
+            "signing_bonus": signing_bonus,
+            "wage": wage_demand,
+            "contract_length": contract_length,
+            "day": self.current_day
+        }
+
+        self._log_transfer_attempt("FREE_AGENT", signing_record)
+        self.free_agents.remove(player)
+
+        return True, f"Free agent signed! {player.name} joins on {contract_length}-year deal"
+
+    def process_contract_expiries(self, all_teams):
+        """Process contract expiries at end of season"""
+        expired_count = 0
+        for team in all_teams:
+            for player in team.players[:]:  # Copy list to avoid modification issues
+                player.contract_length -= 1
+                if player.contract_length <= 0:
+                    # Player becomes free agent
+                    team.remove_player(player)
+                    player.team = None
+                    self.free_agents.append(player)
+                    expired_count += 1
+                    
+                    self._log_transfer_attempt("CONTRACT_EXPIRED", {
+                        "player": player.name,
+                        "team": team.name,
+                        "age": player.age
+                    })
+
+        return expired_count
 
     def simulate_ai_transfers(self, all_teams):
-        """Simulate AI teams making transfer decisions using Q-learning."""
+        """Enhanced AI transfer simulation"""
+        if not self.is_transfer_window_open():
+            return
+
         for team in all_teams:
             if not team.manager:
                 continue
 
-            # Get manager's decisions using Q-learning
+            # Get manager's transfer decisions
             actions = team.manager.make_transfer_decision(self)
-            # Process each action with feedback
+            
             for action_type, *params in actions:
                 if action_type == "list":
                     player, price = params
-                    if len(team.players) > 18:  # Keep minimum squad size
-                        listing = self.list_player(player, team, price)
+                    if len(team.players) > 18:  # Maintain minimum squad
+                        listing, message = self.list_player(player, team, price)
                         if listing:
-                            # Provide feedback for learning
                             result = {
                                 "type": "list",
                                 "player": player,
                                 "price": price,
                                 "value_ratio": price / self.calculate_player_value(player),
-                                "need_satisfaction": 0.0,  # Listing doesn't satisfy needs
-                                "month": (self.current_day % 30) + 1,
-                                "market": self
+                                "success": True,
+                                "window": self.get_current_window()
                             }
                             team.manager.learn_from_transfer(result)
 
                 elif action_type == "buy":
-                    print(12)
                     listing, offer = params
-                    if team.budget >= offer:
-                        print(1)
-                        success, message = self.make_transfer_offer(team, listing, offer)
-                        # Always record attempt, success or failure
-                        team.manager.transfer_attempts.append(success)
+                    success, message = self.make_transfer_offer(team, listing, offer)
+                    team.manager.transfer_attempts.append(success)
 
-                        # Provide feedback for learning
-                        result = {
-                            "type": "buy",
-                            "player": listing.player,
-                            "price": offer,
-                            "value_ratio": self.calculate_player_value(listing.player) / offer,
-                            "need_satisfaction": 1.0 if success else 0.0,
-                            "age_impact": (27 - listing.player.age) / 27 if listing.player.age <= 27 else 0,
-                            "month": (self.current_day % 30) + 1,
-                            "market": self,
-                            "success": success,
-                            "reason": message
-                        }
-                        team.manager.learn_from_transfer(result)
+                    result = {
+                        "type": "buy",
+                        "player": listing.player,
+                        "price": offer,
+                        "value_ratio": self.calculate_player_value(listing.player) / offer,
+                        "success": success,
+                        "window": self.get_current_window(),
+                        "reason": message
+                    }
+                    team.manager.learn_from_transfer(result)
+
+                elif action_type == "loan_out":
+                    player = params[0]
+                    if player.age < 23 and player.squad_role in ["RESERVE", "YOUTH"]:
+                        listing, message = self.list_player_for_loan(player, team)
+
+                elif action_type == "loan_in":
+                    listing = params[0]
+                    success, message = self.make_loan_offer(team, listing)
+
+                elif action_type == "free_agent":
+                    player = params[0]
+                    success, message = self.sign_free_agent(team, player)
 
     def advance_day(self):
-        """Advance the transfer market by one day."""
+        """Advance transfer market by one day"""
         self.current_day += 1
 
         # Remove expired listings
@@ -293,30 +554,55 @@ class TransferMarket:
             listing for listing in self.transfer_list
             if (self.current_day - listing.listed_date) <= listing.expires_in
         ]
+        
+        self.loan_list = [
+            listing for listing in self.loan_list
+            if (self.current_day - listing.listed_date) <= listing.expires_in
+        ]
+
+        # Update transfer window status
+        current_window = self.get_current_window()
+        if current_window != self.current_window:
+            if current_window:
+                self._log_transfer_attempt("WINDOW_OPEN", {"window": current_window, "day": self.current_day})
+            else:
+                self._log_transfer_attempt("WINDOW_CLOSED", {"previous_window": self.current_window, "day": self.current_day})
+            self.current_window = current_window
 
     def get_market_analysis(self):
-        """Get current market statistics."""
+        """Enhanced market analysis"""
         total_listings = len(self.transfer_list)
+        loan_listings = len(self.loan_list)
+        free_agents_count = len(self.free_agents)
+        
         total_value = sum(listing.asking_price for listing in self.transfer_list)
         avg_value = total_value / total_listings if total_listings > 0 else 0
 
+        # Position analysis
         positions = {}
         for listing in self.transfer_list:
             pos = listing.player.position
             if pos not in positions:
-                positions[pos] = {"count": 0, "total_value": 0}
+                positions[pos] = {"count": 0, "total_value": 0, "avg_age": 0}
             positions[pos]["count"] += 1
             positions[pos]["total_value"] += listing.asking_price
+            positions[pos]["avg_age"] += listing.player.age
+
+        for pos_data in positions.values():
+            if pos_data["count"] > 0:
+                pos_data["average_value"] = pos_data["total_value"] / pos_data["count"]
+                pos_data["avg_age"] = pos_data["avg_age"] / pos_data["count"]
 
         return {
-            "total_l_istings": total_listings,
+            "current_day": self.current_day,
+            "current_window": self.get_current_window(),
+            "window_open": self.is_transfer_window_open(),
+            "total_listings": total_listings,
+            "loan_listings": loan_listings,
+            "free_agents": free_agents_count,
             "total_market_value": total_value,
             "average_player_value": avg_value,
-            "positions": {
-                pos: {
-                    "count": data["count"],
-                    "average_value": data["total_value"] / data["count"]
-                }
-                for pos, data in positions.items()
-            }
+            "positions": positions,
+            "transfers_completed": len(self.transfer_history),
+            "loans_completed": len(self.loan_history)
         }

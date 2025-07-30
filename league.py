@@ -7,31 +7,21 @@ from team import Team
 from manager import Manager
 from coach import Coach
 from transfer import TransferMarket
+from league_db import create_league, get_league, update_league, delete_league
 
 class League:
     def __init__(self, name, num_teams=20):
         self.name = name
-        self.teams = [Team(f"Team {i+1}", budget=100000000) for i in range(num_teams)]
+        self.teams = []  # Initialize empty, will be populated by main.py
         self.matches = []
         self.standings = {}
         self.match_reports_dir = "match_reports"
         self.historical_standings = []
         self.season_year = datetime.now().year
+        self.schedule = []  # Store the match schedule
         
-        # Initialize teams with players
-        for team in self.teams:
-            # Add players to each team (minimum squad size)
-            self._initialize_team_squad(team)
-        
-        # Initialize managers and coaches for all teams
-        for team in self.teams:
-            # Initialize manager with random profile for varied strategies
-            profile = None  # Will use random profile from ManagerProfile.create_random_profile()
-            team.set_manager(Manager(profile=profile))
-
-            # Add coaches
-            for _ in range(3):
-                team.add_coach(Coach())
+        # Database attributes
+        self.league_id = None
         
         # Create directory for match reports
         self._init_season()
@@ -39,6 +29,40 @@ class League:
         
         # Initialize TransferMarket for the league instance
         self.transfer_market = TransferMarket(log_path=f"transfer_logs/season_{self.season_year}_transfers.txt")
+
+    def save_to_database(self):
+        """Save league to database"""
+        if self.league_id is None:
+            # Create new league
+            self.league_id = create_league(
+                name=self.name,
+                season_year=self.season_year,
+                num_teams=len(self.teams)
+            )
+        else:
+            # Update existing league
+            update_league(
+                league_id=self.league_id,
+                name=self.name,
+                season_year=self.season_year,
+                num_teams=len(self.teams)
+            )
+        return self.league_id
+
+    @classmethod
+    def load_from_database(cls, league_id):
+        """Load league from database by ID"""
+        data = get_league(league_id)
+        if not data:
+            return None
+            
+        league = cls(
+            name=data["name"],
+            num_teams=data["num_teams"]
+        )
+        league.league_id = data["league_id"]
+        league.season_year = data["season_year"]
+        return league
 
     def generate_schedule(self):
         """Create a proper double round-robin schedule"""
@@ -54,7 +78,43 @@ class League:
         
         # Randomize match order to create realistic schedule
         random.shuffle(fixtures)
-        self.matches = fixtures
+        self.schedule = fixtures
+        self.matches = fixtures  # Keep both for compatibility
+
+    def play_match(self, home_team, away_team):
+        """Play a single match between two teams"""
+        # Ensure both teams have enough players before the match
+        for team in [home_team, away_team]:
+            self._ensure_minimum_squad(team, min_players=11)
+
+        # Weekly training and development for both teams
+        for team in [home_team, away_team]:
+            # Calculate team performance multiplier
+            team_perf = self.standings.get(team.name, {}).get("points", 0)
+            max_points = max([self.standings[t.name]["points"] for t in self.teams if t.name in self.standings], default=1)
+            perf_multiplier = 1.0 + 0.5 * (team_perf / max_points) if max_points > 0 else 1.0
+            # All training handled by coaches only
+            self._weekly_team_training(team)
+
+        # Play the match
+        match = Match(home_team, away_team)
+        try:
+            result = match.play_match()
+            self.update_standings(home_team, away_team, result)
+            return result
+        except ValueError as e:
+            # Log forfeit due to insufficient players
+            forfeit_result = {
+                "score": [0, 0],
+                "possession": [0, 0],
+                "shots": [0, 0],
+                "shots_on_target": [0, 0],
+                "weather": getattr(match, "weather", "N/A"),
+                "events": [str(e)]
+            }
+            print(f"Match forfeited: {e}")
+            self.update_standings(home_team, away_team, forfeit_result)
+            return forfeit_result
 
     def play_season(self):
         """Play all matches in the season and close the transfer log."""
@@ -66,40 +126,31 @@ class League:
             f.write(f"Transfer Activity for Season {self.season_year}\n")
             f.write("=" * 80 + "\n\n")
 
-        for idx, (home, away) in enumerate(self.matches):
-            # Ensure both teams have enough players before the match
-            for team in [home, away]:
-                self._ensure_minimum_squad(team, min_players=11)
+        for idx, (home, away) in enumerate(self.schedule):
+            result = self.play_match(home, away)
+            self.save_match_report_simple(home, away, result, idx+1)
 
-            # Weekly training and development for both teams
-            for team in [home, away]:
-                # Calculate team performance multiplier (e.g., based on league position or recent form)
-                team_perf = self.standings.get(team.name, {}).get("points", 0)
-                max_points = max([self.standings[t.name]["points"] for t in self.teams if t.name in self.standings], default=1)
-                perf_multiplier = 1.0 + 0.5 * (team_perf / max_points) if max_points > 0 else 1.0
-                # All training handled by coaches only
-                self._weekly_team_training(team)
-
-            # Play the match
-            #print(f"\nMatch Day {match_day}")
-            match = Match(home, away)
-            try:
-                result = match.play_match()
-                self.save_match_report(match, result, idx+1)
-                self.update_standings(home, away, result)
-            except ValueError as e:
-                # Log forfeit due to insufficient players
-                forfeit_result = {
-                    "score": [0, 0],
-                    "possession": [0, 0],
-                    "shots": [0, 0],
-                    "shots_on_target": [0, 0],
-                    "weather": getattr(match, "weather", "N/A"),
-                    "events": [str(e)]
-                }
-                print(f"Match {idx+1}: Forfeit - {e}")
-                self.save_match_report(match, forfeit_result, idx+1)
-                self.update_standings(home, away, forfeit_result)
+    def save_match_report_simple(self, home_team, away_team, result, match_number):
+        """Save simplified match report"""
+        report = {
+            "match_number": match_number,
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "season_year": self.season_year,
+            "home_team": home_team.name,
+            "away_team": away_team.name,
+            "score": result["score"],
+            "possession": result.get("possession", [50, 50]),
+            "shots": result.get("shots", [0, 0]),
+            "shots_on_target": result.get("shots_on_target", [0, 0]),
+            "weather": result.get("weather", "N/A"),
+            "events": len(result.get("events", []))
+        }
+        
+        filename = f"{self.season_year}_Match_{match_number:04d}.json"
+        path = os.path.join(self.match_reports_dir, filename)
+        
+        with open(path, 'w') as f:
+            json.dump(report, f, indent=2)
 
     def _ensure_minimum_squad(self, team, min_players=11):
         """Ensure the team has at least min_players healthy/fit players by promoting youth or generating bad youth."""
@@ -119,7 +170,6 @@ class League:
             else:
                 # Generate a bad youth player (potential 50-60, low ability)
                 from player import FootballPlayer
-                import random
                 age = random.randint(15, 18)
                 potential = random.randint(50, 60)
                 bad_youth = FootballPlayer.create_player(age=age, potential=potential)
@@ -129,23 +179,19 @@ class League:
                 team.youth_academy.append(bad_youth)
                 team.promote_youth_player(bad_youth)
 
-            # Save match report
-
-            # All match-related logic removed from here; this function only ensures minimum squad size.
-
-
     def save_match_report(self, match, result, match_number):
         """Save match details to JSON file"""
         report = {
             "match_number": match_number,
             "date": datetime.now().strftime("%Y-%m-%d"),
             "season_year": self.season_year,
+            "home_team": match.home_team.name,
             "away_team": match.away_team.name,
             "score": result["score"],
             "possession": result.get("possession", [50, 50]),
             "shots": result.get("shots", {"total": [0, 0], "on_target": [0, 0]}),
-            "weather": match.weather,
-            "intensity": match.intensity
+            "weather": getattr(match, "weather", "N/A"),
+            "intensity": getattr(match, "intensity", 1.0)
         }
         
         filename = f"{datetime.now().year}_Match_{match_number:04d}.json"
@@ -167,7 +213,8 @@ class League:
                     "lost": 0,
                     "gf": 0,
                     "ga": 0,
-                    "gd": 0
+                    "gd": 0,
+                    "recent_form": []
                 }
         
         # Update match stats
@@ -186,20 +233,34 @@ class League:
         self.standings[away.name]["ga"] += home_goals
         self.standings[away.name]["gd"] = self.standings[away.name]["gf"] - self.standings[away.name]["ga"]
         
-        # Update points
+        # Update points and form
         if home_goals > away_goals:
             self.standings[home.name]["won"] += 1
             self.standings[home.name]["points"] += 3
             self.standings[away.name]["lost"] += 1
+            # Update form
+            self.standings[home.name]["recent_form"].append("W")
+            self.standings[away.name]["recent_form"].append("L")
         elif home_goals < away_goals:
             self.standings[away.name]["won"] += 1
             self.standings[away.name]["points"] += 3
             self.standings[home.name]["lost"] += 1
+            # Update form
+            self.standings[away.name]["recent_form"].append("W")
+            self.standings[home.name]["recent_form"].append("L")
         else:
             self.standings[home.name]["drawn"] += 1
             self.standings[home.name]["points"] += 1
             self.standings[away.name]["drawn"] += 1
             self.standings[away.name]["points"] += 1
+            # Update form
+            self.standings[home.name]["recent_form"].append("D")
+            self.standings[away.name]["recent_form"].append("D")
+        
+        # Keep only last 5 form results
+        for team in [home, away]:
+            if len(self.standings[team.name]["recent_form"]) > 5:
+                self.standings[team.name]["recent_form"] = self.standings[team.name]["recent_form"][-5:]
 
     def get_league_table(self):
         """Generate sorted league table"""
@@ -207,9 +268,13 @@ class League:
                             key=lambda x: (-x[1]['points'], -x[1]['gd'], -x[1]['gf']))
         return sorted_table
 
+    def get_final_table(self):
+        """Get final league table (alias for compatibility)"""
+        return self.get_league_table()
+
     def get_best_manager(self):
         """Find manager with best performance metrics and return as a dictionary."""
-        if not self.standings: # Handle case where season hasn't been played
+        if not self.standings:
             return {
                 "name": "N/A",
                 "experience": 0,
@@ -224,7 +289,7 @@ class League:
 
         if champion_team and champion_team.manager:
             manager = champion_team.manager
-            manager_stats = manager.get_stats() # Assuming get_stats() provides success_rate
+            manager_stats = manager.get_stats()
             return {
                 "name": manager.name,
                 "experience": manager.experience_level,
@@ -233,8 +298,7 @@ class League:
                 "market_trends": manager.analyze_market_trends() 
             }
         
-        # Fallback if champion manager not found (should ideally not happen in a full season)
-        # Find the manager with the highest win rate as a fallback
+        # Fallback if champion manager not found
         best_fallback_manager = None
         highest_win_rate = -1
 
@@ -246,7 +310,7 @@ class League:
                     if win_rate > highest_win_rate:
                         highest_win_rate = win_rate
                         best_fallback_manager = manager
-                elif best_fallback_manager is None: # If no one played, pick first one
+                elif best_fallback_manager is None:
                     best_fallback_manager = manager
         
         if best_fallback_manager:
@@ -258,8 +322,7 @@ class League:
                 "transfer_success_rate": manager_stats.get("transfer_success_rate", 0.0),
                 "market_trends": best_fallback_manager.analyze_market_trends()
             }
-        return { "name": "N/A", "experience": 0, "formation": "N/A", "transfer_success_rate": 0.0, "market_trends": {}}
-
+        return {"name": "N/A", "experience": 0, "formation": "N/A", "transfer_success_rate": 0.0, "market_trends": {}}
 
     def get_best_players(self, num=11):
         """Select best players from all teams and return as a list of dictionaries."""
@@ -276,126 +339,13 @@ class League:
 
         best_players_data = []
         for player_obj in sorted_players:
-            player_info = player_obj.get_player_info(detail_level="full") # Include attributes for ability calculation
+            player_info = player_obj.get_player_info(detail_level="full")
             player_info["value"] = self.transfer_market.calculate_player_value(player_obj)
             # Ensure team name is present
             player_info["team"] = player_obj.team if player_obj.team else "N/A"
             best_players_data.append(player_info)
         return best_players_data
 
-    def _run_transfer_window(self, days=7 ,log_path = None): # log_path is passed but we use self.transfer_market
-        """Run a transfer window period using the league's transfer_market instance."""
-        # market = TransferMarket(log_path=log_path) # We now use self.transfer_market
-        
-        for day in range(days):
-            #print(f"\nTransfer Window - Day {day + 1}")
-            
-            # Teams make transfer decisions
-            for team in self.teams:
-                if team.manager:
-                    # Get manager's decisions using Q-learning
-                    actions = team.manager.make_transfer_decision(self.transfer_market)
-                    
-                    # Process transfer actions and collect results
-                    for action_type, *params in actions:
-                        if action_type == "list":
-                            player, price = params
-                            listed = self.transfer_market.list_player(player, team, price)
-                            
-                            if listed:
-                                result = {
-                                    "type": "list",
-                                    "player": player,
-                                    "price": price,
-                                    "value_ratio": price / self.transfer_market.calculate_player_value(player),
-                                    "need_satisfaction": 0.0,
-                                    "month": (self.season_year % 12) + 1, # This month calculation might need review for realism
-                                    "market": self.transfer_market 
-                                }
-                                team.manager.learn_from_transfer(result)
-                                
-                        elif action_type == "buy":
-                            listing_id, offer = params # listing_id from manager's action
-                            
-                            # Find the actual listing object from the market
-                            actual_listing = None
-                            for l_item in self.transfer_market.transfer_list:
-                                if l_item.listing_id == listing_id:
-                                    actual_listing = l_item
-                                    break
-                            
-                            if not actual_listing:
-                                print(f"Warning: Listing ID {listing_id} not found in transfer market for team {team.name} during buy attempt.")
-                                # Log a failed attempt because the listing disappeared or was invalid
-                                team.statistics["transfer_history"].append({
-                                    "type": "buy_attempt", # Indicate it's an attempt
-                                    "player_name": f"Unknown Player (Listing ID: {listing_id})",
-                                    "price": offer,
-                                    "success": False,
-                                    "message": f"Listing ID {listing_id} not found or invalid at time of offer.",
-                                    "day_of_window": day + 1
-                                })
-                                # Update manager's transfer success stats for this attempt
-                                if not hasattr(team.manager, 'transfer_attempts'):
-                                    team.manager.transfer_attempts = []
-                                team.manager.transfer_attempts.append(False) # Record failure
-                                
-                                # Manager learning for the failed attempt due to missing listing
-                                result = {
-                                    "type": "buy", # Keep type as "buy" for learning consistency
-                                    "player": None, # No player object available
-                                    "price": offer,
-                                    "value_ratio": 0, # No value if no player
-                                    "need_satisfaction": 0, # No need satisfied
-                                    "age_impact": 0,
-                                    "month": (self.season_year % 12) + 1,
-                                    "market": self.transfer_market,
-                                    "success": False, # Explicitly state failure
-                                    "reason": f"Listing ID {listing_id} not found."
-                                }
-                                if hasattr(team.manager, 'learn_from_transfer'): # Check if manager has this method
-                                     team.manager.learn_from_transfer(result)
-                                continue # Skip to next action if listing not found
-
-                            # Now make the offer using the actual_listing object
-                            success, message = self.transfer_market.make_transfer_offer(team, actual_listing, offer)
-                            
-                            # Record the attempt in team's history AFTER the attempt is made
-                            team.statistics["transfer_history"].append({
-                                "type": "buy", 
-                                "player_name": actual_listing.player.name, 
-                                "price": offer,
-                                "success": success, 
-                                "message": message, 
-                                "day_of_window": day + 1
-                            })
-                            
-                            # Update manager's transfer success stats for this attempt
-                            if not hasattr(team.manager, 'transfer_attempts'):
-                                team.manager.transfer_attempts = []
-                            team.manager.transfer_attempts.append(success) # Record success/failure of this attempt
-
-                            if success:
-                                # Update manager's transfer success stats
-                                if not hasattr(team.manager, 'transfer_attempts'): # Ensure attribute exists
-                                    team.manager.transfer_attempts = []
-                                team.manager.transfer_attempts.append(True)
-                                result = {
-                                    "type": "buy",
-                                    "player": actual_listing.player, # Corrected: use actual_listing
-                                    "price": offer,
-                                    "value_ratio": self.transfer_market.calculate_player_value(actual_listing.player) / offer if offer > 0 else 0,
-                                    "need_satisfaction": self._calculate_need_satisfaction(team, actual_listing.player),
-                                    "age_impact": (27 - actual_listing.player.age) / 27 if actual_listing.player.age <= 27 else 0,
-                                    "month": (self.season_year % 12) + 1, # This month calculation might need review
-                                    "market": self.transfer_market,
-                                    "success": True # Explicitly state success for manager learning
-                                }
-                                team.manager.learn_from_transfer(result)
-            
-            # Update market
-            self.transfer_market.advance_day()
-    
     def increment_season(self):
         """Advance to new season and age all players."""
         self.season_year += 1
@@ -422,10 +372,9 @@ class League:
                 team.youth_academy.remove(player)
 
             # Each team gets 1-3 new youth players per season
-            import random
             for _ in range(random.randint(1, 3)):
                 team.generate_youth_player()
-            # Let manager decide youth promotions (ML agent)
+            # Let manager decide youth promotions
             if team.manager:
                 team.manager.decide_promotions()
 
@@ -437,19 +386,18 @@ class League:
 
     def simulate_youth_tournament(self):
         """Simulate a youth tournament for all teams' youth academies."""
-        # Each team fields up to 5 youth players (or as many as available)
+        # Each team fields up to 5 youth players
         youth_teams = []
         for team in self.teams:
             youth_team = team.youth_academy[:5] if len(team.youth_academy) >= 5 else team.youth_academy[:]
             youth_teams.append((team, youth_team))
 
-        # Simple round-robin: each youth team plays each other once
+        # Simple round-robin
         results = {team.name: 0 for team, _ in youth_teams}
         for i, (team_a, players_a) in enumerate(youth_teams):
             for j, (team_b, players_b) in enumerate(youth_teams):
                 if i >= j:
                     continue
-                # Simulate match: random winner, or draw
                 outcome = random.choices(["A", "B", "D"], weights=[0.4, 0.4, 0.2])[0]
                 if outcome == "A":
                     results[team_a.name] += 3
@@ -465,12 +413,9 @@ class League:
                     self._apply_youth_growth(players_a, win=False, draw=True)
                     self._apply_youth_growth(players_b, win=False, draw=True)
 
-        # Optionally print or store youth tournament results
-
     def _apply_youth_growth(self, players, win=False, draw=False):
         """Apply attribute growth to youth players based on match result."""
         for player in players:
-            # Winners get more growth, draw gets some, loss gets little
             if win:
                 growth = 0.7
             elif draw:
@@ -484,50 +429,29 @@ class League:
                         95.0, player.attributes[attr_type][sub_attr] + growth + random.uniform(0, 0.3)
                     )
 
-    def _calculate_youth_minutes(self, players: list, match: Match) -> float:
-        """Calculate minutes played by youth players (under 23)."""
-        youth_minutes = 0
-        for player in players:
-            if player.age < 23:
-                # Estimate minutes based on match participation
-                if player in match.home_lineup or player in match.away_lineup:
-                    youth_minutes += 90  # Full match assumption
-        return youth_minutes
+    def _get_position_group(self, position):
+        """Convert specific position to position group - fixed method"""
+        if position == "GK":
+            return "GK"
+        elif position in ["CB", "LB", "RB", "LWB", "RWB", "SW"]:
+            return "DEF"
+        elif position in ["CM", "CDM", "CAM", "LM", "RM", "DM"]:
+            return "MID"
+        else:
+            return "FWD"
 
-    def _calculate_player_development(self, players: list) -> float:
-        """Calculate average development progress for the squad."""
-        if not players:
-            return 0.0
-            
-        total_progress = 0
-        for player in players:
-            # Calculate progress as percentage towards potential
-            current_ability = sum(sum(cat.values()) for cat in player.attributes.values()) / (
-                len(player.attributes) * len(next(iter(player.attributes.values())))
-            )
-            max_potential = player.potential
-            progress = (current_ability / max_potential) if max_potential > 0 else 0
-            total_progress += progress
-            
-        return total_progress / len(players)
-    def _get_position_group(self, postions):
-        for postion in postions:
-            if postion == "GK":
-                return "GK"
-            elif postion in ["CB", "LB", "RB", "LWB", "RWB", "SW"]:
-                return "DEF"
-            elif postion in ["CM", "CDM", "CAM", "LM", "RM", "DM"]:
-                return "MID"
-            else:
-                return "FWD"
     def _calculate_need_satisfaction(self, team: Team, player) -> float:
         """Calculate how well a player satisfies team needs."""
         squad_needs = team.get_squad_needs()
         position_group = self._get_position_group(player.position)
         
         # Get current and ideal counts for the position
-        current_count = squad_needs["current_distribution"].get(position_group, 0)
-        ideal_count = squad_needs["ideal_distribution"].get(position_group, 0)
+        position_analysis = squad_needs.get("position_analysis", {})
+        if position_group not in position_analysis:
+            return 0.0
+            
+        current_count = position_analysis[position_group]["current"]
+        ideal_count = position_analysis[position_group]["ideal"]
         
         if ideal_count == 0:
             return 0.0
@@ -557,16 +481,19 @@ class League:
                 position_groups["MID"].append(player)
             else:
                 position_groups["FWD"].append(player)
-        # Assign best matching coaches to position groups
+
+        # Train all players with coach specialization
         for coach in team.coaches:
             # Determine coach's best position group
             coach_specialty = "MID"  # Default
-            if "GK" in coach.specialty:
-                coach_specialty = "GK"
-            elif any(pos in coach.specialty for pos in ["CB", "LB", "RB", "LWB", "RWB", "SW"]):
-                coach_specialty = "DEF"
-            elif any(pos in coach.specialty for pos in ["ST", "CF", "LW", "RW"]):
-                coach_specialty = "FWD"
+            if hasattr(coach, 'specialty'):
+                if "GK" in coach.specialty:
+                    coach_specialty = "GK"
+                elif any(pos in coach.specialty for pos in ["CB", "LB", "RB", "LWB", "RWB", "SW"]):
+                    coach_specialty = "DEF"
+                elif any(pos in coach.specialty for pos in ["ST", "CF", "LW", "RW"]):
+                    coach_specialty = "FWD"
+
             # Train all players with appropriate intensity
             for group, players in position_groups.items():
                 for player in players:
@@ -575,7 +502,7 @@ class League:
                         player.stats["fitness"] = min(100, player.stats["fitness"] + 20)
                         continue
 
-                    # Determine training intensity based on player fitness and upcoming matches
+                    # Determine training intensity based on player fitness
                     if player.stats["fitness"] > 80:
                         intensity = "high"
                     elif player.stats["fitness"] > 50:
@@ -584,7 +511,7 @@ class League:
                         intensity = "low"
                     
                     # Apply higher coach bonus if player matches coach specialty
-                    coach_bonus = coach.experience_level / 10.0
+                    coach_bonus = getattr(coach, 'experience_level', 5) / 10.0
                     if group == coach_specialty:
                         coach_bonus *= 1.5  # 50% bonus for specialized coaching
                     
@@ -601,14 +528,13 @@ class League:
                     
                     player.train_player(
                         intensity=intensity,
-                        training_days=3,  # Three sessions per week
+                        training_days=3,
                         coach_bonus=coach_bonus,
                         focus_area=focus_area
                     )
-    
+
     def generate_season_report(self):
         """Compile comprehensive season report with detailed team and player information."""
-        
         all_teams_details = []
         for team_obj in self.teams:
             players_data = []
@@ -625,16 +551,16 @@ class League:
                 player_info["team"] = team_obj.name 
                 players_data.append(player_info)
             
+            # Process transfer history
             raw_team_transfer_history = team_obj.statistics["transfer_history"]
             processed_team_transfer_history = []
             for item in raw_team_transfer_history:
                 if isinstance(item, dict):
-                    # Ensure essential keys are present, provide defaults if not
                     processed_item = {
                         "type": item.get("type", "unknown"),
                         "player_name": item.get("player_name", "N/A"),
                         "price": item.get("price", 0.0),
-                        "success": item.get("success", False), # Default to False
+                        "success": item.get("success", False),
                         "day_of_window": item.get("day_of_window", None),
                         "message": item.get("message", "")
                     }
@@ -644,21 +570,16 @@ class League:
                             processed_item["price"] = float(processed_item["price"])
                         except (ValueError, TypeError):
                             processed_item["price"] = 0.0
-                            
                     processed_team_transfer_history.append(processed_item)
                 elif isinstance(item, str):
-                    # Handle rogue strings: convert to a minimal dict
-                    print(f"Warning: Found a string '{item}' in transfer_history for team {team_obj.name}. Converting to minimal entry.")
                     processed_team_transfer_history.append({
-                        "type": item, # The string itself becomes the type
+                        "type": item,
                         "player_name": "N/A (Malformed Entry)",
                         "price": 0.0,
                         "success": False,
                         "day_of_window": None,
                         "message": "Original entry was a malformed string."
                     })
-                else:
-                    print(f"Warning: Found unexpected data type '{type(item)}' in transfer_history for team {team_obj.name}. Skipping.")
             
             team_detail = {
                 "name": team_obj.name,
@@ -666,12 +587,12 @@ class League:
                 "manager_formation": team_obj.manager.formation if team_obj.manager else "N/A",
                 "squad_strength": team_obj.get_squad_strength(),
                 "players": players_data,
-                "team_season_stats": self.standings.get(team_obj.name, {}), # Get from final standings
-                "team_transfer_history": processed_team_transfer_history # Use the processed list
+                "team_season_stats": self.standings.get(team_obj.name, {}),
+                "team_transfer_history": processed_team_transfer_history
             }
             all_teams_details.append(team_detail)
 
-        # Consolidate transfer summary for the report (as in the original example)
+        # Transfer summary
         total_transfer_spending = {}
         total_transfer_activity = {}
         for tf_record in self.transfer_market.transfer_history:
@@ -679,84 +600,45 @@ class League:
             if tf_record['to_team'] not in total_transfer_spending:
                 total_transfer_spending[tf_record['to_team']] = 0
             total_transfer_spending[tf_record['to_team']] += tf_record['amount']
-            # Activity (counting unique teams involved in successful buys)
+            # Activity
             if tf_record['to_team'] not in total_transfer_activity:
                 total_transfer_activity[tf_record['to_team']] = 0
-            total_transfer_activity[tf_record['to_team']] +=1
-            if tf_record['from_team'] not in total_transfer_activity: # also count selling team activity
+            total_transfer_activity[tf_record['to_team']] += 1
+            if tf_record['from_team'] not in total_transfer_activity:
                 total_transfer_activity[tf_record['from_team']] = 0
-            total_transfer_activity[tf_record['from_team']] +=1
-
+            total_transfer_activity[tf_record['from_team']] += 1
 
         biggest_spenders_list = sorted(total_transfer_spending.items(), key=lambda item: item[1], reverse=True)[:5]
         most_active_list = sorted(total_transfer_activity.items(), key=lambda item: item[1], reverse=True)[:5]
 
         report = {
             "season": self.season_year,
-            "champions": self.get_league_table()[0][0] if self.get_league_table() else "N/A", # Team name of champion
-            "champions_manager": self.get_best_manager(), # Already returns a dict
-            "table": self.get_league_table(), # Already returns a list of [team_name, stats_dict]
-            "transfers": { # Mimicking the structure from the example JSON
+            "champions": self.get_league_table()[0][0] if self.get_league_table() else "N/A",
+            "champions_manager": self.get_best_manager(),
+            "table": self.get_league_table(),
+            "transfers": {
                 "total_transfers": len(self.transfer_market.transfer_history),
                 "biggest_spenders": biggest_spenders_list,
                 "most_active": most_active_list,
-                "all_completed_transfers": self.transfer_market.transfer_history # Detailed list of all transfers
+                "all_completed_transfers": self.transfer_market.transfer_history
             },
-            "best_players": self.get_best_players(), # Already returns list of dicts
+            "best_players": self.get_best_players(),
             "season_stats": {
-                "total_matches": len(self.matches),
+                "total_matches": len(self.schedule),
                 "total_goals": sum(t_stats['gf'] for _, t_stats in self.standings.items()),
-                "average_goals_per_match": (sum(t_stats['gf'] for _, t_stats in self.standings.items()) / len(self.matches)) if self.matches else 0,
+                "average_goals_per_match": (sum(t_stats['gf'] for _, t_stats in self.standings.items()) / len(self.schedule)) if self.schedule else 0,
                 "best_attack": max(self.standings.items(), key=lambda x: x[1]['gf']) if self.standings else ("N/A", {"gf": 0}),
                 "best_defense": min(self.standings.items(), key=lambda x: x[1]['ga']) if self.standings else ("N/A", {"ga": 0})
             },
             "all_teams_details": all_teams_details
         }
         return report
-    
+
     def _init_season(self):
         """Initialize/reset season-specific data"""
-        self.historical_standings.append((self.season_year, self.standings))
+        if self.standings:  # Only append if there are standings to save
+            self.historical_standings.append((self.season_year, self.standings))
         self.standings = {}
-        
-    def _initialize_team_squad(self, team):
-        """Initialize a team with a full squad of players."""
-        from player import FootballPlayer
-        import names
-        import random
-        
-        # Create squad with position distribution
-        squad_template = {
-            "GK": 3,  # Goalkeepers
-            "DEF": 8,  # Defenders (CB, LB, RB)
-            "MID": 8,  # Midfielders (CM, CDM, CAM)
-            "FWD": 4   # Forwards (ST, LW, RW)
-        }
-        
-        position_details = {
-            "GK": ["GK"],
-            "DEF": ["CB", "LB", "RB", "CB", "CB", "LWB", "RWB", "SW"],
-            "MID": ["CM", "CDM", "CAM", "CM", "LM", "RM", "CM", "DM"],
-            "FWD": ["ST", "CF", "LW", "RW"]
-        }
-        
-        # Generate players for each position group
-        for group, count in squad_template.items():
-            positions = position_details[group]
-            for _ in range(count):
-                age = random.randint(17, 35)
-                potential = random.randint(60, 90)
-                # Higher potential for younger players
-                if age < 23:
-                    potential = random.randint(70, 95)
-                
-                player = FootballPlayer(
-                    name=names.get_full_name(),
-                    age=age,
-                    position=positions[_ % len(positions)],
-                    potential=potential
-                )
-                team.add_player(player)
 
 if __name__ == "__main__":
     import argparse
@@ -802,22 +684,9 @@ if __name__ == "__main__":
                           f"{stats['won']:>3} {stats['drawn']:>3} {stats['lost']:>3} "
                           f"{stats['gf']:>3} {stats['ga']:>3} {stats['gd']:>3}")
             
-            champion_team, champion_manager = league.get_best_manager()
-            debug_print(f"\nChampion Manager: {champion_manager.name}")
-            debug_print(f"Team: {champion_team.name}")
-            debug_print(f"Record: W{champion_manager.wins}-D{champion_manager.draws}-L{champion_manager.losses}")
-            win_rate = (champion_manager.wins/champion_manager.matches_played)*100 if champion_manager.matches_played > 0 else 0
-            debug_print(f"Win Rate: {win_rate:.1f}%")
-            
-            # Show top managers' learning stats
-            debug_print("\nManager Learning Progress:")
-            for team in sorted(league.teams,
-                            key=lambda t: t.manager.wins/t.manager.matches_played if t.manager and t.manager.matches_played > 0 else 0,
-                            reverse=True)[:3]:
-                if team.manager:
-                    debug_print(f"\n{team.manager.name} ({team.name}):")
-                    stats = team.manager.get_stats()
-                    debug_print(f"Exploration Rate: {stats['current_exploration_rate']:.2f}")
-                    debug_print(f"Transfer Success: {stats['transfer_success_rate']*100:.1f}%")
+            best_manager = league.get_best_manager()
+            debug_print(f"\nBest Manager: {best_manager['name']}")
+            debug_print(f"Formation: {best_manager['formation']}")
+            debug_print(f"Transfer Success Rate: {best_manager['transfer_success_rate']*100:.1f}%")
         
         league.increment_season()

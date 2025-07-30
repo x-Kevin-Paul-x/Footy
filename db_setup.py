@@ -525,6 +525,42 @@ def create_tables(db_file=DB_FILE):
     conn.commit()
     conn.close()
 
+def reset_database(db_file=DB_FILE):
+    """Clear all data from database tables for fresh start."""
+    conn = sqlite3.connect(db_file)
+    cursor = conn.cursor()
+    
+    # Get all table names
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    tables = cursor.fetchall()
+    
+    # Disable foreign key constraints temporarily
+    cursor.execute("PRAGMA foreign_keys = OFF")
+    
+    # Clear all tables
+    for table in tables:
+        table_name = table[0]
+        if table_name != 'sqlite_sequence':  # Don't clear sqlite's internal table
+            cursor.execute(f"DELETE FROM {table_name}")
+            print(f"Cleared table: {table_name}")
+    
+    # Reset auto-increment counters
+    cursor.execute("DELETE FROM sqlite_sequence")
+    
+    # Re-enable foreign key constraints
+    cursor.execute("PRAGMA foreign_keys = ON")
+    
+    conn.commit()
+    conn.close()
+    print("Database reset completed - all data cleared!")
+
+def initialize_fresh_database(db_file=DB_FILE):
+    """Initialize database with fresh start - clear all data then recreate tables."""
+    print("Initializing fresh database...")
+    reset_database(db_file)
+    create_tables(db_file)
+    print("Fresh database initialization completed!")
+
 if __name__ == '__main__':
     create_tables()
     print("Tables created successfully in", DB_FILE)

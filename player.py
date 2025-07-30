@@ -1,10 +1,11 @@
-from os import name
 import random
 import names  # Requires: pip install names
+from player_db import create_player, get_player, update_player, delete_player
+
+import sqlite3
 
 class FootballPlayer:
     
-
     def __init__(self, name, age, position, potential=70, wage=1000):
         """
         Initialize a football player with basic attributes.
@@ -35,6 +36,11 @@ class FootballPlayer:
         self.contract_offer = None
         self.negotiation_state = None  # e.g., "open", "accepted", "rejected"
         self.transfer_interest = False  # Willingness to move
+        
+        # Database attributes
+        self.player_id = None  # Will be set when saved to database
+        
+        # Enhanced attributes structure
         self.attributes = {
             "pace": {"acceleration": 1, "sprint_speed": 1},
             "shooting": {"finishing": 1, "shot_power": 1, "long_shots": 1},
@@ -44,6 +50,8 @@ class FootballPlayer:
             "physical": {"strength": 1, "stamina": 1, "aggression": 1},
             "goalkeeping": {"diving": 1, "handling": 1, "reflexes": 1, "positioning": 1}
         }
+        
+        # Enhanced stats with cards
         self.stats = {
             "goals": 0,
             "assists": 0,
@@ -51,13 +59,214 @@ class FootballPlayer:
             "fitness": 100,
             "clean_sheets": 0,
             "yellow_cards": 0,
-            "red_cards": 0
-       }
-       
+            "red_cards": 0,
+            "minutes_played": 0,
+            "fouls_committed": 0,
+            "fouls_suffered": 0
+        }
+        
+        # Contract and wage history
+        self.contract_history = []
+        self.peak_rating = None  # Track peak performance for decline curve
+        
+    def _generate_unique_name(self):
+        """Generate a unique player name not present in the database."""
+        db_file = "football_sim.db"
+        conn = sqlite3.connect(db_file)
+        cursor = conn.cursor()
+        while True:
+            candidate = names.get_full_name()
+            cursor.execute("SELECT 1 FROM Player WHERE name = ?", (candidate,))
+            if not cursor.fetchone():
+                conn.close()
+                return candidate
+
+    def save_to_database(self, team_id=None):
+        """Save player to database and return player_id, ensuring unique name."""
+        if self.player_id is None:
+            # Ensure unique name before saving
+            db_file = "football_sim.db"
+            conn = sqlite3.connect(db_file)
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM Player WHERE name = ?", (self.name,))
+            if cursor.fetchone():
+                # Name exists, generate a new one
+                self.name = self._generate_unique_name()
+            conn.close()
+            # Create new player
+            self.player_id = create_player(
+                name=self.name,
+                age=self.age,
+                position=self.position,
+                team_id=team_id,
+                potential=self.potential,
+                wage=self.wage,
+                contract_length=self.contract_length,
+                squad_role=self.squad_role,
+                attributes=self.attributes
+            )
+        else:
+            # Update existing player
+            update_player(
+                player_id=self.player_id,
+                name=self.name,
+                age=self.age,
+                position=self.position,
+                team_id=team_id,
+                potential=self.potential,
+                wage=self.wage,
+                contract_length=self.contract_length,
+                squad_role=self.squad_role,
+                attributes=self.attributes
+            )
+        return self.player_id
+    
+    @classmethod
+    def load_from_database(cls, player_id):
+        """Load player from database by ID"""
+        data = get_player(player_id)
+        if not data:
+            return None
+            
+        player = cls(
+            name=data["name"],
+            age=data["age"],
+            position=data["position"],
+            potential=data["potential"],
+            wage=data["wage"]
+        )
+        player.player_id = data["player_id"]
+        player.contract_length = data["contract_length"]
+        player.squad_role = data["squad_role"]
+        player.attributes = data["attributes"]
+        return player
+    
+    def apply_age_decline(self):
+        """Apply realistic age decline curve (peak at 27-29, decline after 30)"""
+        if self.age < 23:
+            # Young players still developing
+            development_factor = 1.02
+        elif 23 <= self.age <= 27:
+            # Peak years - maintain or slight improvement
+            development_factor = 1.001
+        elif 28 <= self.age <= 29:
+            # Peak maintained
+            development_factor = 1.0
+        elif 30 <= self.age <= 32:
+            # Gradual decline
+            development_factor = 0.998
+        elif 33 <= self.age <= 35:
+            # Noticeable decline
+            development_factor = 0.995
+        else:
+            # Significant decline after 35
+            development_factor = 0.99
+        
+        # Track peak rating for comparison
+        current_rating = self.get_overall_rating()
+        if self.peak_rating is None or current_rating > self.peak_rating:
+            self.peak_rating = current_rating
+        
+        # Apply decline to attributes based on age
+        for attr_type in self.attributes:
+            # Physical attributes decline faster
+            if attr_type in ["pace", "physical"]:
+                decline_factor = development_factor * 0.998 if self.age > 30 else development_factor
+            else:
+                decline_factor = development_factor
+                
+            for sub_attr in self.attributes[attr_type]:
+                old_value = self.attributes[attr_type][sub_attr]
+                new_value = max(1.0, old_value * decline_factor)
+                self.attributes[attr_type][sub_attr] = new_value
+    
+    def get_overall_rating(self):
+        """Calculate overall player rating"""
+        total = sum(sum(cat.values()) for cat in self.attributes.values())
+        count = sum(len(cat) for cat in self.attributes.values())
+        return total / count if count > 0 else 50
+    
     def update_form(self, match_rating):
         """Update player form with new match rating (0-1 scale)"""
         self.form = self.form[1:] + [max(0, min(1, match_rating))]
-        # Attribute updates removed to prevent resetting attributes
+    
+    def get_form_rating(self):
+        """Get current form as average of last 10 matches"""
+        return sum(self.form) / len(self.form) if self.form else 0.7
+    
+    def receive_card(self, card_type="yellow"):
+        """Player receives a yellow or red card"""
+        if card_type == "yellow":
+            self.stats["yellow_cards"] += 1
+            # Two yellows = red card
+            if self.stats["yellow_cards"] >= 2:
+                self.stats["red_cards"] += 1
+                return "red"  # Sent off
+        elif card_type == "red":
+            self.stats["red_cards"] += 1
+            return "red"  # Sent off
+        return card_type
+    
+    def get_suspension_games(self):
+        """Calculate suspension based on cards"""
+        # Simple suspension system
+        if self.stats["red_cards"] > 0:
+            return min(3, self.stats["red_cards"])  # 1-3 game suspension
+        elif self.stats["yellow_cards"] >= 5:
+            return 1  # 1 game suspension for 5 yellows
+        return 0
+    
+    def apply_injury(self, injury_type="minor", severity_modifier=1.0):
+        """Apply injury to player"""
+        if self.is_injured:
+            return  # Already injured
+            
+        # Injury duration based on type and severity
+        injury_durations = {
+            "minor": (1, 7),      # 1-7 days
+            "moderate": (8, 21),   # 1-3 weeks  
+            "major": (22, 60),     # 3-8 weeks
+            "severe": (61, 120)    # 2-4 months
+        }
+        
+        min_days, max_days = injury_durations.get(injury_type, (1, 7))
+        duration = random.randint(min_days, max_days)
+        duration = int(duration * severity_modifier)
+        
+        self.is_injured = True
+        self.injury_type = injury_type
+        self.recovery_time = duration
+        
+        # Add to injury history
+        self.injury_history.append({
+            "type": injury_type,
+            "duration": duration,
+            "start_age": self.age,
+            "fitness_impact": min(20, duration * 0.5)
+        })
+        
+        # Immediate fitness impact
+        fitness_loss = min(30, duration * 2)
+        self.stats["fitness"] = max(0, self.stats["fitness"] - fitness_loss)
+    
+    def recover_from_injury(self, days=1):
+        """Process injury recovery"""
+        if not self.is_injured:
+            return
+            
+        self.recovery_time = max(0, self.recovery_time - days)
+        
+        if self.recovery_time <= 0:
+            self.is_injured = False
+            self.injury_type = None
+            # Gradual fitness recovery
+            self.stats["fitness"] = min(100, self.stats["fitness"] + 10)
+    
+    def is_available_for_selection(self):
+        """Check if player is available for match selection"""
+        return (not self.is_injured and 
+                self.stats["fitness"] > 30 and 
+                self.get_suspension_games() == 0)
 
     @classmethod
     def create_player(cls, name=None, age=None, position=None, potential=None):
@@ -66,7 +275,7 @@ class FootballPlayer:
         
         Args:
             name (str, optional): Player's name, randomized if None
-            age (int, optional): Player's age, randomized between 16-20 if None
+            age (int, optional): Player's age, randomized between 16-35 if None
             position (str, optional): Player's position on the field, randomized if None
             potential (int, optional): Player's potential, randomized if None
         
@@ -79,13 +288,13 @@ class FootballPlayer:
             
         # Generate random age with realistic distribution if not provided
         if age is None:
-            # Weighted: 10% (16-19), 40% (20-25), 30% (26-30), 20% (31-35)
+            # Weighted: 15% (16-19), 40% (20-25), 30% (26-30), 15% (31-35)
             r = random.random()
-            if r < 0.10:
+            if r < 0.15:
                 age = random.randint(16, 19)
-            elif r < 0.50:
+            elif r < 0.55:
                 age = random.randint(20, 25)
-            elif r < 0.80:
+            elif r < 0.85:
                 age = random.randint(26, 30)
             else:
                 age = random.randint(31, 35)
@@ -100,25 +309,39 @@ class FootballPlayer:
             ]
             position = random.choice(positions)
             
-        # Generate random potential between 50-99 if not provided
+        # Generate random potential based on age
         if potential is None:
-            potential = random.randint(50, 99)
+            if age < 21:
+                potential = random.randint(60, 95)  # Young players higher potential
+            elif age < 25:
+                potential = random.randint(55, 90)
+            elif age < 30:
+                potential = random.randint(50, 85)
+            else:
+                potential = random.randint(45, 80)  # Older players lower potential
         
-        # Calculate base wage based on potential (500-5000 range)
-        base_wage = 500 + (potential * 45)  # Higher potential = higher wage
+        # Calculate base wage based on potential and age
+        base_wage = 500 + (potential * 50)  # Higher potential = higher wage
         
-        # Age modifier: younger players get slightly lower wages
-        age_modifier = max(0.7, age / 30)  # Scales from 0.7 at age 16 to 1.0 at age 30+
+        # Age modifier: peak years get premium wages
+        if 25 <= age <= 29:
+            age_modifier = 1.3  # Peak years premium
+        elif age < 23:
+            age_modifier = 0.8  # Young players lower wages
+        elif age > 32:
+            age_modifier = 0.9  # Older players slight discount
+        else:
+            age_modifier = 1.0
         
         # Create the player with calculated wage
         player = cls(name, age, position, potential, wage=base_wage * age_modifier)
         
         # Set attribute ranges based on position
         position_boosts = {
-            "GK": {"goalkeeping": (10, 90)},
-            "DEF": {"defending": (10, 90), "physical": (15, 85)},
-            "MID": {"passing": (10, 90), "dribbling": (15, 85)},
-            "FWD": {"shooting": (10, 90), "pace": (10, 90)}
+            "GK": {"goalkeeping": (40, 85)},
+            "DEF": {"defending": (30, 80), "physical": (35, 85)},
+            "MID": {"passing": (30, 85), "dribbling": (25, 80)},
+            "FWD": {"shooting": (30, 85), "pace": (30, 85)}
         }
         
         # Position category mapping
@@ -127,11 +350,21 @@ class FootballPlayer:
             position_category = "GK"
         elif position.upper() in ("CB", "LB", "RB", "LWB", "RWB", "SW", "DEFENDER"):
             position_category = "DEF"
-        elif position.upper() in ["ST", "CF", "LW", "RW", "STRIKER", "FORWARD"]:
+        elif position.upper() in ["ST", "CF", "LW", "RW", "SS", "STRIKER", "FORWARD"]:
             position_category = "FWD"
         
-        # Scale attribute generation based on potential
+        # Scale attribute generation based on potential and age
         potential_factor = player.potential / 99.0
+        
+        # Age factor for current ability vs potential
+        if age < 21:
+            ability_factor = 0.6  # Young players far from potential
+        elif age < 25:
+            ability_factor = 0.8  # Developing players
+        elif age < 30:
+            ability_factor = 0.95  # Peak players near potential
+        else:
+            ability_factor = 0.9  # Experienced but potentially declining
         
         # Generate random attributes based on position
         for attr_type in player.attributes:
@@ -139,28 +372,30 @@ class FootballPlayer:
             if attr_type in position_boosts.get(position_category, {}):
                 min_val, max_val = position_boosts[position_category][attr_type]
             else:
-                min_val, max_val = 40, 70  # Default range for non-specialized attributes
+                min_val, max_val = 30, 65  # Default range for non-specialized attributes
             
             # Set each sub-attribute
             for sub_attr in player.attributes[attr_type]:
-                # Add some randomness within the range, scaled by potential
+                # Add some randomness within the range, scaled by potential and age
                 base_value = random.randint(min_val, max_val)
-                variation = random.randint(-5, 5)
-                final_value = min(99, max(1, (base_value + variation) * potential_factor))
+                variation = random.randint(-8, 8)
+                
+                # Apply potential and age factors
+                final_value = (base_value + variation) * potential_factor * ability_factor
+                final_value = min(95, max(10, final_value))
                 player.attributes[attr_type][sub_attr] = round(final_value, 1)
         
-        #print(f"Created new player: {name}, {age} years, {position}")
-        #print(f"Potential: {player.potential}")
         return player
 
     def train_player(self, intensity, focus_area=None, training_days=1, coach_bonus=0):
         """
-        Improve player's attributes based on training intensity and coach influence.
+        Improved training system with realistic, slower development.
         
         Args:
             intensity (str): 'low', 'medium', or 'high'
             focus_area (str): Specific attribute to focus training on
             training_days (int): Number of days to train
+            coach_bonus (float): Coach effectiveness bonus (0-1)
         
         Returns:
             dict: Summary of training results
@@ -169,94 +404,113 @@ class FootballPlayer:
             "initial_attributes": {k: {sk: v for sk, v in sv.items()} for k, sv in self.attributes.items()},
             "training_days": training_days,
             "focused_area": focus_area,
-            "fitness_impact": 0
+            "fitness_impact": 0,
+            "improvements": []
         }
         
-        # Set improvement and fitness cost based on intensity and coach influence
+        # Much more realistic improvement rates
         if intensity == "low":
-            improvement = 0.1 + (coach_bonus * 0.05)
-            fitness_cost = max(0.5, 1.5 - coach_bonus * 0.2)  # Reduced cost
+            improvement = 0.02 + (coach_bonus * 0.01)
+            fitness_cost = max(0.3, 1.0 - coach_bonus * 0.2)
         elif intensity == "medium":
-            improvement = 0.2 + (coach_bonus * 0.08)
-            fitness_cost = max(1, 2.5 - coach_bonus * 0.3)    # Reduced cost
+            improvement = 0.04 + (coach_bonus * 0.02)
+            fitness_cost = max(0.8, 2.0 - coach_bonus * 0.3)
         elif intensity == "high":
-            improvement = 0.3 + (coach_bonus * 0.1)
-            fitness_cost = max(1.5, 4 - coach_bonus * 0.5)    # Reduced cost
+            improvement = 0.06 + (coach_bonus * 0.03)
+            fitness_cost = max(1.5, 3.5 - coach_bonus * 0.5)
         else:
             return None
         
+        # Age affects training effectiveness
+        age_factor = 1.0
+        if self.age < 21:
+            age_factor = 1.4  # Young players develop faster
+        elif self.age < 25:
+            age_factor = 1.2
+        elif self.age < 30:
+            age_factor = 1.0
+        elif self.age < 33:
+            age_factor = 0.7  # Older players develop slower
+        else:
+            age_factor = 0.4
+        
         # Apply training over multiple days
         for day in range(training_days):
-            # Skip training if player is too tired
-            if self.stats["fitness"] < 40:
+            # Skip training if player is too tired or injured
+            if self.stats["fitness"] < 20 or self.is_injured:
                 break
             
             # Apply focused improvement if specified
             if focus_area and focus_area in self.attributes:
                 for attribute in self.attributes[focus_area]:
-                    self.attributes[focus_area][attribute] += improvement * 2
+                    current_val = self.attributes[focus_area][attribute]
+                    
+                    # Harder to improve higher ratings
+                    difficulty_factor = 1.0
+                    if current_val > 80:
+                        difficulty_factor = 0.5
+                    elif current_val > 90:
+                        difficulty_factor = 0.2
+                    
+                    # Calculate improvement
+                    actual_improvement = improvement * 2 * age_factor * difficulty_factor
+                    
+                    # Don't exceed potential
+                    potential_limit = min(self.potential, 95)
+                    if current_val + actual_improvement > potential_limit:
+                        actual_improvement = max(0, potential_limit - current_val)
+                    
+                    if actual_improvement > 0:
+                        self.attributes[focus_area][attribute] += actual_improvement
+                        results["improvements"].append({
+                            "attribute": f"{focus_area}.{attribute}",
+                            "improvement": actual_improvement
+                        })
             
             # Apply small improvement to all attributes
             for attr_type in self.attributes:
-                weight = 2 if attr_type == focus_area else 0.5
+                weight = 0.5 if attr_type != focus_area else 0.2  # Reduced general improvement
                 for sub_attr in self.attributes[attr_type]:
-                    # Base improvement with coach and potential influence
-                    base_improvement = improvement * weight * 1.0  # Lowered multiplier for realism
+                    current_val = self.attributes[attr_type][sub_attr]
+                    
+                    # Difficulty factor
+                    difficulty_factor = 1.0
+                    if current_val > 80:
+                        difficulty_factor = 0.3
+                    elif current_val > 90:
+                        difficulty_factor = 0.1
+                    
+                    # Base improvement with age and potential influence
+                    base_improvement = improvement * weight * age_factor * difficulty_factor
                     potential_factor = self.potential / 100.0
-
-                    # Apply improvement with potential scaling
-                    self.attributes[attr_type][sub_attr] += base_improvement * (1 + potential_factor)
-
-                    # Random chance for bonus improvement based on potential
-                    if random.random() < 0.05 * (1 + coach_bonus/10):
-                        bonus = random.uniform(0.01, 0.03) * (1 + coach_bonus * 0.1)
-                        self.attributes[attr_type][sub_attr] += bonus
-
-                    # Track initial ratings (for potential progression system)
-                    initial_overall = sum(sum(cat.values()) for cat in self.attributes.values()) / \
-                                   (len(self.attributes) * len(next(iter(self.attributes.values()))))
-
-                    # Potential progression system (kept, but less frequent and smaller gain)
-                    if random.random() < 0.03 * (1 + coach_bonus/10):
-                        potential_gain = random.uniform(0.01, 0.05) * (improvement * 2)
-                        old_potential = self.potential
-                        self.potential = min(99, self.potential + potential_gain)
-
-                    # Cap at 99.0 and track development
-                    old_value = self.attributes[attr_type][sub_attr]
-                    new_value = min(99.0, self.attributes[attr_type][sub_attr])
-                    self.attributes[attr_type][sub_attr] = new_value
-
-                    # Update development tracking
-                    if "development" not in self.stats:
-                        self.stats["development"] = []
-                    if new_value > old_value:
-                        self.stats["development"].append({
-                            "attribute": f"{attr_type}.{sub_attr}",
-                            "from": old_value,
-                            "to": new_value,
-                            "age": self.age
-                        })
+                    
+                    actual_improvement = base_improvement * potential_factor
+                    
+                    # Random chance for bonus improvement
+                    if random.random() < 0.02 * (1 + coach_bonus):
+                        bonus = random.uniform(0.005, 0.015) * age_factor
+                        actual_improvement += bonus
+                    
+                    # Don't exceed potential
+                    potential_limit = min(self.potential, 95)
+                    if current_val + actual_improvement > potential_limit:
+                        actual_improvement = max(0, potential_limit - current_val)
+                    
+                    if actual_improvement > 0.01:  # Only apply meaningful improvements
+                        self.attributes[attr_type][sub_attr] += actual_improvement
             
             # Update fitness with age factor
-            age_factor = 1.0 if self.age < 30 else 1.2  # Older players tire faster
-            self.stats["fitness"] -= fitness_cost * age_factor
-            results["fitness_impact"] += fitness_cost * age_factor
+            age_fitness_factor = 1.0 if self.age < 30 else 1.3  # Older players tire faster
+            fitness_loss = fitness_cost * age_fitness_factor
+            self.stats["fitness"] = max(0, self.stats["fitness"] - fitness_loss)
+            results["fitness_impact"] += fitness_loss
         
         # Ensure fitness is within bounds
         self.stats["fitness"] = max(0, min(100, self.stats["fitness"]))
         
         # Complete results
-        results["final_attributes"] = {k: {sk: v for sk, v in sv.items()} for k, sv in self.attributes.items()}
+        results["final_attributes"] = {k: {sk: v for sk, sv in self.attributes.items()} for k, sv in self.attributes.items()}
         
-        # Calculate overall improvement
-        initial_avg = sum(sum(results["initial_attributes"][cat].values()) for cat in results["initial_attributes"]) / \
-                     (len(self.attributes) * len(next(iter(self.attributes.values()))))
-        final_avg = sum(sum(results["final_attributes"][cat].values()) for cat in results["final_attributes"]) / \
-                   (len(self.attributes) * len(next(iter(self.attributes.values()))))
-
-        # Debug print removed for realism
-
         return results
 
     def get_player_info(self, detail_level="basic"):
@@ -277,20 +531,28 @@ class FootballPlayer:
             "potential": self.potential,
             "wage": self.wage,
             "contract_length": self.contract_length,
-            "squad_role": self.squad_role
+            "squad_role": self.squad_role,
+            "overall_rating": self.get_overall_rating(),
+            "is_injured": self.is_injured,
+            "injury_type": self.injury_type,
+            "recovery_time": self.recovery_time,
+            "available": self.is_available_for_selection()
         }
         
         if detail_level == "basic":
             return basic_info
             
         elif detail_level == "stats":
-            return {**basic_info, "stats": self.stats}
+            return {**basic_info, "stats": self.stats, "form": self.get_form_rating()}
             
         elif detail_level == "full":
             return {
-            **basic_info,
-            "stats": self.stats,
-            "attributes": self.attributes
+                **basic_info,
+                "stats": self.stats,
+                "attributes": self.attributes,
+                "form": self.form,
+                "injury_history": self.injury_history,
+                "peak_rating": self.peak_rating
             }
         
         else:

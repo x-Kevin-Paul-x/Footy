@@ -5,6 +5,7 @@ from collections import defaultdict
 from typing import Dict, List, Tuple, Any
 from manager_profile import ManagerProfile
 from manager_brain import ManagerBrain, StateEncoder
+from manager_db import create_manager, get_manager, update_manager, delete_manager
 
 class Manager:
     def __init__(self, name=None, experience_level=None, profile=None,
@@ -79,6 +80,56 @@ class Manager:
             "defensive": list(range(30, 81, 5)),
             "pressure": list(range(30, 81, 5))
         }
+        
+        # Database attributes
+        self.manager_id = None
+        self.salary = 0.0
+
+    def save_to_database(self):
+        """Save manager to database and return manager_id"""
+        if self.manager_id is None:
+            # Create new manager
+            self.manager_id = create_manager(
+                name=self.name,
+                experience_level=self.experience_level,
+                formation=self.formation,
+                matches_played=self.matches_played,
+                wins=self.wins,
+                draws=self.draws,
+                losses=self.losses,
+                total_rewards=self.total_rewards
+            )
+        else:
+            # Update existing manager
+            update_manager(
+                manager_id=self.manager_id,
+                name=self.name,
+                experience_level=self.experience_level,
+                formation=self.formation,
+                matches_played=self.matches_played,
+                wins=self.wins,
+                draws=self.draws,
+                losses=self.losses,
+                total_rewards=self.total_rewards
+            )
+        return self.manager_id
+
+    @classmethod
+    def load_from_database(cls, manager_id):
+        """Load manager from database by ID"""
+        data = get_manager(manager_id)
+        if not data:
+            return None
+            
+        manager = cls(
+            name=data["name"],
+            experience_level=data["experience_level"]
+        )
+        manager.manager_id = data["manager_id"]
+        manager.formation = data["formation"]
+        manager.tactics = data["tactics"]
+        manager.salary = data["salary"]
+        return manager
 
     def train_players(self, perf_multiplier=1.0):
         """Train all players (senior and youth) with performance-based improvement."""
@@ -477,7 +528,11 @@ class Manager:
         # Selling actions
         for player in self.team.players:
             if len(self.team.players) > 18:  # Keep minimum squad size
-                market_value = transfer_market.calculate_player_value(player)
+                # Defensive: If transfer_market is None, use a default value
+                if transfer_market is not None:
+                    market_value = transfer_market.calculate_player_value(player)
+                else:
+                    market_value = 0
                 age = player.age
                 
                 # Consider selling if:
@@ -485,8 +540,9 @@ class Manager:
                 # 2. Position is overstaffed
                 # 3. Value is high relative to ability
                 position_group = self._get_position_group(player.position)
-                current_in_position = squad_needs["current_distribution"].get(position_group, 0)
-                ideal_in_position = squad_needs["ideal_distribution"].get(position_group, 0)
+                position_analysis = squad_needs.get("position_analysis", {})
+                current_in_position = position_analysis.get(position_group, {}).get("current", 0)
+                ideal_in_position = position_analysis.get(position_group, {}).get("ideal", 0)
                 
                 # More aggressive selling strategy
                 should_sell = False
@@ -516,7 +572,8 @@ class Manager:
             ideal_counts = {"GK": 2, "DEF": 8, "MID": 8, "FWD": 5}
 
             for pos, ideal in ideal_counts.items():
-                current = squad_needs["current_distribution"].get(pos, 0)
+                position_analysis = squad_needs.get("position_analysis", {})
+                current = position_analysis.get(pos, {}).get("current", 0)
                 if current < ideal:
                     position_needs[pos] = ideal - current
 

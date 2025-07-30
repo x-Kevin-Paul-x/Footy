@@ -11,6 +11,14 @@ class MatchEvent:
     team: str
     details: str = ""
 
+@dataclass
+class Substitution:
+    minute: int
+    team: str
+    player_out: str
+    player_in: str
+    reason: str = "tactical"
+
 class Match:
     def __init__(self, home_team, away_team):
         """
@@ -27,27 +35,39 @@ class Match:
         self.shots = [0, 0]  # [home shots, away shots]
         self.shots_on_target = [0, 0]
         self.events: List[MatchEvent] = []
+        self.substitutions: List[Substitution] = []
         self.minute = 0
         self.current_possession = "home"  # Who has the ball
         self.fatigue_factor = 0.88  # Player stamina reduction per action
         
-        # Match intensity affects player fatigue
+        # Enhanced match attributes
+        self.home_advantage = 1.1  # 10% boost for home team
         self.intensity = random.uniform(0.8, 1.2)
-        
-        # Weather conditions affect play style
         self.weather = random.choice(["sunny", "rainy", "windy", "snowy"])
+        
+        # Substitution tracking
+        self.home_substitutions_made = 0
+        self.away_substitutions_made = 0
+        self.max_substitutions = 5  # Modern football allows 5 subs
+        
+        # Cards and disciplinary
+        self.home_players_sent_off = []
+        self.away_players_sent_off = []
         
         # Initialize lineups
         self.home_lineup = []
         self.home_positions = []
+        self.home_bench = []
         self.away_lineup = []
         self.away_positions = []
+        self.away_bench = []
         
+        # Updated weather effects (more balanced)
         self.weather_effects = {
             "sunny": {"passing": 1.0, "shooting": 1.0, "dribbling": 1.0},
-            "rainy": {"passing": 0.8, "shooting": 0.9, "dribbling": 0.7},
-            "windy": {"passing": 0.7, "shooting": 0.8, "dribbling": 0.9},
-            "snowy": {"passing": 0.6, "shooting": 0.7, "dribbling": 0.6}
+            "rainy": {"passing": 0.9, "shooting": 0.95, "dribbling": 0.85},
+            "windy": {"passing": 0.85, "shooting": 0.9, "dribbling": 0.95},
+            "snowy": {"passing": 0.8, "shooting": 0.85, "dribbling": 0.8}
         }
     
     def _calculate_position_penalty(self, player, assigned_position):
@@ -92,80 +112,196 @@ class Match:
         lineup = self.home_lineup if team == self.home_team else self.away_lineup
         positions = self.home_positions if team == self.home_team else self.away_positions
         
+        # Filter out sent off players
+        sent_off = self.home_players_sent_off if team == self.home_team else self.away_players_sent_off
+        active_lineup = [p for p in lineup if p not in sent_off]
+        
         # Calculate average team rating from current player attributes
         total_rating = 0
         player_count = 0
-        for player, position in zip(lineup, positions):
+        for i, player in enumerate(lineup):
+            if player in sent_off:
+                continue  # Skip sent off players
+                
             # Calculate player's current effectiveness
             attribute_avg = sum(
                 sum(cat.values()) for cat in player.attributes.values()
             ) / sum(len(cat) for cat in player.attributes.values())
             
             # Apply position penalty
+            position = positions[i] if i < len(positions) else player.position
             position_factor = self._calculate_position_penalty(player, position)
             
             # Apply fitness factor
             fitness_factor = player.stats["fitness"] / 100
             
+            # Apply form factor
+            form_factor = player.get_form_rating()
+            
             # Calculate final player rating
-            player_rating = attribute_avg * position_factor * fitness_factor
+            player_rating = attribute_avg * position_factor * fitness_factor * form_factor
             total_rating += player_rating
             player_count += 1
         
-        team_rating = total_rating / player_count if player_count > 0 else 50
+        team_rating = total_rating / player_count if player_count > 0 else 30
+        
+        # Apply home advantage
+        if team == self.home_team:
+            team_rating *= self.home_advantage
         
         # Apply formation bonuses
         formation_bonus = {
-            "4-3-3": {"attack": 1.1, "defense": 0.9},
+            "4-3-3": {"attack": 1.1, "defense": 0.95},
             "4-4-2": {"attack": 1.0, "defense": 1.0},
-            "5-3-2": {"attack": 0.8, "defense": 1.2},
-            "3-5-2": {"attack": 1.1, "defense": 0.9}
+            "5-3-2": {"attack": 0.85, "defense": 1.15},
+            "3-5-2": {"attack": 1.05, "defense": 0.9},
+            "4-2-3-1": {"attack": 1.05, "defense": 1.05}
         }
-        
-        # Get current lineup and positions
-        if team == self.home_team:
-            formation = team.manager.formation if team.manager else "4-4-2"
-            required_positions = []
-            # Add required positions based on formation
-            required_positions.append("GK")  # Always need a goalkeeper
-            def_count = int(formation[0])
-            mid_count = int(formation[2])
-            fwd_count = int(formation[4])
-            required_positions.extend(["CB"] * def_count)
-            required_positions.extend(["CM"] * mid_count)
-            required_positions.extend(["ST"] * fwd_count)
-            
-            # Calculate average performance with position penalties
-            total_performance = 0
-            players_used = 0
-            for player, position in zip(team.players[:11], required_positions):
-                position_factor = self._calculate_position_penalty(player, position)
-                player_rating = team.get_squad_strength()  # Individual player rating
-                total_performance += player_rating * position_factor
-                players_used += 1
-            
-            # Base stats from average performance
-            stats = total_performance / players_used if players_used > 0 else team.get_squad_strength()
         
         # Manager's influence
         if team.manager:
-            formation_mod = formation_bonus.get(team.manager.formation, {"attack": 1.0, "defense": 1.0})
+            formation = team.manager.formation
+            formation_mod = formation_bonus.get(formation, {"attack": 1.0, "defense": 1.0})
             tactics = team.manager.tactics
             
             # Tactical advantage calculation
-            if tactics["offensive"] > opposition_tactics["defensive"]:
-                stats *= 1.1
-            if tactics["defensive"] < opposition_tactics["offensive"]:
-                stats *= 0.9
+            if tactics["offensive"] > opposition_tactics.get("defensive", 50):
+                team_rating *= 1.05
+            if tactics["defensive"] < opposition_tactics.get("offensive", 50):
+                team_rating *= 0.98
             
             # Formation influence
-            stats *= (formation_mod["attack"] + formation_mod["defense"]) / 2
+            team_rating *= (formation_mod["attack"] + formation_mod["defense"]) / 2
         
-        # Weather influence
+        # Weather influence (reduced impact)
         weather_mod = sum(self.weather_effects[self.weather].values()) / 3
-        stats *= weather_mod
+        team_rating *= weather_mod
         
-        return stats
+        # Penalty for being down to 10 or fewer players
+        if len(active_lineup) < 11:
+            penalty = 0.9 ** (11 - len(active_lineup))  # 10% penalty per missing player
+            team_rating *= penalty
+        
+        return team_rating
+    
+    def _calculate_card_probability(self, player, action_type, tackle_success=True):
+        """Calculate probability of receiving a card based on action and player attributes"""
+        base_prob = 0.0
+        
+        if action_type == "tackle":
+            # Higher aggression = higher card probability
+            aggression = player.attributes.get("physical", {}).get("aggression", 50)
+            base_prob = 0.02 + (aggression / 100) * 0.03
+            
+            # Failed tackles more likely to get cards
+            if not tackle_success:
+                base_prob *= 2.0
+                
+        elif action_type == "foul":
+            aggression = player.attributes.get("physical", {}).get("aggression", 50)
+            base_prob = 0.05 + (aggression / 100) * 0.05
+            
+        # Red card probability (much lower)
+        red_prob = base_prob * 0.1
+        
+        return min(0.15, base_prob), min(0.02, red_prob)
+    
+    def _attempt_substitution(self, team, minute):
+        """Attempt to make a substitution for tired or injured players"""
+        is_home = team == self.home_team
+        lineup = self.home_lineup if is_home else self.away_lineup
+        bench = self.home_bench if is_home else self.away_bench
+        subs_made = self.home_substitutions_made if is_home else self.away_substitutions_made
+        sent_off = self.home_players_sent_off if is_home else self.away_players_sent_off
+        
+        if subs_made >= self.max_substitutions or not bench:
+            return False
+            
+        # Find players who need substitution
+        candidates_out = []
+        for player in lineup:
+            if player in sent_off:
+                continue
+                
+            # Substitute if injured
+            if player.is_injured:
+                candidates_out.append((player, "injury", 1.0))
+                continue
+                
+            # Substitute if very tired
+            if player.stats["fitness"] < 30:
+                candidates_out.append((player, "fatigue", 0.8))
+                continue
+                
+            # Tactical substitution for poor form
+            if player.get_form_rating() < 0.4 and minute > 60:
+                candidates_out.append((player, "poor_form", 0.3))
+                
+        if not candidates_out:
+            return False
+            
+        # Sort by priority and pick the most urgent
+        candidates_out.sort(key=lambda x: x[2], reverse=True)
+        player_out, reason, priority = candidates_out[0]
+        
+        # Only make substitution if priority is high enough or it's late in game
+        if priority < 0.6 and minute < 70:
+            return False
+        
+        # Find best replacement from bench
+        best_sub = None
+        best_rating = 0
+        
+        for sub_player in bench:
+            if not sub_player.is_available_for_selection():
+                continue
+                
+            # Calculate sub player rating for the position
+            sub_rating = sub_player.get_overall_rating()
+            position_factor = self._calculate_position_penalty(sub_player, player_out.position)
+            fitness_factor = sub_player.stats["fitness"] / 100
+            
+            total_rating = sub_rating * position_factor * fitness_factor
+            
+            if total_rating > best_rating:
+                best_rating = total_rating
+                best_sub = sub_player
+        
+        if best_sub:
+            # Make the substitution
+            substitution = Substitution(
+                minute=minute,
+                team="home" if is_home else "away",
+                player_out=player_out.name,
+                player_in=best_sub.name,
+                reason=reason
+            )
+            self.substitutions.append(substitution)
+            
+            # Update lineups
+            lineup_index = lineup.index(player_out)
+            lineup[lineup_index] = best_sub
+            bench.remove(best_sub)
+            bench.append(player_out)
+            
+            # Update substitution count
+            if is_home:
+                self.home_substitutions_made += 1
+            else:
+                self.away_substitutions_made += 1
+                
+            # Add event
+            self.events.append(MatchEvent(
+                minute,
+                "substitution",
+                best_sub.name,
+                "home" if is_home else "away",
+                f"{player_out.name} replaced by {best_sub.name} ({reason})"
+            ))
+            
+            return True
+            
+        return False
     
     def _calculate_action_success(self, attacking_team, defending_team, action_type):
         """Calculate probability of successful action."""
@@ -176,13 +312,19 @@ class Match:
             
         # Get relevant player for the action
         if action_type == "shot":
-            attackers = [p for p in attacking_team.players if p.position in ["ST", "CF", "SS", "RW", "LW"]]
+            attacking_lineup = self.home_lineup if attacking_team == self.home_team else self.away_lineup
+            defending_lineup = self.home_lineup if defending_team == self.home_team else self.away_lineup
+            
+            sent_off_att = self.home_players_sent_off if attacking_team == self.home_team else self.away_players_sent_off
+            sent_off_def = self.home_players_sent_off if defending_team == self.home_team else self.away_players_sent_off
+            
+            attackers = [p for p in attacking_lineup if p.position in ["ST", "CF", "SS", "RW", "LW"] and p not in sent_off_att]
             if not attackers:
                 return False
             attacker = random.choice(attackers)
             
             # Goalkeeper save chance
-            defenders = [p for p in defending_team.players if p.position == "GK"]
+            defenders = [p for p in defending_lineup if p.position == "GK" and p not in sent_off_def]
             if not defenders:
                 return True
             goalkeeper = defenders[0]
@@ -191,12 +333,13 @@ class Match:
             finishing = attacker.attributes["shooting"]["finishing"]
             goalkeeper_skill = sum(goalkeeper.attributes["goalkeeping"].values()) / 4
             
-            # Consider fatigue
+            # Consider fatigue and form
             stamina_factor = attacker.stats["fitness"] / 100
+            form_factor = attacker.get_form_rating()
             
             # Calculate shot success probability
-            shot_rating = (shot_power + finishing) / 2 * stamina_factor * 2  # Double the base chance
-            save_rating = goalkeeper_skill * (goalkeeper.stats["fitness"] / 100)
+            shot_rating = (shot_power + finishing) / 2 * stamina_factor * form_factor
+            save_rating = goalkeeper_skill * (goalkeeper.stats["fitness"] / 100) * goalkeeper.get_form_rating()
             
             # Weather impact on shooting
             weather_mod = self.weather_effects[self.weather]["shooting"]
@@ -207,102 +350,188 @@ class Match:
             shot_rating *= shot_position_mod
             
             # Final probability calculation
-            success_chance = (shot_rating - save_rating + 100) / 200  # Normalize to 0-1 range
+            success_chance = (shot_rating - save_rating + 50) / 150  # Normalized to 0-1 range
             return random.random() < success_chance
             
         elif action_type == "pass":
-            base_chance = 0.7  # Base 70% pass success rate
-            passing_team = attacking_team.players
-            defending_team = defending_team.players
+            base_chance = 0.75  # Base 75% pass success rate
+            
+            attacking_lineup = self.home_lineup if attacking_team == self.home_team else self.away_lineup
+            defending_lineup = self.home_lineup if defending_team == self.home_team else self.away_lineup
+            
+            sent_off_att = self.home_players_sent_off if attacking_team == self.home_team else self.away_players_sent_off
+            sent_off_def = self.home_players_sent_off if defending_team == self.home_team else self.away_players_sent_off
+            
+            active_attackers = [p for p in attacking_lineup if p not in sent_off_att]
+            active_defenders = [p for p in defending_lineup if p not in sent_off_def]
+            
+            if not active_attackers or not active_defenders:
+                return base_chance > 0.5
             
             # Team passing ability vs opposition pressing
-            pass_skill = sum(p.attributes["passing"]["vision"] for p in passing_team) / len(passing_team)
-            defense_pressure = sum(p.attributes["defending"]["marking"] for p in defending_team) / len(defending_team)
+            pass_skill = sum(p.attributes["passing"]["vision"] for p in active_attackers) / len(active_attackers)
+            defense_pressure = sum(p.attributes["defending"]["marking"] for p in active_defenders) / len(active_defenders)
             
             # Weather effect
             weather_mod = self.weather_effects[self.weather]["passing"]
             
-            final_chance = base_chance * (pass_skill / defense_pressure) * weather_mod
-            return random.random() < final_chance
+            final_chance = base_chance * (pass_skill / max(1, defense_pressure)) * weather_mod
+            return random.random() < min(0.95, final_chance)
             
-        elif action_type == "dribble":
-            dribblers = [p for p in attacking_team.players if p.position not in ["GK", "CB"]]
-            if not dribblers:
+        elif action_type == "tackle":
+            attacking_lineup = self.home_lineup if attacking_team == self.home_team else self.away_lineup
+            defending_lineup = self.home_lineup if defending_team == self.home_team else self.away_lineup
+            
+            sent_off_att = self.home_players_sent_off if attacking_team == self.home_team else self.away_players_sent_off
+            sent_off_def = self.home_players_sent_off if defending_team == self.home_team else self.away_players_sent_off
+            
+            active_attackers = [p for p in attacking_lineup if p not in sent_off_att]
+            active_defenders = [p for p in defending_lineup if p not in sent_off_def]
+            
+            if not active_attackers or not active_defenders:
                 return False
-            dribbler = random.choice(dribblers)
+                
+            attacker = random.choice(active_attackers)
+            defender = random.choice(active_defenders)
             
-            dribble_skill = (dribbler.attributes["dribbling"]["ball_control"] + 
-                           dribbler.attributes["dribbling"]["agility"]) / 2
-            stamina_factor = dribbler.stats["fitness"] / 100
-            weather_mod = self.weather_effects[self.weather]["dribbling"]
+            dribble_skill = (attacker.attributes["dribbling"]["ball_control"] + 
+                           attacker.attributes["dribbling"]["agility"]) / 2
+            tackle_skill = (defender.attributes["defending"]["standing_tackle"] + 
+                          defender.attributes["defending"]["sliding_tackle"]) / 2
             
-            return random.random() < (dribble_skill * stamina_factor * weather_mod / 100)
+            # Fitness and form factors
+            att_condition = (attacker.stats["fitness"] / 100) * attacker.get_form_rating()
+            def_condition = (defender.stats["fitness"] / 100) * defender.get_form_rating()
+            
+            success_chance = tackle_skill * def_condition / (dribble_skill * att_condition + tackle_skill * def_condition)
+            
+            # Check for cards if tackle fails
+            tackle_success = random.random() < success_chance
+            if not tackle_success:
+                yellow_prob, red_prob = self._calculate_card_probability(defender, "tackle", False)
+                
+                if random.random() < red_prob:
+                    card_result = defender.receive_card("red")
+                    if card_result == "red":
+                        self._send_off_player(defender, defending_team)
+                        self.events.append(MatchEvent(
+                            self.minute, "red_card", defender.name,
+                            "home" if defending_team == self.home_team else "away",
+                            f"{defender.name} receives a red card for a dangerous tackle!"
+                        ))
+                elif random.random() < yellow_prob:
+                    card_result = defender.receive_card("yellow")
+                    self.events.append(MatchEvent(
+                        self.minute, "yellow_card", defender.name,
+                        "home" if defending_team == self.home_team else "away",
+                        f"{defender.name} receives a yellow card"
+                    ))
+                    if card_result == "red":  # Second yellow
+                        self._send_off_player(defender, defending_team)
+                        self.events.append(MatchEvent(
+                            self.minute, "red_card", defender.name,
+                            "home" if defending_team == self.home_team else "away",
+                            f"{defender.name} sent off for second yellow card!"
+                        ))
+            
+            return tackle_success
+            
+        return False
+    
+    def _send_off_player(self, player, team):
+        """Send off a player (red card)"""
+        if team == self.home_team:
+            if player not in self.home_players_sent_off:
+                self.home_players_sent_off.append(player)
+        else:
+            if player not in self.away_players_sent_off:
+                self.away_players_sent_off.append(player)
     
     def _update_player_stats(self, player, action_type, success):
         """Update player statistics based on match actions."""
-        # Fatigue calculation
+        # Fatigue calculation (reduced for realism)
         energy_cost = {
-            "shot": 2,
-            "pass": 1,
-            "dribble": 1.5,
-            "tackle": 2,
-            "sprint": 2.5
+            "shot": 1.5,
+            "pass": 0.5,
+            "dribble": 1.0,
+            "tackle": 1.5,
+            "sprint": 2.0
         }
         
         # Apply fatigue
-        base_cost = energy_cost.get(action_type, 1)
-        intensity_cost = base_cost * self.intensity
+        base_cost = energy_cost.get(action_type, 0.8)
+        intensity_cost = base_cost * self.intensity * 0.5  # Reduced fatigue
         player.stats["fitness"] = max(0, player.stats["fitness"] - intensity_cost)
         
         # Update other stats based on action success
         if action_type == "shot" and success:
             player.stats["goals"] += 1
         elif action_type == "tackle":
-            if not success and random.random() < 0.3:  # 30% chance of yellow card on failed tackle
-                player.stats["yellow_cards"] += 1
-    
+            if not success:
+                player.stats["fouls_committed"] += 1
+
     def _maybe_injure_player(self, player):
-        """Randomly injure a player based on fatigue and randomness."""
+        """Randomly injure a player based on fatigue, age, and match intensity."""
         if player.is_injured:
             return
-        # Injury probability increases with low fitness (further reduced rates)
-        base_chance = 0.0001  # Even lower baseline
-        fatigue_factor = max(0, (100 - player.stats["fitness"]) / 100)
-        injury_chance = base_chance + 0.0007 * fatigue_factor  # Lower multiplier
-        if random.random() < injury_chance:
+            
+        # Much more realistic injury rates
+        base_chance = 0.00005  # Very low base chance per minute
+        
+        # Risk factors
+        fatigue_factor = max(0, (100 - player.stats["fitness"]) / 200)  # 0-0.5
+        age_factor = max(0, (player.age - 25) / 50) if player.age > 25 else 0  # 0-0.2
+        intensity_factor = (self.intensity - 0.8) / 0.8  # 0-0.5
+        
+        # Physical position players slightly higher risk
+        position_factor = 1.2 if player.position in ["CB", "CDM", "ST"] else 1.0
+        
+        total_chance = base_chance * (1 + fatigue_factor + age_factor + intensity_factor) * position_factor
+        
+        if random.random() < total_chance:
             # Determine injury severity
-            roll = random.random()
-            if roll < 0.6:
+            severity_roll = random.random()
+            if severity_roll < 0.7:
                 injury_type = "minor"
-                recovery = random.randint(2, 7)  # days
-            elif roll < 0.9:
+            elif severity_roll < 0.9:
                 injury_type = "moderate"
-                recovery = random.randint(8, 21)
+            elif severity_roll < 0.98:
+                injury_type = "major"
             else:
                 injury_type = "severe"
-                recovery = random.randint(22, 60)
-            player.is_injured = True
-            player.injury_type = injury_type
-            player.recovery_time = recovery
-            player.injury_history.append({
-                "type": injury_type,
-                "duration": recovery,
-                "start_age": player.age
-            })
+                
+            player.apply_injury(injury_type)
+            
             self.events.append(MatchEvent(
                 self.minute,
                 "injury",
                 player.name,
-                "home" if player in self.home_team.players else "away",
-                f"{player.name} suffers a {injury_type} injury (out {recovery} days)"
+                "home" if player in self.home_lineup else "away",
+                f"{player.name} suffers a {injury_type} injury and may need to be substituted"
             ))
 
     def simulate_minute(self):
-        """Simulate one minute of the match."""
-        # Determine action type
+        """Simulate one minute of the match with enhanced realism."""
+        # Determine action type based on possession and game state
+        action_weights = [0.25, 0.55, 0.2]  # [attack, midfield, defense]
+        
+        # Adjust weights based on score and time
+        if self.minute > 75:
+            goal_diff = self.score[0] - self.score[1]
+            if self.current_possession == "home":
+                if goal_diff < 0:  # Home team behind, more attacking
+                    action_weights = [0.4, 0.45, 0.15]
+                elif goal_diff > 1:  # Home team well ahead, more defensive
+                    action_weights = [0.15, 0.45, 0.4]
+            else:  # Away possession
+                if goal_diff > 0:  # Away team behind, more attacking
+                    action_weights = [0.4, 0.45, 0.15]
+                elif goal_diff < -1:  # Away team well ahead, more defensive
+                    action_weights = [0.15, 0.45, 0.4]
+        
         action = random.choices(
             ["attack", "midfield", "defense"],
-            weights=[0.3, 0.5, 0.2]
+            weights=action_weights
         )[0]
         
         if self.current_possession == "home":
@@ -323,25 +552,33 @@ class Match:
                     self.score[score_idx] += 1
                     self.shots_on_target[score_idx] += 1
                     
-                    # Find scorer
-                    # Find potential passers and shooters
-                    passers = [p for p in attacking_team.players if p.position in ["CM", "CAM", "LM", "RM", "LW", "RW"]]
-                    scorers = [p for p in attacking_team.players if p.position in ["ST", "CF", "SS"]]
+                    # Find scorer and assister
+                    attacking_lineup = self.home_lineup if attacking_team == self.home_team else self.away_lineup
+                    sent_off = self.home_players_sent_off if attacking_team == self.home_team else self.away_players_sent_off
                     
-                    if passers and scorers:
-                        passer = random.choice(passers)
-                        scorer = random.choice(scorers)
-                        
-                        # Update goal for scorer
+                    active_players = [p for p in attacking_lineup if p not in sent_off]
+                    
+                    forwards = [p for p in active_players if p.position in ["ST", "CF", "SS"]]
+                    midfielders = [p for p in active_players if p.position in ["CM", "CAM", "LM", "RM", "LW", "RW"]]
+                    
+                    if forwards:
+                        scorer = random.choice(forwards)
+                    elif midfielders:
+                        scorer = random.choice(midfielders)
+                    else:
+                        scorer = random.choice(active_players) if active_players else None
+                    
+                    if scorer:
                         scorer.stats["goals"] += 1
                         
-                        # Update assist for passer
-                        passer.stats["assists"] += 1
-                        
-                        # Create event description
-                        event_details = f"Goal! {scorer.name} scores!"
-                        if passer != scorer:
-                            event_details += f" Assisted by {passer.name}."
+                        # Potential assist
+                        potential_assisters = [p for p in active_players if p != scorer]
+                        if potential_assisters and random.random() < 0.6:
+                            assister = random.choice(potential_assisters)
+                            assister.stats["assists"] += 1
+                            event_details = f"Goal! {scorer.name} scores! Assisted by {assister.name}."
+                        else:
+                            event_details = f"Goal! {scorer.name} scores!"
                         
                         self.events.append(MatchEvent(
                             self.minute,
@@ -350,34 +587,28 @@ class Match:
                             "home" if attacking_team == self.home_team else "away",
                             event_details
                         ))
-                    elif scorers:
-                        # If no passers but have scorers
-                        scorer = random.choice(scorers)
-                        scorer.stats["goals"] += 1
-                        self.events.append(MatchEvent(
-                            self.minute,
-                            "goal",
-                            scorer.name,
-                            "home" if attacking_team == self.home_team else "away",
-                            f"Goal! {scorer.name} scores!"
-                        ))
-            
-            # Switch possession with 60% probability
-            if random.random() < 0.6:
+                
+                # Switch possession after attack
+                if random.random() < 0.65:
+                    self.current_possession = "away" if self.current_possession == "home" else "home"
+            else:
+                # Failed attack, possession changes
                 self.current_possession = "away" if self.current_possession == "home" else "home"
                 
         elif action == "midfield":
             # Midfield battle
             if self._calculate_action_success(attacking_team, defending_team, "pass"):
                 # Successful buildup
-                if self._calculate_action_success(attacking_team, defending_team, "dribble"):
-                    # Created advantage
-                    pass
-                else:
-                    # Lost possession
+                if random.random() < 0.3:  # 30% chance to lose possession anyway
                     self.current_possession = "away" if self.current_possession == "home" else "home"
             else:
                 # Lost possession
+                self.current_possession = "away" if self.current_possession == "home" else "home"
+                
+        elif action == "defense":
+            # Defensive action - attempt to win ball back
+            if self._calculate_action_success(defending_team, attacking_team, "tackle"):
+                # Successful tackle, defending team gets possession
                 self.current_possession = "away" if self.current_possession == "home" else "home"
         
         # Update possession stats
@@ -386,84 +617,36 @@ class Match:
         else:
             self.possession[1] += 1
         
-        # Update player fatigue and development
+        # Update player fatigue and apply age decline
         for team in [self.home_team, self.away_team]:
-            for player in team.players:
-                # Calculate match intensity impact (reduced fatigue)
-                fatigue = random.uniform(0.03, 0.08) * self.intensity  # Less fatigue per minute
+            lineup = self.home_lineup if team == self.home_team else self.away_lineup
+            for player in lineup:
+                # Reduced fatigue per minute for realism
+                fatigue = random.uniform(0.02, 0.05) * self.intensity
                 player.stats["fitness"] = max(0, player.stats["fitness"] - fatigue)
 
-                # Injury check (only for players on the pitch)
-                if player in self.home_lineup or player in self.away_lineup:
-                    self._maybe_injure_player(player)
+                # Injury check (only for active players)
+                self._maybe_injure_player(player)
                 
-                # Development from match experience
-                if player in self.home_lineup or player in self.away_lineup:
-                    # Calculate development chance based on age
-                    development_chance = 0.15 if player.age < 21 else \
-                                       0.10 if player.age < 23 else \
-                                       0.05 if player.age < 27 else \
-                                       0.02  # Very small chance for older players
-                    
-                    # Development bonus decreases with age
-                    development_bonus = 1.2 if player.age < 21 else \
-                                      1.0 if player.age < 23 else \
-                                      0.8 if player.age < 27 else \
-                                      0.5
-                    
-                    # Apply development based on match experience
-                    if random.random() < development_chance:
-                        # Choose random attribute category to improve
-                        category = random.choice(list(player.attributes.keys()))
-                        for attr in player.attributes[category]:
-                            # Smaller base improvement values
-                            improvement = random.uniform(0.01, 0.05) * development_bonus * (player.potential / 100)
-                            current_value = player.attributes[category][attr]
-                            
-                            # Harder to improve as rating gets higher
-                            if current_value > 80:
-                                improvement *= 0.5
-                            elif current_value > 90:
-                                improvement *= 0.25
-                            
-                            # Apply improvement with cap
-                            player.attributes[category][attr] = min(95.0, current_value + improvement)
-                            
-                            if improvement > 0.2:  # Only show significant improvements
-                                self.events.append(MatchEvent(
-                                    self.minute,
-                                    "development",
-                                    player.name,
-                                    "home" if team == self.home_team else "away",
-                                    f"{player.name} shows improvement in {attr}"
-                                ))
-                
-                # Fatigue events
-                if player.stats["fitness"] < 20 and random.random() < 0.3:
-                    self.events.append(MatchEvent(
-                        self.minute,
-                        "fatigue",
-                        player.name,
-                        "home" if team == self.home_team else "away",
-                        f"{player.name} is showing signs of fatigue"
-                    ))
+                # Apply age decline (very gradually during matches)
+                if random.random() < 0.001:  # Very rare during individual matches
+                    player.apply_age_decline()
+        
+        # Attempt substitutions for both teams
+        if self.minute > 45 and random.random() < 0.1:  # 10% chance per minute after halftime
+            self._attempt_substitution(self.home_team, self.minute)
+            self._attempt_substitution(self.away_team, self.minute)
         
         self.minute += 1
     
     def play_match(self):
         """
-        Simulate the entire match.
+        Simulate the entire match with enhanced features.
         
         Returns:
             dict: Match statistics and events
         """
-        # Debug: Print available players before lineup selection
-        for team, label in [(self.home_team, "Home"), (self.away_team, "Away")]:
-            total = len(team.players)
-            healthy = [p for p in team.players if not getattr(p, "is_injured", False) and p.stats.get("fitness", 100) > 30]
-            # print(f"{label} team {team.name}: {total} total, {len(healthy)} healthy/fit players")
-
-        # Select lineups using Q-learning managers
+        # Select lineups using improved selection
         if self.home_team.manager:
             self.home_lineup, self.home_positions = self.home_team.manager.select_lineup(
                 self.home_team.players,
@@ -480,52 +663,75 @@ class Match:
         else:
             self.away_lineup, self.away_positions = self._select_default_lineup(self.away_team)
 
-        # Validate and adjust lineups if needed
+        # Create bench (remaining players)
+        self.home_bench = [p for p in self.home_team.players if p not in self.home_lineup and p.is_available_for_selection()]
+        self.away_bench = [p for p in self.away_team.players if p not in self.away_lineup and p.is_available_for_selection()]
+
+        # Validate lineups
         self.home_lineup, self.home_positions = self._validate_lineup(self.home_lineup, self.home_positions, self.home_team)
         self.away_lineup, self.away_positions = self._validate_lineup(self.away_lineup, self.away_positions, self.away_team)
         
-        # Simulate match
-        for _ in range(90):  # 90 minutes
+        # Simulate 90 minutes + injury time
+        injury_time = random.randint(1, 5)
+        total_minutes = 90 + injury_time
+        
+        for minute in range(total_minutes):
             self.simulate_minute()
             
-            # Print significant events in debug mode
-            if self.events and self.events[-1].minute == self.minute:
-                event = self.events[-1]
-                if hasattr(self.home_team.manager, '_debug') and self.home_team.manager._debug:
-                    if event.type == "goal":
-                        print(f"\n{event.minute}' - GOAL! {self.home_team.name} {self.score[0]}-{self.score[1]} {self.away_team.name}")
-                    elif event.type == "fatigue" and event.minute % 15 == 0:
-                        print(f"\n{event.minute}' - {event.details}")
-            
-            # Print match updates every 15 minutes in debug mode
-            if self.minute % 15 == 0 and hasattr(self.home_team.manager, '_debug') and self.home_team.manager._debug:
-                print(f"\n{self.minute}' Match Update:")
-                print(f"{self.home_team.name} {self.score[0]}-{self.score[1]} {self.away_team.name}")
-                print(f"Possession: {self.possession[0]/self.minute*100:.1f}% - {self.possession[1]/self.minute*100:.1f}%")
-                print(f"Shots (On Target): {self.shots[0]} ({self.shots_on_target[0]}) - {self.shots[1]} ({self.shots_on_target[1]})")
-        
-        # Increment appearance for starting players
+        # Update player appearances and minutes
         for player in self.home_lineup:
             player.stats["appearances"] += 1
+            player.stats["minutes_played"] += total_minutes
         for player in self.away_lineup:
             player.stats["appearances"] += 1
+            player.stats["minutes_played"] += total_minutes
             
-        # Match summary
+        # Post-match fitness recovery
+        for team in [self.home_team, self.away_team]:
+            for player in team.players:
+                # Recovery based on whether they played
+                if player in self.home_lineup or player in self.away_lineup:
+                    recovery = random.randint(20, 40)  # Starters recover less
+                else:
+                    recovery = random.randint(40, 60)  # Bench players recover more
+                
+                player.stats["fitness"] = min(100, player.stats["fitness"] + recovery)
+                
+                # Process injury recovery
+                player.recover_from_injury(1)
+        
+        # Calculate match ratings for form updates
+        for player in self.home_lineup + self.away_lineup:
+            # Base rating influenced by team performance and individual contributions
+            team_performance = 0.7 if (player in self.home_lineup and self.score[0] >= self.score[1]) or \
+                                   (player in self.away_lineup and self.score[1] >= self.score[0]) else 0.4
+            
+            individual_performance = random.uniform(0.3, 0.9)
+            fitness_factor = player.stats["fitness"] / 100
+            
+            match_rating = (team_performance + individual_performance) * fitness_factor
+            player.update_form(match_rating)
+        
+        # Enhanced match summary
         summary = {
             "score": self.score,
-            "possession": [p/90*100 for p in self.possession],  # Convert to percentage
+            "possession": [p/total_minutes*100 for p in self.possession],
             "shots": self.shots,
             "shots_on_target": self.shots_on_target,
             "weather": self.weather,
-            "events": self.events
+            "events": self.events,
+            "substitutions": self.substitutions,
+            "cards": {
+                "home_yellows": sum(p.stats["yellow_cards"] for p in self.home_lineup),
+                "away_yellows": sum(p.stats["yellow_cards"] for p in self.away_lineup),
+                "home_reds": sum(p.stats["red_cards"] for p in self.home_lineup),
+                "away_reds": sum(p.stats["red_cards"] for p in self.away_lineup)
+            },
+            "injuries": len([e for e in self.events if e.type == "injury"]),
+            "total_minutes": total_minutes
         }
         
-        #print("\nFull Time Summary:")
-        ##print(f"Score: {self.home_team.name} {self.score[0]} - {self.score[1]} {self.away_team.name}")
-        #print(f"Possession: {summary['possession'][0]:.1f}% - {summary['possession'][1]:.1f}%")
-        #print(f"Shots (On Target): {self.shots[0]} ({self.shots_on_target[0]}) - {self.shots[1]} ({self.shots_on_target[1]})")
-        
-        # Provide detailed feedback to managers for learning
+        # Provide enhanced feedback to managers for learning
         if self.home_team.manager:
             home_result = {
                 "winner": self.score[0] > self.score[1],
@@ -535,6 +741,9 @@ class Match:
                 "possession": self.possession[0],
                 "shots": self.shots[0],
                 "shots_on_target": self.shots_on_target[0],
+                "cards": summary["cards"]["home_yellows"] + summary["cards"]["home_reds"],
+                "injuries": len([e for e in self.events if e.type == "injury" and e.team == "home"]),
+                "substitutions_used": self.home_substitutions_made,
                 "youth_minutes": self._calculate_youth_minutes(self.home_lineup),
                 "player_development": self._calculate_player_development(self.home_lineup),
                 "tactical_success": self._calculate_tactical_success(self.home_team, self.away_team),
@@ -551,6 +760,9 @@ class Match:
                 "possession": self.possession[1],
                 "shots": self.shots[1],
                 "shots_on_target": self.shots_on_target[1],
+                "cards": summary["cards"]["away_yellows"] + summary["cards"]["away_reds"],
+                "injuries": len([e for e in self.events if e.type == "injury" and e.team == "away"]),
+                "substitutions_used": self.away_substitutions_made,
                 "youth_minutes": self._calculate_youth_minutes(self.away_lineup),
                 "player_development": self._calculate_player_development(self.away_lineup),
                 "tactical_success": self._calculate_tactical_success(self.away_team, self.home_team),
@@ -558,26 +770,11 @@ class Match:
             }
             self.away_team.manager.learn_from_match(away_result)
         
-        # Update player appearances for the starting lineups
-        for player in self.home_lineup:
-            player.stats["appearances"] += 1
-        for player in self.away_lineup:
-            player.stats["appearances"] += 1
-            
-        # Reset player fitness by 50% after match
-        for team in [self.home_team, self.away_team]:
-            for player in team.players:
-                player.stats["fitness"] = min(100, player.stats["fitness"] + 50)
-        
         return summary
 
     def _calculate_youth_minutes(self, lineup: List[Any]) -> float:
         """Calculate total minutes played by youth players (under 23)."""
-        youth_minutes = 0
-        for player in lineup:
-            if player.age < 23:
-                youth_minutes += 90  # Assume full match for simplicity
-        return youth_minutes
+        return sum(90 for player in lineup if player.age < 23)
 
     def _calculate_player_development(self, lineup: List[Any]) -> float:
         """Calculate average development potential for squad."""
@@ -586,8 +783,7 @@ class Match:
         
         total_potential = 0
         for player in lineup:
-            current = sum(sum(cat.values()) for cat in player.attributes.values()) / \
-                     (len(player.attributes) * len(next(iter(player.attributes.values()))))
+            current = player.get_overall_rating()
             potential = player.potential
             room_for_growth = (potential - current) / potential if potential > 0 else 0
             total_potential += room_for_growth
@@ -608,14 +804,13 @@ class Match:
         pressure_success = team_tactics["pressure"] / max(1, opp_tactics["pressure"])
         
         # Weight and normalize the success rates
-        return (offensive_success + defensive_success + pressure_success) / 6  # Normalized to 0-1
+        return (offensive_success + defensive_success + pressure_success) / 6
 
     def _calculate_formation_effectiveness(self, team: Any) -> float:
         """Calculate how well the formation worked with available players."""
         if not team.manager:
             return 0.5
             
-        formation = team.manager.formation
         lineup = self.home_lineup if team == self.home_team else self.away_lineup
         positions = self.home_positions if team == self.home_team else self.away_positions
         
@@ -628,11 +823,17 @@ class Match:
         return total_suitability / len(lineup) if lineup else 0
 
     def _select_default_lineup(self, team: Any) -> Tuple[List[Any], List[str]]:
-        """Select a default lineup when no manager is present."""
-        goalkeepers = [p for p in team.players if p.position == "GK"]
-        defenders = [p for p in team.players if p.position in ["CB", "LB", "RB", "SW", "LWB", "RWB"]]
-        midfielders = [p for p in team.players if p.position in ["CM", "CDM", "CAM", "LM", "RM", "DM"]]
-        forwards = [p for p in team.players if p.position in ["ST", "CF", "SS", "LW", "RW"]]
+        """Select a default lineup when no manager is present, considering injuries and fitness."""
+        available_players = [p for p in team.players if p.is_available_for_selection()]
+        
+        goalkeepers = [p for p in available_players if p.position == "GK"]
+        defenders = [p for p in available_players if p.position in ["CB", "LB", "RB", "SW", "LWB", "RWB"]]
+        midfielders = [p for p in available_players if p.position in ["CM", "CDM", "CAM", "LM", "RM", "DM"]]
+        forwards = [p for p in available_players if p.position in ["ST", "CF", "SS", "LW", "RW"]]
+        
+        # Sort by overall rating and fitness
+        for group in [goalkeepers, defenders, midfielders, forwards]:
+            group.sort(key=lambda p: p.get_overall_rating() * (p.stats["fitness"]/100), reverse=True)
         
         lineup = []
         positions = []
@@ -643,34 +844,64 @@ class Match:
             positions.append("GK")
         
         # Add 4 defenders
-        lineup.extend(defenders[:4])
-        positions.extend(["CB", "CB", "LB", "RB"][:len(defenders[:4])])
+        needed_defenders = min(4, len(defenders))
+        lineup.extend(defenders[:needed_defenders])
+        def_positions = ["CB", "CB", "LB", "RB"][:needed_defenders]
+        positions.extend(def_positions)
         
         # Add 4 midfielders
-        lineup.extend(midfielders[:4])
-        positions.extend(["CM", "CM", "LM", "RM"][:len(midfielders[:4])])
+        needed_midfielders = min(4, len(midfielders))
+        lineup.extend(midfielders[:needed_midfielders])
+        mid_positions = ["CM", "CM", "LM", "RM"][:needed_midfielders]
+        positions.extend(mid_positions)
         
         # Add 2 forwards
-        lineup.extend(forwards[:2])
-        positions.extend(["ST", "ST"][:len(forwards[:2])])
+        needed_forwards = min(2, len(forwards))
+        lineup.extend(forwards[:needed_forwards])
+        fwd_positions = ["ST", "ST"][:needed_forwards]
+        positions.extend(fwd_positions)
         
         return lineup[:11], positions[:11]
 
     def _validate_lineup(self, lineup: List[Any], positions: List[str], team: Any) -> Tuple[List[Any], List[str]]:
-        """Ensure lineup meets minimum requirements."""
+        """Ensure lineup meets minimum requirements and all players are available."""
+        # Filter out unavailable players
+        available_lineup = []
+        available_positions = []
+        
+        for player, position in zip(lineup, positions):
+            if player.is_available_for_selection():
+                available_lineup.append(player)
+                available_positions.append(position)
+        
         # Must have at least 1 goalkeeper
-        gk_count = sum(1 for pos in positions if pos == "GK")
+        gk_count = sum(1 for pos in available_positions if pos == "GK")
         if gk_count < 1:
-            goalkeepers = [p for p in team.players if p.position == "GK"]
-            if goalkeepers:
-                lineup.insert(0, goalkeepers[0])
-                positions.insert(0, "GK")
+            available_gks = [p for p in team.players if p.position == "GK" and p.is_available_for_selection()]
+            if available_gks:
+                # Replace a non-GK with a GK
+                if available_lineup:
+                    available_lineup[0] = available_gks[0]
+                    available_positions[0] = "GK"
+                else:
+                    available_lineup.append(available_gks[0])
+                    available_positions.append("GK")
                 
-        # Ensure exactly 11 players
-        if len(lineup) > 11:
-            lineup = lineup[:11]
-            positions = positions[:11]
-        elif len(lineup) < 7:  # Absolute minimum players
-            raise ValueError("Insufficient players to form lineup")
+        # Ensure exactly 11 players (or as many as available)
+        if len(available_lineup) > 11:
+            available_lineup = available_lineup[:11]
+            available_positions = available_positions[:11]
+        elif len(available_lineup) < 7:  # FIFA minimum
+            # Try to fill with any available players
+            remaining_players = [p for p in team.players 
+                               if p not in available_lineup and p.is_available_for_selection()]
+            for player in remaining_players:
+                if len(available_lineup) >= 11:
+                    break
+                available_lineup.append(player)
+                available_positions.append(player.position)
             
-        return lineup, positions
+            if len(available_lineup) < 7:
+                raise ValueError(f"Insufficient players available for {team.name}: only {len(available_lineup)} available")
+                
+        return available_lineup, available_positions
