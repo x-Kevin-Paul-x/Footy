@@ -4,7 +4,6 @@ import ErrorBoundary from './components/ErrorBoundary';
 import Toast from './components/Toast';
 import Dashboard from './components/Dashboard.tsx';
 import LeagueOverview from './components/LeagueOverview.tsx';
-import TeamDetails from './components/TeamDetails.tsx';
 import PlayerProfiles from './components/PlayerProfiles.tsx'; // Keep for general list if needed, or remove if only individual pages
 import PlayerDetail from './components/PlayerDetail.tsx'; // New import
 import ManagerProfiles from './components/ManagerProfiles.tsx';
@@ -42,7 +41,6 @@ const drawerWidth = 220;
 const sections = [
   { label: 'Dashboard', path: '/', icon: <DashboardIcon /> },
   { label: 'League Overview', path: '/league-overview', icon: <TableChartIcon /> },
-  { label: 'Team Details', path: '/team-details', icon: <GroupsIcon /> }, // This will be a generic link, actual team details will be dynamic
   { label: 'Player Profiles', path: '/player-profiles', icon: <PersonIcon /> }, // This will be a generic link, actual player details will be dynamic
   { label: 'Manager Profiles', path: '/manager-profiles', icon: <PersonIcon /> }, // Generic link
   { label: 'Transfer Market', path: '/transfer-market', icon: <TransferWithinAStationIcon /> },
@@ -161,8 +159,6 @@ function App() {
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/league-overview" element={<LeagueOverview />} />
-                <Route path="/team-details" element={<TeamDetails />} /> {/* Generic Team Details, will redirect or show default */}
-                <Route path="/team-details/:teamName" element={<TeamDetails />} /> {/* Dynamic Team Details */}
                 <Route path="/player-profiles" element={<PlayerProfiles />} /> {/* Generic Player Profiles, will show list */}
                 <Route path="/player-profiles/:playerName" element={<PlayerDetail />} /> {/* Dynamic Player Details */}
                 <Route path="/manager-profiles" element={<ManagerProfiles />} /> {/* Generic Manager Profiles, will show list */}
