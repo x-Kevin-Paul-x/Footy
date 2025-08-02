@@ -584,7 +584,9 @@ class League:
             team_detail = {
                 "name": team_obj.name,
                 "budget": team_obj.budget,
+                "manager_name": team_obj.manager.name if team_obj.manager else "N/A",
                 "manager_formation": team_obj.manager.formation if team_obj.manager else "N/A",
+                "manager_experience": team_obj.manager.experience_level if team_obj.manager else 0,
                 "squad_strength": team_obj.get_squad_strength(),
                 "players": players_data,
                 "team_season_stats": self.standings.get(team_obj.name, {}),

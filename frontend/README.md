@@ -1,11 +1,55 @@
-# React + TypeScript + Vite
+# Footy Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A modern football management dashboard built with React, TypeScript, and Vite. This app provides interactive analytics, team management, player profiles, transfer market insights, youth academy tracking, and more.
 
-Currently, two official plugins are available:
+## Main Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- League overview and statistics
+- Team and player profiles
+- Manager and coach details
+- Match and season reports
+- Transfer market analysis
+- Youth academy management
+- Interactive dashboard and analytics
+
+## Prerequisites
+
+- [Node.js](https://nodejs.org/) (v16 or newer recommended)
+- [npm](https://www.npmjs.com/) (comes with Node.js)
+
+## Installation
+
+1. Open a terminal and navigate to the `frontend` directory:
+   ```bash
+   cd frontend
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+## Running the App
+
+Start the development server:
+```bash
+npm run dev
+```
+Then open [http://localhost:5173/](http://localhost:5173/) in your browser.
+
+## Troubleshooting
+
+- **Port conflicts:** If port 5173 is in use, Vite will prompt you to use another port or you can specify one:
+  ```bash
+  npm run dev -- --port=5180
+  ```
+- **Node/npm issues:** Ensure Node.js and npm are installed and up to date.
+- **Dependency errors:** Delete `node_modules` and `package-lock.json`, then run `npm install` again.
+
+## Additional Info
+
+This project uses Vite for fast development and hot module replacement. ESLint and TypeScript are configured for code quality and type safety. See below for expanding ESLint configuration and plugins.
+
+---
 
 ## Expanding the ESLint configuration
 
@@ -14,15 +58,11 @@ If you are developing a production application, we recommend updating the config
 ```js
 export default tseslint.config({
   extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
     ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
     ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
     ...tseslint.configs.stylisticTypeChecked,
   ],
   languageOptions: {
-    // other options...
     parserOptions: {
       project: ['./tsconfig.node.json', './tsconfig.app.json'],
       tsconfigRootDir: import.meta.dirname,
@@ -40,15 +80,11 @@ import reactDom from 'eslint-plugin-react-dom'
 
 export default tseslint.config({
   plugins: {
-    // Add the react-x and react-dom plugins
     'react-x': reactX,
     'react-dom': reactDom,
   },
   rules: {
-    // other rules...
-    // Enable its recommended typescript rules
     ...reactX.configs['recommended-typescript'].rules,
     ...reactDom.configs.recommended.rules,
   },
 })
-```
