@@ -283,6 +283,9 @@ def simulate_season_with_transfers(premier_league, transfer_market):
         # Age players and apply decline
         if matches_played % 10 == 0:  # Every 10 matches
             for team in premier_league.teams:
+                # Check and reinforce squad if necessary
+                team.check_and_reinforce_squad(transfer_market)
+                
                 for player in team.players + team.youth_academy:
                     if random.random() < 0.02:  # 2% chance per period
                         player.apply_age_decline()
@@ -343,7 +346,7 @@ def main():
     os.makedirs("transfer_logs", exist_ok=True)
     os.makedirs("match_reports", exist_ok=True)
     
-    num_seasons = 2
+    num_seasons = 5
     
     # Create league and transfer market
     premier_league = create_premier_league()

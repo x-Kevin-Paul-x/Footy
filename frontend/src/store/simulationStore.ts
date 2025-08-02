@@ -51,7 +51,6 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
     set({ isLoading: true, error: null, selectedSeason: season });
     try {
       const report = await getSeasonReportData(season);
-      console.log('Fetched season report in store:', report); // DEBUG LOG
       set({ currentReport: report, isLoading: false });
     } catch (err) {
       set({ error: `Failed to fetch report for season ${season}.`, isLoading: false, currentReport: null });

@@ -59,7 +59,9 @@ export interface PlayerAttribute {
   [key: string]: number;
 }
 
+// Allow string indexing for PlayerAttributes
 export interface PlayerAttributes {
+  [key: string]: PlayerAttribute;
   pace: PlayerAttribute;
   shooting: PlayerAttribute;
   passing: PlayerAttribute;
@@ -94,6 +96,9 @@ export interface Player {
   attributes: PlayerAttributes;
   stats: PlayerStats;
   market_value: number;
+  is_injured: boolean; // Added missing property
+  injury_type: string | null; // Added missing property
+  recovery_time: number; // Added missing property
 }
 
 export interface FinancialSummary {
@@ -104,19 +109,54 @@ export interface FinancialSummary {
 
 export interface TeamDetail {
   name: string;
-  budget: number;
+  manager_name: string;
   manager_formation: string;
+  budget: number;
   squad_strength: number;
   players: Player[];
-  team_season_stats: Record<string, number | string>;
-  team_transfer_history: any[];
   financial_summary: FinancialSummary;
-  manager_name: string;
-  // Add coaches and physios if available in TeamDetail
-  coaches?: Coach[];
-  physios?: Physio[];
+  team_season_stats: Record<string, number>;
+  // Add other properties as returned by backend if needed
 }
 
+export interface Team {
+  name: string;
+  budget: number;
+  manager_name: string;
+  squad_strength: number;
+  // Add other properties as returned by /teams endpoint
+}
+
+export interface Player {
+  name: string;
+  age: number;
+  position: string;
+  team: string;
+  potential: number;
+  wage: number;
+  contract_length: number;
+  form: number[];
+  injury_history: any[]; // Define more strictly if possible
+  squad_role: string;
+  attributes: PlayerAttributes;
+  stats: PlayerStats;
+  market_value: number;
+  is_injured: boolean;
+  injury_type: string | null;
+  recovery_time: number;
+}
+
+
+
+export const getTeams = async (): Promise<Team[]> => {
+  const response = await axios.get<Team[]>(`${API_BASE_URL}/teams`);
+  return response.data;
+};
+
+export const getPlayers = async (): Promise<Player[]> => {
+  const response = await axios.get<Player[]>(`${API_BASE_URL}/players`);
+  return response.data;
+};
 
 export const runSimulation = async () => {
   const response = await axios.post(`${API_BASE_URL}/run-simulation`);

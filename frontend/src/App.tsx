@@ -8,6 +8,7 @@ import PlayerProfiles from './components/PlayerProfiles.tsx'; // Keep for genera
 import PlayerDetail from './components/PlayerDetail.tsx'; // New import
 import ManagerProfiles from './components/ManagerProfiles.tsx';
 import ManagerDetail from './components/ManagerDetail.tsx'; // New import
+import TeamDetails from './components/TeamDetails.tsx';
 import TransferMarket from './components/TransferMarket.tsx';
 import MatchReports from './components/MatchReports.tsx';
 import YouthAcademy from './components/YouthAcademy.tsx';
@@ -163,6 +164,7 @@ function App() {
                 <Route path="/player-profiles/:playerName" element={<PlayerDetail />} /> {/* Dynamic Player Details */}
                 <Route path="/manager-profiles" element={<ManagerProfiles />} /> {/* Generic Manager Profiles, will show list */}
                 <Route path="/manager-profiles/:managerName" element={<ManagerDetail />} /> {/* Dynamic Manager Details */}
+                <Route path="/team-details/:teamName" element={<TeamDetails />} /> {/* Dynamic Team Details */}
                 <Route path="/transfer-market" element={<TransferMarket />} />
                 <Route path="/match-reports" element={<MatchReports />} />
                 <Route path="/youth-academy" element={<YouthAcademy />} />

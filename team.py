@@ -401,16 +401,20 @@ class Team:
             "net_position": annual_revenue - (total_wages * 52 + manager_cost + coach_cost)
         }
 
-    def add_player(self, player):
+    def add_player(self, player, force=False):
         """Add a player to the team with financial validation."""
-        if len(self.players) >= 40:
-            raise ValueError("Squad size cannot exceed 40 players")
+        if not force and len(self.players) >= 30:  # Reduced max squad size
+            # Allow adding players if squad is critically low
+            if len(self.players) < 15:
+                pass
+            else:
+                raise ValueError("Squad size cannot exceed 30 players")
         
-        # Check wage budget
+        # Check wage budget, but allow override if forced
         current_wages = sum(p.wage for p in self.players)
         weekly_wage_budget = self.wage_budget / 52
         
-        if current_wages + player.wage > weekly_wage_budget:
+        if not force and current_wages + player.wage > weekly_wage_budget:
             raise ValueError("Adding player would exceed wage budget")
         
         self.players.append(player)
@@ -594,6 +598,44 @@ class Team:
             "needs_players": len(self.players) < 18,
             "financial_health": self.get_financials()["financial_health"]
         }
+
+    def check_and_reinforce_squad(self, transfer_market):
+        """Check for critically low squad size and sign free agents or promote youth."""
+        min_squad_size = 15
+        if len(self.players) < min_squad_size:
+            print(f"Emergency Action for {self.name}: Squad size is {len(self.players)}, reinforcing...")
+            
+            # Try to sign free agents first
+            free_agents = sorted(transfer_market.get_free_agents(), 
+                                 key=lambda p: p.get_overall_rating(), reverse=True)
+            
+            signed_count = 0
+            for player in free_agents:
+                if len(self.players) >= min_squad_size:
+                    break
+                try:
+                    success, _ = transfer_market.sign_free_agent(self, player)
+                    if success:
+                        signed_count += 1
+                except ValueError:
+                    continue  # Skip if cannot afford
+            
+            if signed_count > 0:
+                print(f"  Signed {signed_count} free agents.")
+
+            # Promote youth players if still below minimum
+            promoted_count = 0
+            if len(self.players) < min_squad_size:
+                youth_to_promote = sorted(self.youth_academy, 
+                                          key=lambda p: p.potential, reverse=True)
+                for player in youth_to_promote:
+                    if len(self.players) >= min_squad_size:
+                        break
+                    self.promote_youth_player(player)
+                    promoted_count += 1
+            
+            if promoted_count > 0:
+                print(f"  Promoted {promoted_count} youth players.")
 
     def get_squad_needs(self):
         """Enhanced squad analysis with quality assessment."""

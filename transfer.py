@@ -468,13 +468,31 @@ class TransferMarket:
         return True, f"Free agent signed! {player.name} joins on {contract_length}-year deal"
 
     def process_contract_expiries(self, all_teams):
-        """Process contract expiries at end of season"""
+        """Process contract expiries at end of season with renewal logic"""
         expired_count = 0
+        renewed_count = 0
+
         for team in all_teams:
-            for player in team.players[:]:  # Copy list to avoid modification issues
+            # Renew contracts for key players first
+            for player in team.players[:]:
                 player.contract_length -= 1
+                
+                # Attempt to renew contracts for important players
+                if 0 < player.contract_length <= 1:
+                    if self._should_renew_contract(player, team):
+                        # Renew contract for 1-3 years
+                        player.contract_length += random.randint(1, 3)
+                        renewed_count += 1
+                        
+                        self._log_transfer_attempt("CONTRACT_RENEWED", {
+                            "player": player.name,
+                            "team": team.name,
+                            "new_length": player.contract_length
+                        })
+
+            # Process expiries for players who were not renewed
+            for player in team.players[:]:
                 if player.contract_length <= 0:
-                    # Player becomes free agent
                     team.remove_player(player)
                     player.team = None
                     self.free_agents.append(player)
@@ -485,8 +503,33 @@ class TransferMarket:
                         "team": team.name,
                         "age": player.age
                     })
-
+        
+        print(f"\n{renewed_count} players had their contracts renewed.")
         return expired_count
+
+    def _should_renew_contract(self, player, team):
+        """Determine if a player's contract should be renewed."""
+        # High-rated players are always renewed
+        if player.get_overall_rating() > 80:
+            return True
+        
+        # Young, high-potential players are renewed
+        if player.age < 25 and player.potential > 85:
+            return True
+            
+        # Key starters are usually renewed
+        if player.squad_role == "STARTER" and player.age < 32:
+            return True
+            
+        # Don't renew if squad is bloated
+        if len(team.players) > 25:
+            return False
+            
+        # Renew if player is still valuable and not too old
+        if player.age < 34 and player.get_overall_rating() > 75:
+            return True
+            
+        return False
 
     def simulate_ai_transfers(self, all_teams):
         """Enhanced AI transfer simulation"""

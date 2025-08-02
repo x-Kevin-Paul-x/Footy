@@ -5,6 +5,10 @@ import json # <--- Add this import
 from flask import Flask, jsonify
 from flask_cors import CORS
 
+# Import DB query functions
+from team_db import get_all_teams
+from player_db import get_all_players
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for local development
 
@@ -107,6 +111,25 @@ def get_season_report(year):
         print(f"Error getting season report for {year}: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+
+@app.route('/teams', methods=['GET'])
+def get_teams():
+    teams = get_all_teams()
+    # Normalize: convert tuples to dicts
+    keys = ["team_id", "name", "budget", "weekly_budget", "transfer_budget", "wage_budget", "manager_id"]
+    teams_json = [dict(zip(keys, t)) for t in teams]
+    return jsonify({"teams": teams_json}), 200
+
+@app.route('/players', methods=['GET'])
+def get_players():
+    players = get_all_players()
+    # Already normalized as dicts by player_db.py
+    return jsonify({"players": players}), 200
+
+@app.route('/matches', methods=['GET'])
+def get_matches():
+    # Placeholder: no match DB implemented yet
+    return jsonify({"matches": []}), 200
 
 if __name__ == '__main__':
     # Ensure directories exist before starting

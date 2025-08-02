@@ -41,7 +41,6 @@ const ManagerProfiles: React.FC = () => {
       const managersFromReport: ManagerProfileData[] = [];
       currentReport.all_teams_details.forEach(team => {
         // eslint-disable-next-line no-console
-        console.log("ManagerProfiles: Processing team", team.name, "Manager Name:", team.manager_name, "Formation:", team.manager_formation);
         if (team.manager_name) {
           managersFromReport.push({
             name: team.manager_name,

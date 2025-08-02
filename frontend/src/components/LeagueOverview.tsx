@@ -99,16 +99,6 @@ const LeagueOverview: React.FC = () => {
         </Paper>
       </Box>
 
-      <Typography variant="h5" gutterBottom>Teams</Typography>
-      <List>
-        {teams.map((team) => (
-          <ListItem key={team}>
-            <ListItemButton component={Link} to={`/team-details/${team}`}>
-              <ListItemText primary={team} />
-            </ListItemButton>
-          </ListItem>
-        ))}
-      </List>
     </Box>
   );
 };
