@@ -471,13 +471,41 @@ class Manager:
         
         return total_score
 
+    def evaluate_free_agents(self, transfer_market):
+        """Evaluate and sign free agents for critical positions if squad is thin."""
+        min_squad_size = 18
+        emergency_squad_size = 16
+        actions = []
+
+        squad_needs = self.team.get_squad_needs()
+        needed_positions = [need["position"] for need in squad_needs["needs"]]
+
+        # Only act if squad is thin
+        if len(self.team.players) < min_squad_size:
+            free_agents = transfer_market.get_free_agents()
+            # Prioritize needed positions
+            for pos in needed_positions:
+                candidates = [p for p in free_agents if self._get_position_group(p.position) == pos]
+                candidates = sorted(candidates, key=lambda p: p.get_overall_rating(), reverse=True)
+                for player in candidates:
+                    # Emergency override if squad < emergency_squad_size
+                    actions.append(("free_agent", player))
+                    if len(self.team.players) + len(actions) >= emergency_squad_size:
+                        break
+                if len(self.team.players) + len(actions) >= emergency_squad_size:
+                    break
+        return actions
+
     def make_transfer_decision(self, transfer_market):
-        """Make transfer decisions using Q-learning. Aggressively buy if squad is thin."""
+        """Make transfer decisions using Q-learning. Aggressively buy and sign free agents if squad is thin."""
         raw_state = self.get_state()
         state = self.brain.encode_state(raw_state)
         
         # Get all possible actions
         possible_actions = self._get_possible_transfer_actions(transfer_market)
+
+        # Evaluate free agents if squad is thin
+        free_agent_actions = self.evaluate_free_agents(transfer_market)
 
         # If squad is thin, be much more aggressive
         min_squad_size = 18
@@ -502,6 +530,10 @@ class Manager:
         
         # Convert Q-learning action to transfer actions
         transfer_actions = self._convert_q_action_to_transfer_actions(action, transfer_market)
+
+        # Add free agent actions if squad is thin
+        if free_agent_actions:
+            transfer_actions.extend(free_agent_actions)
         
         # Debug output if enabled
         if hasattr(self, '_debug') and self._debug:
@@ -516,14 +548,6 @@ class Manager:
                 q_value = qtable.get_value(state, action)
                 print(f"  Action: {action}, Q-value: {q_value:.4f}")
 
-        # Select action using Q-learning
-        action = self.brain.select_action(state, possible_actions, "transfer")
-        self.last_transfer_state = state
-        self.last_transfer_action = action
-        
-        # Convert Q-learning action to transfer actions
-        transfer_actions = self._convert_q_action_to_transfer_actions(action, transfer_market)
-        
         # Debug output selected actions
         if hasattr(self, '_debug') and self._debug and transfer_actions:
             print("\nSelected Actions:")
@@ -534,6 +558,9 @@ class Manager:
                 elif action_type == "buy":
                     listing, offer = params
                     print(f"Bid £{offer:,.2f} for {listing.player.name}")
+                elif action_type == "free_agent":
+                    player = params[0]
+                    print(f"Sign free agent {player.name}")
         
         return transfer_actions
     
@@ -693,7 +720,7 @@ class Manager:
         self.last_match_action = None
 
     def learn_from_transfer(self, transfer_result: Dict[str, Any]):
-        """Learn from transfer results using Q-learning."""
+        """Learn from transfer results using Q-learning. Give positive reward if fixing a forfeit by signing a player."""
         if not hasattr(self, 'last_transfer_state') or not self.last_transfer_state:
             return
             
@@ -714,7 +741,11 @@ class Manager:
         
         # Calculate reward using profile preferences
         reward = self.profile.calculate_transfer_reward(transfer_dict)
-        
+
+        # If transfer_result indicates a forfeit was fixed, give a strong positive reward
+        if transfer_result.get("forfeit_fixed"):
+            reward += 50.0
+
         # Get possible next actions
         possible_next_actions = self._get_possible_transfer_actions(transfer_result.get("market"))
         

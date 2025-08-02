@@ -184,6 +184,16 @@ def create_tables(db_file=DB_FILE):
             away_possession REAL NOT NULL,
             weather TEXT NOT NULL,
             intensity TEXT NOT NULL,
+            home_passes_attempted INTEGER NOT NULL DEFAULT 0,
+            away_passes_attempted INTEGER NOT NULL DEFAULT 0,
+            home_passes_completed INTEGER NOT NULL DEFAULT 0,
+            away_passes_completed INTEGER NOT NULL DEFAULT 0,
+            home_fouls INTEGER NOT NULL DEFAULT 0,
+            away_fouls INTEGER NOT NULL DEFAULT 0,
+            home_corners INTEGER NOT NULL DEFAULT 0,
+            away_corners INTEGER NOT NULL DEFAULT 0,
+            home_offsides INTEGER NOT NULL DEFAULT 0,
+            away_offsides INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY (home_team_id) REFERENCES Team(team_id),
             FOREIGN KEY (away_team_id) REFERENCES Team(team_id)
         )

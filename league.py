@@ -82,10 +82,65 @@ class League:
         self.matches = fixtures  # Keep both for compatibility
 
     def play_match(self, home_team, away_team):
-        """Play a single match between two teams"""
-        # Ensure both teams have enough players before the match
+        """Play a single match between two teams with league-level emergency squad intervention and manager learning."""
+        min_players = 11
+        pre_match_penalty = -20.0
+        youth_promotion_reward = 5.0
+        forfeit_penalty = -150.0
+
         for team in [home_team, away_team]:
-            self._ensure_minimum_squad(team, min_players=11)
+            # Generate more youth players weekly to keep academy full
+            team.generate_youth_players_weekly(count=3)
+
+            # Check if team has enough players
+            healthy_players = [p for p in team.players if not getattr(p, "is_injured", False) and p.stats.get("fitness", 100) > 30]
+            if len(healthy_players) < min_players:
+                # Penalize manager for not having enough players
+                if team.manager:
+                    team.manager.learn_from_match({
+                        "winner": False,
+                        "draw": False,
+                        "goals_for": 0,
+                        "goals_against": 0,
+                        "pre_match_penalty": True,
+                        "reward_override": pre_match_penalty
+                    })
+                # Promote youth players and give a small reward
+                promoted = 0
+                youth_to_promote = sorted(team.youth_academy, key=lambda p: p.potential, reverse=True)
+                for player in youth_to_promote:
+                    if len(healthy_players) >= min_players:
+                        break
+                    team.promote_youth_player(player)
+                    promoted += 1
+                    healthy_players.append(player)
+                if promoted > 0 and team.manager:
+                    team.manager.learn_from_match({
+                        "winner": False,
+                        "draw": False,
+                        "goals_for": 0,
+                        "goals_against": 0,
+                        "youth_promotion": True,
+                        "reward_override": youth_promotion_reward
+                    })
+                # If still not enough, system intervenes and generates youth
+                while len(healthy_players) < min_players:
+                    player = team.generate_youth_player()
+                    team.promote_youth_player(player)
+                    healthy_players.append(player)
+                # If after all this, still not enough, forfeit with harsher penalty
+                if len(healthy_players) < min_players and team.manager:
+                    team.manager.learn_from_match({
+                        "winner": False,
+                        "draw": False,
+                        "goals_for": 0,
+                        "goals_against": 0,
+                        "forfeit": True,
+                        "reward_override": forfeit_penalty
+                    })
+
+            team.check_and_reinforce_squad(self.transfer_market)
+            self._ensure_minimum_squad(team, min_players=min_players)
 
         # Weekly training and development for both teams
         for team in [home_team, away_team]:
@@ -101,6 +156,8 @@ class League:
         try:
             result = match.play_match()
             self.update_standings(home_team, away_team, result)
+            result['home_team_id'] = home_team.team_id
+            result['away_team_id'] = away_team.team_id
             return result
         except ValueError as e:
             # Log forfeit due to insufficient players
@@ -110,10 +167,23 @@ class League:
                 "shots": [0, 0],
                 "shots_on_target": [0, 0],
                 "weather": getattr(match, "weather", "N/A"),
-                "events": [str(e)]
+                "events": [str(e)],
+                "home_team_id": home_team.team_id,
+                "away_team_id": away_team.team_id
             }
             print(f"Match forfeited: {e}")
             self.update_standings(home_team, away_team, forfeit_result)
+            # Give managers a strong negative reward for forfeiting
+            for team in [home_team, away_team]:
+                if team.manager:
+                    team.manager.learn_from_match({
+                        "winner": False,
+                        "draw": False,
+                        "goals_for": 0,
+                        "goals_against": 0,
+                        "forfeit": True,
+                        "reward_override": forfeit_penalty
+                    })
             return forfeit_result
 
     def play_season(self):
@@ -134,7 +204,7 @@ class League:
         """Save simplified match report"""
         report = {
             "match_number": match_number,
-            "date": datetime.now().strftime("%Y-%m-%d"),
+            "date": datetime.now().isoformat(),
             "season_year": self.season_year,
             "home_team": home_team.name,
             "away_team": away_team.name,
@@ -183,7 +253,7 @@ class League:
         """Save match details to JSON file"""
         report = {
             "match_number": match_number,
-            "date": datetime.now().strftime("%Y-%m-%d"),
+            "date": datetime.now().isoformat(),
             "season_year": self.season_year,
             "home_team": match.home_team.name,
             "away_team": match.away_team.name,

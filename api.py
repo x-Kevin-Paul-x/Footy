@@ -8,6 +8,7 @@ from flask_cors import CORS
 # Import DB query functions
 from team_db import get_all_teams
 from player_db import get_all_players
+from match_db import get_matches_for_season, get_match_details
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for local development
@@ -126,10 +127,29 @@ def get_players():
     # Already normalized as dicts by player_db.py
     return jsonify({"players": players}), 200
 
-@app.route('/matches', methods=['GET'])
-def get_matches():
-    # Placeholder: no match DB implemented yet
-    return jsonify({"matches": []}), 200
+@app.route('/matches/<int:season_year>', methods=['GET'])
+def get_matches_by_season(season_year):
+    """API endpoint to get all matches for a given season."""
+    try:
+        matches = get_matches_for_season(season_year)
+        if not matches:
+            return jsonify({"matches": [], "message": f"No matches found for season {season_year}."}), 200
+        return jsonify({"matches": matches}), 200
+    except Exception as e:
+        print(f"Error getting matches for season {season_year}: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/match/<int:match_id>', methods=['GET'])
+def get_match(match_id):
+    """API endpoint to get detailed information for a single match."""
+    try:
+        match_details = get_match_details(match_id)
+        if not match_details:
+            return jsonify({"status": "error", "message": f"Match with ID {match_id} not found."}), 404
+        return jsonify(match_details), 200
+    except Exception as e:
+        print(f"Error getting match details for match {match_id}: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     # Ensure directories exist before starting

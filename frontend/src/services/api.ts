@@ -173,6 +173,16 @@ export const getSeasonReportData = async (year: number): Promise<SeasonReport> =
   return response.data;
 };
 
+export const getMatchesBySeason = async (seasonYear: number): Promise<any[]> => {
+  const response = await axios.get(`${API_BASE_URL}/matches/${seasonYear}`);
+  return response.data.matches;
+};
+
+export const getMatchDetails = async (matchId: number): Promise<any> => {
+  const response = await axios.get(`${API_BASE_URL}/match/${matchId}`);
+  return response.data;
+};
+
 // Fetch manager details from a single season report (current season)
 export const getManagerDetails = async (managerName: string, season?: number): Promise<Manager> => {
   // If season is not provided, use the latest available season

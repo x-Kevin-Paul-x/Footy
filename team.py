@@ -172,6 +172,11 @@ class Team:
         self.youth_academy.append(player)
         return player
 
+    def generate_youth_players_weekly(self, count=10):
+        """Generate multiple youth players each week to keep academy full."""
+        for _ in range(count):
+            self.generate_youth_player()
+
     def promote_youth_player(self, player):
         """Promote a youth player to the senior squad."""
         if player in self.youth_academy:
@@ -600,42 +605,58 @@ class Team:
         }
 
     def check_and_reinforce_squad(self, transfer_market):
-        """Check for critically low squad size and sign free agents or promote youth."""
-        min_squad_size = 15
-        if len(self.players) < min_squad_size:
+        """Check for critically low squad size and sign free agents or promote youth (position-priority, emergency override)."""
+        min_squad_size = 16
+        emergency_override = len(self.players) < min_squad_size
+
+        if emergency_override:
             print(f"Emergency Action for {self.name}: Squad size is {len(self.players)}, reinforcing...")
-            
-            # Try to sign free agents first
-            free_agents = sorted(transfer_market.get_free_agents(), 
-                                 key=lambda p: p.get_overall_rating(), reverse=True)
-            
+
+            # Prioritize positions in need
+            squad_needs = self.get_squad_needs()
+            needed_positions = [need["position"] for need in squad_needs["needs"]]
+
             signed_count = 0
-            for player in free_agents:
+            free_agents = transfer_market.get_free_agents()
+            for pos in needed_positions:
+                candidates = [p for p in free_agents if self.manager._get_position_group(p.position) == pos]
+                candidates = sorted(candidates, key=lambda p: p.get_overall_rating(), reverse=True)
+                for player in candidates:
+                    if len(self.players) >= min_squad_size:
+                        break
+                    try:
+                        success, _ = transfer_market.sign_free_agent(self, player)
+                        if success:
+                            signed_count += 1
+                    except Exception:
+                        continue
                 if len(self.players) >= min_squad_size:
                     break
-                try:
-                    success, _ = transfer_market.sign_free_agent(self, player)
-                    if success:
-                        signed_count += 1
-                except ValueError:
-                    continue  # Skip if cannot afford
-            
+
             if signed_count > 0:
-                print(f"  Signed {signed_count} free agents.")
+                print(f"  Signed {signed_count} free agents for positions in need.")
 
             # Promote youth players if still below minimum
             promoted_count = 0
             if len(self.players) < min_squad_size:
-                youth_to_promote = sorted(self.youth_academy, 
-                                          key=lambda p: p.potential, reverse=True)
+                youth_to_promote = sorted(self.youth_academy, key=lambda p: p.potential, reverse=True)
                 for player in youth_to_promote:
                     if len(self.players) >= min_squad_size:
                         break
                     self.promote_youth_player(player)
                     promoted_count += 1
-            
+
             if promoted_count > 0:
                 print(f"  Promoted {promoted_count} youth players.")
+
+            # If still below minimum, generate emergency youth players
+            generated_count = 0
+            while len(self.players) < min_squad_size:
+                player = self.generate_youth_player()
+                self.promote_youth_player(player)
+                generated_count += 1
+            if generated_count > 0:
+                print(f"  Generated and promoted {generated_count} emergency youth players.")
 
     def get_squad_needs(self):
         """Enhanced squad analysis with quality assessment."""

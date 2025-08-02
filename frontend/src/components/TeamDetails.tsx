@@ -78,12 +78,35 @@ const TeamDetails: React.FC = () => {
     );
   }
 
-  // Roster
-  const roster = team.players.map((player: Player) => ({
-    name: player.name,
-    position: player.position,
-    avatar: "", // Placeholder for avatar
-  }));
+  // Roster: include youth players, label position, sort by position (GKs first)
+  const roster = team.players
+    .map((player: Player) => ({
+      name: player.name,
+      position: player.age <= 18 ? `${player.position} (Youth)` : player.position,
+      avatar: "",
+      age: player.age,
+      overall: player.attributes
+        ? (() => {
+            const totalAttributeSum = Object.values(player.attributes).reduce(
+              (sum, category: Record<string, number>) => sum + Object.values(category).reduce((catSum, val) => catSum + val, 0),
+              0
+            );
+            const totalAttributeCount = Object.values(player.attributes).reduce(
+              (count, category: Record<string, number>) => count + Object.keys(category).length,
+              0
+            );
+            return totalAttributeCount > 0 ? totalAttributeSum / totalAttributeCount : 0;
+          })()
+        : 0,
+      market_value: player.market_value,
+    }))
+    .sort((a, b) => {
+      // GK first, then by position alphabetically, then youth before senior
+      const posOrder = (pos: string) => pos.startsWith("GK") ? 0 : 1;
+      if (posOrder(a.position) !== posOrder(b.position)) return posOrder(a.position) - posOrder(b.position);
+      if (a.position !== b.position) return a.position.localeCompare(b.position);
+      return a.age - b.age;
+    });
 
   // Finances
   const financials = team.financial_summary || { annual_revenue: 0, annual_expenses: 0, financial_health: "Unknown" };
@@ -148,25 +171,10 @@ const TeamDetails: React.FC = () => {
                   </TableCell>
                   <TableCell>{player.position}</TableCell>
                   <TableCell align="right">
-                    {(() => {
-                      const fullPlayer = team.players.find(p => p.name === player.name);
-                      if (!fullPlayer || !fullPlayer.attributes) return "N/A";
-                      const totalAttributeSum = Object.values(fullPlayer.attributes).reduce(
-                        (sum, category: Record<string, number>) => sum + Object.values(category).reduce((catSum, val) => catSum + val, 0),
-                        0
-                      );
-                      const totalAttributeCount = Object.values(fullPlayer.attributes).reduce(
-                        (count, category: Record<string, number>) => count + Object.keys(category).length,
-                        0
-                      );
-                      return totalAttributeCount > 0 ? (totalAttributeSum / totalAttributeCount).toFixed(1) : "0.0";
-                    })()}
+                    {player.overall ? player.overall.toFixed(1) : "N/A"}
                   </TableCell>
                   <TableCell align="right">
-                    {(() => {
-                      const fullPlayer = team.players.find(p => p.name === player.name);
-                      return fullPlayer ? `£${(fullPlayer.market_value / 1000000).toFixed(1)}M` : "N/A";
-                    })()}
+                    {player.market_value ? `£${(player.market_value / 1000000).toFixed(1)}M` : "N/A"}
                   </TableCell>
                 </TableRow>
               ))}

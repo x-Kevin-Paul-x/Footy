@@ -148,7 +148,8 @@ class TransferMarket:
         """Enhanced player valuation with more factors"""
         # Base value from attributes and overall rating
         overall_rating = player.get_overall_rating()
-        base_value = overall_rating * 1000  # More realistic base scaling
+        # Increase base scaling for realism (e.g. 69.9 rating = £6.99M base)
+        base_value = overall_rating * 100000
 
         # Age modifier (peak at 25-28)
         if player.age <= 20:
@@ -183,11 +184,11 @@ class TransferMarket:
         # Position modifier
         position_mod = self.value_modifiers["position_premium"].get(player.position, 1.0)
 
-        # Squad role modifier
+        # Squad role modifier (reduce youth penalty, boost for high potential youth)
         role_modifier = {
             "STARTER": 1.2,
             "RESERVE": 1.0,
-            "YOUTH": 0.7,
+            "YOUTH": 0.95 if player.potential > 70 else 0.85,
             "BENCH": 0.9
         }.get(player.squad_role, 1.0)
 
@@ -200,7 +201,8 @@ class TransferMarket:
                       form_factor * contract_factor * position_mod * 
                       role_modifier * injury_factor)
 
-        return max(50000, round(final_value))  # Minimum value of 50k
+        # Set minimum value to £500k for realism
+        return max(500000, round(final_value))
 
     def list_player(self, player, team, asking_price=None):
         """Enhanced player listing with window checks"""
@@ -421,29 +423,35 @@ class TransferMarket:
         return True, f"Loan completed! {player.name} joins on {listing.duration}-month loan"
 
     def sign_free_agent(self, team, player):
-        """Sign a free agent player"""
+        """Sign a free agent player (no transfer window restriction, emergency override for thin squads)"""
         if player not in self.free_agents:
             return False, "Player not available as free agent"
 
-        # No transfer fee, but potential signing bonus
-        signing_bonus = player.desired_wage * random.randint(10, 26)  # 10-26 weeks wages
-        
-        if team.budget < signing_bonus:
+        # Emergency override if squad is critically low
+        emergency_override = len(team.players) < 16
+
+        # Lower signing bonus for emergencies
+        if emergency_override:
+            signing_bonus = player.desired_wage * random.randint(5, 10)  # 5-10 weeks wages
+        else:
+            signing_bonus = player.desired_wage * random.randint(10, 26)  # 10-26 weeks wages
+
+        # Override budget check if emergency
+        if not emergency_override and team.budget < signing_bonus:
             return False, "Cannot afford signing bonus"
 
         # Contract negotiation
-        wage_demand = player.desired_wage * random.uniform(1.1, 1.4)  # Free agents demand more
-        
-        if wage_demand > team.wage_budget / max(1, len(team.players)):
+        wage_demand = player.desired_wage * (random.uniform(1.1, 1.4) if not emergency_override else random.uniform(1.0, 1.2))
+
+        # Override wage budget check if emergency
+        if not emergency_override and wage_demand > team.wage_budget / max(1, len(team.players)):
             return False, "Wage demands too high"
 
-        # Contract length
-        if player.age < 25:
-            contract_length = random.randint(2, 4)
-        elif player.age < 30:
-            contract_length = random.randint(1, 3)
+        # Contract length (longer contracts to reduce free agent frequency)
+        if player.age < 30:
+            contract_length = random.randint(3, 5)
         else:
-            contract_length = random.randint(1, 2)
+            contract_length = random.randint(2, 4)
 
         # Complete signing
         player.wage = wage_demand
@@ -480,8 +488,8 @@ class TransferMarket:
                 # Attempt to renew contracts for important players
                 if 0 < player.contract_length <= 1:
                     if self._should_renew_contract(player, team):
-                        # Renew contract for 1-3 years
-                        player.contract_length += random.randint(1, 3)
+                        # Renew contract for 2-5 years (longer renewals)
+                        player.contract_length += random.randint(2, 5)
                         renewed_count += 1
                         
                         self._log_transfer_attempt("CONTRACT_RENEWED", {

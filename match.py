@@ -2,6 +2,7 @@ import random
 import math
 from dataclasses import dataclass
 from typing import Any, List, Dict, Tuple
+from match_db import save_match_to_db
 
 @dataclass
 class MatchEvent:
@@ -34,6 +35,12 @@ class Match:
         self.possession = [0, 0]  # Possession time in minutes
         self.shots = [0, 0]  # [home shots, away shots]
         self.shots_on_target = [0, 0]
+        self.passes_attempted = [0, 0]  # [home, away]
+        self.passes_completed = [0, 0]
+        self.fouls = [0, 0]
+        self.corners = [0, 0]
+        self.offsides = [0, 0]
+        self.player_stats = {}  # {player_id: {stat_name: value}}
         self.events: List[MatchEvent] = []
         self.substitutions: List[Substitution] = []
         self.minute = 0
@@ -546,8 +553,15 @@ class Match:
         # Simulate action
         if action == "attack":
             # Attempt to create scoring opportunity
-            if self._calculate_action_success(attacking_team, defending_team, "pass"):
+            self.passes_attempted[score_idx] += 1
+            pass_success = self._calculate_action_success(attacking_team, defending_team, "pass")
+            if pass_success:
+                self.passes_completed[score_idx] += 1
                 self.shots[score_idx] += 1
+                if random.random() < 0.1:  # 10% chance for a corner
+                    self.corners[score_idx] += 1
+                if random.random() < 0.07:  # 7% chance for offside
+                    self.offsides[score_idx] += 1
                 if self._calculate_action_success(attacking_team, defending_team, "shot"):
                     self.score[score_idx] += 1
                     self.shots_on_target[score_idx] += 1
@@ -593,6 +607,7 @@ class Match:
                     self.current_possession = "away" if self.current_possession == "home" else "home"
             else:
                 # Failed attack, possession changes
+                self.fouls[score_idx] += 1 if random.random() < 0.15 else 0  # 15% chance for foul
                 self.current_possession = "away" if self.current_possession == "home" else "home"
                 
         elif action == "midfield":
@@ -712,12 +727,21 @@ class Match:
             match_rating = (team_performance + individual_performance) * fitness_factor
             player.update_form(match_rating)
         
+        from datetime import datetime
         # Enhanced match summary
         summary = {
+            "date": datetime.now().isoformat(),
+            "home_team_id": self.home_team.team_id,
+            "away_team_id": self.away_team.team_id,
             "score": self.score,
             "possession": [p/total_minutes*100 for p in self.possession],
             "shots": self.shots,
             "shots_on_target": self.shots_on_target,
+            "passes_attempted": self.passes_attempted,
+            "passes_completed": self.passes_completed,
+            "fouls": self.fouls,
+            "corners": self.corners,
+            "offsides": self.offsides,
             "weather": self.weather,
             "events": self.events,
             "substitutions": self.substitutions,

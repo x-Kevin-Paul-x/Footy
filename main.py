@@ -9,6 +9,7 @@ from player import FootballPlayer
 from manager import Manager
 from transfer import TransferMarket
 from db_setup import initialize_fresh_database
+from match_db import save_match_to_db
 
 def initialize_database():
     """Initialize the database with fresh start - clear all data"""
@@ -73,7 +74,7 @@ def create_premier_league():
         manager.save_to_database()
         team.set_manager(manager)
         
-        print(f"\nCreating {team_name} squad:")
+        #print(f"\nCreating {team_name} squad:")
         #print(f"  Budget: £{team.budget:,.0f}")
         #print(f"  Stadium: {team.stadium_name} (Capacity: {team.stadium_capacity:,})")
         #print(f"  TV Revenue: £{team.tv_revenue:,.0f}")
@@ -264,6 +265,7 @@ def simulate_season_with_transfers(premier_league, transfer_market):
     for i in range(january_start):
         match = premier_league.schedule[i]
         match_result = premier_league.play_match(match[0], match[1])
+        save_match_to_db(match_result, premier_league.season_year, i + 1)
         matches_played += 1
         
         # Process weekly finances for teams
@@ -318,6 +320,7 @@ def simulate_season_with_transfers(premier_league, transfer_market):
     for i in range(january_start, total_matches):
         match = premier_league.schedule[i]
         match_result = premier_league.play_match(match[0], match[1])
+        save_match_to_db(match_result, premier_league.season_year, i + 1)
         matches_played += 1
         
         # Continue financial processing
