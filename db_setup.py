@@ -98,6 +98,7 @@ def create_tables(db_file=DB_FILE):
             draws INTEGER NOT NULL,
             losses INTEGER NOT NULL,
             total_rewards REAL NOT NULL,
+            reputation REAL NOT NULL,
             FOREIGN KEY (team_id) REFERENCES Team(team_id)
         )
     """)

@@ -12,6 +12,7 @@ from collections import defaultdict
 import ast
 from coach import Coach
 from transfer import TransferMarket
+from job_market import JobMarket
 from db_setup import create_tables, check_tables_exist
 from match_db import save_match_to_db
 import league_db
@@ -98,6 +99,7 @@ def load_or_create_premier_league():
                 manager.draws = manager_data[16]
                 manager.losses = manager_data[17]
                 manager.total_rewards = manager_data[18]
+                manager.reputation = manager_data[19]
 
                 team.set_manager(manager)
 
@@ -465,6 +467,7 @@ def main():
     # Create league and transfer market
     premier_league = load_or_create_premier_league()
     transfer_market = TransferMarket()
+    job_market = JobMarket()
     
     print(f"\nInitial Financial Overview:")
     print_financial_summary(premier_league.teams)
@@ -550,6 +553,36 @@ def main():
                 "loan_history": transfer_market.loan_history
             }, f, indent=2, default=str)
         
+        # Evolve manager profiles and handle job changes
+        for team in premier_league.teams:
+            if team.manager:
+                league_pos = premier_league.get_team_position(team.name)
+                trophies = 1 if full_season_report['champions'] == team.name else 0
+
+                season_results = {
+                    "league_position": league_pos,
+                    "trophies_won": trophies,
+                    # "promotion" and "relegation" are not yet implemented
+                }
+                team.manager.evolve_profile(season_results)
+
+                if team.evaluate_manager_performance(league_pos, trophies):
+                    print(f"{team.name} has fired their manager, {team.manager.name}!")
+                    job_market.add_manager(team.manager)
+                    team.manager.team = None
+                    team.manager = None
+
+        # Hire new managers
+        for team in premier_league.teams:
+            if not team.manager:
+                available_managers = job_market.get_available_managers()
+                if available_managers:
+                    # Simple hiring logic: hire the most reputable manager
+                    best_manager = max(available_managers, key=lambda m: m.reputation)
+                    team.set_manager(best_manager)
+                    job_market.remove_manager(best_manager)
+                    print(f"{team.name} has hired {best_manager.name} as their new manager.")
+
         # Increment to next season
         premier_league.increment_season()
         transfer_market.season_year = premier_league.season_year

@@ -342,6 +342,14 @@ class League:
         """Get final league table (alias for compatibility)"""
         return self.get_league_table()
 
+    def get_team_position(self, team_name):
+        """Get the position of a team in the league table."""
+        table = self.get_league_table()
+        for i, (team, stats) in enumerate(table):
+            if team == team_name:
+                return i + 1
+        return None
+
     def get_best_manager(self):
         """Find manager with best performance metrics and return as a dictionary."""
         if not self.standings:

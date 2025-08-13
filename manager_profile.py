@@ -25,6 +25,12 @@ class ManagerProfile:
     financial_conservation: float = 0.5
     bargaining_aggression: float = 0.5
 
+    # Personality traits
+    loyalty: float = 0.5
+    ambition: float = 0.5
+    media_handling: str = 'calm'
+    preferred_formation: str = '4-4-2'
+
     def __post_init__(self):
         """Validate that strategic focus weights sum to 1.0"""
         if not 0.99 <= (self.short_term_weight + self.long_term_weight) <= 1.01:
@@ -37,6 +43,9 @@ class ManagerProfile:
         short_term = random.uniform(0.3, 0.7)
         long_term = 1.0 - short_term
         
+        media_handling_options = ['confrontational', 'calm', 'evasive']
+        formations = ["4-4-2", "4-3-3", "4-2-3-1", "3-5-2", "5-3-2"]
+
         return cls(
             short_term_weight=short_term,
             long_term_weight=long_term,
@@ -46,7 +55,11 @@ class ManagerProfile:
             possession_preference=random.uniform(0.3, 0.7),
             youth_preference=random.uniform(0.3, 0.7),
             financial_conservation=random.uniform(0.3, 0.7),
-            bargaining_aggression=random.uniform(0.3, 0.7)
+            bargaining_aggression=random.uniform(0.3, 0.7),
+            loyalty=random.uniform(0.2, 0.8),
+            ambition=random.uniform(0.2, 0.8),
+            media_handling=random.choice(media_handling_options),
+            preferred_formation=random.choice(formations)
         )
     
     def calculate_match_reward(self, result: Dict) -> float:

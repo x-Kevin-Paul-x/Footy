@@ -84,6 +84,7 @@ class Manager:
         # Database attributes
         self.manager_id = None
         self.salary = 0.0
+        self.reputation = 50 # a score from 0-100
 
     def save_to_database(self):
         """Save manager to database and return manager_id"""
@@ -110,7 +111,8 @@ class Manager:
                 performance_history=self.performance_history,
                 market_state_history=self.market_state_history,
                 transfers_made=self.transfers_made,
-                successful_transfers=self.successful_transfers
+                successful_transfers=self.successful_transfers,
+                reputation=self.reputation
             )
         else:
             # Update existing manager
@@ -132,7 +134,8 @@ class Manager:
                 performance_history=self.performance_history,
                 market_state_history=self.market_state_history,
                 transfers_made=self.transfers_made,
-                successful_transfers=self.successful_transfers
+                successful_transfers=self.successful_transfers,
+                reputation=self.reputation
             )
         return self.manager_id
 
@@ -1211,6 +1214,42 @@ class Manager:
             "defensive": random.randint(40, 60),
             "pressure": random.randint(40, 60)
         }
+
+    def evolve_profile(self, season_results: Dict):
+        """Evolve manager's profile based on season results."""
+        # Ambition
+        if season_results.get("trophies_won", 0) > 0 or season_results.get("promotion"):
+            self.profile.ambition = min(1.0, self.profile.ambition + 0.1)
+        elif season_results.get("relegation"):
+            self.profile.ambition = max(0.0, self.profile.ambition - 0.1)
+
+        # Loyalty
+        if season_results.get("years_at_club", 0) > 3 and season_results.get("league_position", 20) <= 4:
+            self.profile.loyalty = min(1.0, self.profile.loyalty + 0.1)
+        if season_results.get("fired"):
+            self.profile.loyalty = max(0.0, self.profile.loyalty - 0.2)
+
+        # Risk Tolerance
+        if self.tactics['pressure'] > 60 and season_results.get("league_position", 20) <= 4:
+            self.profile.risk_tolerance = min(1.0, self.profile.risk_tolerance + 0.05)
+        elif self.tactics['pressure'] > 60 and season_results.get("league_position", 20) > 10:
+            self.profile.risk_tolerance = max(0.0, self.profile.risk_tolerance - 0.05)
+
+        # Preferred Formation
+        if season_results.get("league_position", 20) <= 4:
+            self.profile.preferred_formation = self.formation
+
+        # Reputation
+        if season_results.get("trophies_won", 0) > 0:
+            self.reputation = min(100, self.reputation + 10)
+        elif season_results.get("league_position", 20) <= 4:
+            self.reputation = min(100, self.reputation + 5)
+        elif season_results.get("relegation"):
+            self.reputation = max(0, self.reputation - 10)
+        elif season_results.get("league_position", 20) > 15:
+            self.reputation = max(0, self.reputation - 5)
+
+        self.save_to_database()
 
     def _create_lineup_for_formation(self, formation: str, players_by_type: Dict[str, List[Any]],
                                    needs: Dict[str, int]) -> List[Any]:

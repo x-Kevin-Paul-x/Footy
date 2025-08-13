@@ -746,6 +746,26 @@ class Team:
             "recommended_signings": len(needs)
         }
 
+    def evaluate_manager_performance(self, league_position, trophies_won):
+        """Evaluate the manager's performance and decide whether to fire them."""
+        if not self.manager:
+            return False
+
+        # Firing logic
+        if trophies_won > 0:
+            return False # Don't fire a manager who won a trophy
+
+        if league_position > 15 and self.manager.profile.ambition > 0.7:
+            # Ambitious manager at a struggling club is likely to be fired
+            return True
+
+        if league_position > 18: # Relegation zone
+            return True
+
+        # Add more complex logic based on team expectations, finances, etc.
+
+        return False
+
     def calculate_weekly_expenses(self):
         """Calculate comprehensive weekly expenses."""
         expenses = {
