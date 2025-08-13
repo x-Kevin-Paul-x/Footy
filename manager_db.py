@@ -1,14 +1,25 @@
 import sqlite3
 from db_setup import DB_FILE
 
-def create_manager(name, experience_level, team_id=None, profile_id=None, transfers_made=0, successful_transfers=0, formation="4-4-2", matches_played=0, wins=0, draws=0, losses=0, total_rewards=0.0, db_file=DB_FILE ):
+import json
+
+def create_manager(name, experience_level, team_id=None, profile=None, brain=None, tactics=None, transfer_history=None, match_history=None, performance_history=None, market_state_history=None, transfers_made=0, successful_transfers=0, formation="4-4-2", matches_played=0, wins=0, draws=0, losses=0, total_rewards=0.0, db_file=DB_FILE ):
     """Inserts a new manager into the database."""
     conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
+
+    profile_json = json.dumps(profile) if profile else None
+    brain_json = json.dumps(brain) if brain else None
+    tactics_json = json.dumps(tactics) if tactics else None
+    transfer_history_json = json.dumps(transfer_history) if transfer_history else None
+    match_history_json = json.dumps(match_history) if match_history else None
+    performance_history_json = json.dumps(performance_history) if performance_history else None
+    market_state_history_json = json.dumps(market_state_history) if market_state_history else None
+
     cursor.execute("""
-        INSERT INTO Manager (name, experience_level, team_id, profile_id, transfers_made, successful_transfers, formation, matches_played, wins, draws, losses, total_rewards)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (name, experience_level, team_id, profile_id, transfers_made, successful_transfers, formation, matches_played, wins, draws, losses, total_rewards))
+        INSERT INTO Manager (name, experience_level, team_id, profile, brain, tactics, transfer_history, match_history, performance_history, market_state_history, transfers_made, successful_transfers, formation, matches_played, wins, draws, losses, total_rewards)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (name, experience_level, team_id, profile_json, brain_json, tactics_json, transfer_history_json, match_history_json, performance_history_json, market_state_history_json, transfers_made, successful_transfers, formation, matches_played, wins, draws, losses, total_rewards))
     manager_id = cursor.lastrowid
     conn.commit()
     conn.close()
@@ -32,7 +43,7 @@ def get_all_managers(db_file=DB_FILE):
     conn.close()
     return managers
     
-def update_manager(manager_id, name=None, experience_level=None, team_id=None, profile_id=None, transfers_made=None,
+def update_manager(manager_id, name=None, experience_level=None, team_id=None, profile=None, brain=None, tactics=None, transfer_history=None, match_history=None, performance_history=None, market_state_history=None, transfers_made=None,
                    successful_transfers=None, formation=None, matches_played=None, wins=None, draws=None,
                    losses=None, total_rewards=None, db_file=DB_FILE):
     """Updates a manager's information in the database."""
@@ -51,9 +62,27 @@ def update_manager(manager_id, name=None, experience_level=None, team_id=None, p
     if team_id is not None:
         update_fields.append("team_id = ?")
         update_values.append(team_id)
-    if profile_id is not None:
-        update_fields.append("profile_id = ?")
-        update_values.append(profile_id)
+    if profile is not None:
+        update_fields.append("profile = ?")
+        update_values.append(json.dumps(profile))
+    if brain is not None:
+        update_fields.append("brain = ?")
+        update_values.append(json.dumps(brain))
+    if tactics is not None:
+        update_fields.append("tactics = ?")
+        update_values.append(json.dumps(tactics))
+    if transfer_history is not None:
+        update_fields.append("transfer_history = ?")
+        update_values.append(json.dumps(transfer_history))
+    if match_history is not None:
+        update_fields.append("match_history = ?")
+        update_values.append(json.dumps(match_history))
+    if performance_history is not None:
+        update_fields.append("performance_history = ?")
+        update_values.append(json.dumps(performance_history))
+    if market_state_history is not None:
+        update_fields.append("market_state_history = ?")
+        update_values.append(json.dumps(market_state_history))
     if transfers_made is not None:
         update_fields.append("transfers_made = ?")
         update_values.append(transfers_made)
@@ -81,7 +110,7 @@ def update_manager(manager_id, name=None, experience_level=None, team_id=None, p
 
     if not update_fields:
         conn.close()
-        return  # Nothing to update
+        return
 
     update_query = f"UPDATE Manager SET {', '.join(update_fields)} WHERE manager_id = ?"
     update_values.append(manager_id)

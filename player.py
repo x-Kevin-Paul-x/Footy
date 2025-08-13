@@ -179,6 +179,10 @@ class FootballPlayer:
                 old_value = self.attributes[attr_type][sub_attr]
                 new_value = max(1.0, old_value * decline_factor)
                 self.attributes[attr_type][sub_attr] = new_value
+
+        # Save changes to the database
+        if self.player_id is not None:
+            update_player(self.player_id, attributes=self.attributes)
     
     def get_overall_rating(self):
         """Calculate overall player rating"""
@@ -204,7 +208,12 @@ class FootballPlayer:
                 return "red"  # Sent off
         elif card_type == "red":
             self.stats["red_cards"] += 1
+            if self.player_id is not None:
+                update_player(self.player_id, stats=self.stats)
             return "red"  # Sent off
+
+        if self.player_id is not None:
+            update_player(self.player_id, stats=self.stats)
         return card_type
     
     def get_suspension_games(self):
@@ -248,6 +257,9 @@ class FootballPlayer:
         # Immediate fitness impact
         fitness_loss = min(30, duration * 2)
         self.stats["fitness"] = max(0, self.stats["fitness"] - fitness_loss)
+
+        if self.player_id is not None:
+            update_player(self.player_id, stats=self.stats)
     
     def recover_from_injury(self, days=1):
         """Process injury recovery"""
@@ -261,6 +273,9 @@ class FootballPlayer:
             self.injury_type = None
             # Gradual fitness recovery
             self.stats["fitness"] = min(100, self.stats["fitness"] + 10)
+
+        if self.player_id is not None:
+            update_player(self.player_id, stats=self.stats)
     
     def is_available_for_selection(self):
         """Check if player is available for match selection"""
@@ -509,8 +524,12 @@ class FootballPlayer:
         self.stats["fitness"] = max(0, min(100, self.stats["fitness"]))
         
         # Complete results
-        results["final_attributes"] = {k: {sk: v for sk, sv in self.attributes.items()} for k, sv in self.attributes.items()}
+        results["final_attributes"] = {k: {sk: v for sk, v in sv.items()} for k, sv in self.attributes.items()}
         
+        # Save changes to the database
+        if self.player_id is not None:
+            update_player(self.player_id, attributes=self.attributes, stats=self.stats)
+
         return results
 
     def get_player_info(self, detail_level="basic"):

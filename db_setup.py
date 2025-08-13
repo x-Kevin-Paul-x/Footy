@@ -1,6 +1,24 @@
 import sqlite3
+import os
 
 DB_FILE = "football_sim.db"
+
+def check_tables_exist(db_file=DB_FILE):
+    """Check if the database file and the main 'League' table exist."""
+    if not os.path.exists(db_file):
+        return False
+
+    try:
+        conn = sqlite3.connect(db_file)
+        cursor = conn.cursor()
+        # Check for a key table like 'League'
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='League'")
+        table_exists = cursor.fetchone()
+        conn.close()
+        return table_exists is not None
+    except sqlite3.DatabaseError:
+        # The file might be corrupted or not a valid database
+        return False
 
 def create_tables(db_file=DB_FILE):
     """Create all database tables."""
@@ -38,6 +56,8 @@ def create_tables(db_file=DB_FILE):
             transfer_budget REAL NOT NULL,
             wage_budget REAL NOT NULL,
             manager_id INTEGER,
+            sponsorship_deals TEXT,
+            statistics TEXT,
             FOREIGN KEY (manager_id) REFERENCES Manager(manager_id)
         )
     """)
@@ -63,7 +83,13 @@ def create_tables(db_file=DB_FILE):
             name TEXT NOT NULL UNIQUE,
             experience_level INTEGER NOT NULL,
             team_id INTEGER,
-            profile_id INTEGER,
+            profile TEXT,
+            brain TEXT,
+            tactics TEXT,
+            transfer_history TEXT,
+            match_history TEXT,
+            performance_history TEXT,
+            market_state_history TEXT,
             transfers_made INTEGER NOT NULL,
             successful_transfers INTEGER NOT NULL,
             formation TEXT NOT NULL,
@@ -72,8 +98,7 @@ def create_tables(db_file=DB_FILE):
             draws INTEGER NOT NULL,
             losses INTEGER NOT NULL,
             total_rewards REAL NOT NULL,
-            FOREIGN KEY (team_id) REFERENCES Team(team_id),
-            FOREIGN KEY (profile_id) REFERENCES ManagerProfile(profile_id)
+            FOREIGN KEY (team_id) REFERENCES Team(team_id)
         )
     """)
 
@@ -110,6 +135,11 @@ def create_tables(db_file=DB_FILE):
             team_id INTEGER,
             learning_rate REAL NOT NULL,
             exploration_rate REAL NOT NULL,
+            improvement_history TEXT,
+            training_effectiveness TEXT,
+            training_methods TEXT,
+            session_results TEXT,
+            player_progress TEXT,
             FOREIGN KEY (team_id) REFERENCES Team(team_id)
         )
     """)

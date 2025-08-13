@@ -71,6 +71,14 @@ def get_all_leagues(db_file=DB_FILE):
     conn.close()
     return leagues
 
+def add_team_to_league(league_id, team_id, season_year, db_file=DB_FILE):
+    """Adds a team to a league for a specific season."""
+    conn = sqlite3.connect(db_file)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO LeagueTeams (league_id, team_id, season_year) VALUES (?, ?, ?)", (league_id, team_id, season_year))
+    conn.commit()
+    conn.close()
+
 def test_league_db(db_file="test_football_sim.db"):
     """Tests for league database functions."""
     print("Testing league_db.py...")

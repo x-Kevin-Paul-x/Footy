@@ -87,6 +87,10 @@ class Manager:
 
     def save_to_database(self):
         """Save manager to database and return manager_id"""
+        # The brain object contains Q-tables which are defaultdicts.
+        # json.dumps cannot handle defaultdicts, so we need to convert them to dicts.
+        brain_to_save = {}
+
         if self.manager_id is None:
             # Create new manager
             self.manager_id = create_manager(
@@ -97,7 +101,16 @@ class Manager:
                 wins=self.wins,
                 draws=self.draws,
                 losses=self.losses,
-                total_rewards=self.total_rewards
+                total_rewards=self.total_rewards,
+                profile=self.profile.__dict__,
+                brain=brain_to_save,
+                tactics=self.tactics,
+                transfer_history=self.transfer_history,
+                match_history=self.match_history,
+                performance_history=self.performance_history,
+                market_state_history=self.market_state_history,
+                transfers_made=self.transfers_made,
+                successful_transfers=self.successful_transfers
             )
         else:
             # Update existing manager
@@ -110,7 +123,16 @@ class Manager:
                 wins=self.wins,
                 draws=self.draws,
                 losses=self.losses,
-                total_rewards=self.total_rewards
+                total_rewards=self.total_rewards,
+                profile=self.profile.__dict__,
+                brain=brain_to_save,
+                tactics=self.tactics,
+                transfer_history=self.transfer_history,
+                match_history=self.match_history,
+                performance_history=self.performance_history,
+                market_state_history=self.market_state_history,
+                transfers_made=self.transfers_made,
+                successful_transfers=self.successful_transfers
             )
         return self.manager_id
 
@@ -719,6 +741,8 @@ class Manager:
         self.last_match_state = None
         self.last_match_action = None
 
+        self.save_to_database()
+
     def learn_from_transfer(self, transfer_result: Dict[str, Any]):
         """Learn from transfer results using Q-learning. Give positive reward if fixing a forfeit by signing a player."""
         if not hasattr(self, 'last_transfer_state') or not self.last_transfer_state:
@@ -769,6 +793,8 @@ class Manager:
         # Reset transfer state
         self.last_transfer_state = None
         self.last_transfer_action = None
+
+        self.save_to_database()
         
     def _get_possible_match_actions(self) -> List[Tuple]:
         """Get all possible match actions for the current state."""
@@ -816,6 +842,8 @@ class Manager:
         self.formation = formation
         positions = self._get_positions_for_formation(formation)
         
+        self.save_to_database()
+
         return players, positions
     
     def _select_basic_lineup(self, available_players: List[Any]) -> Tuple[List[Any], List[str]]:

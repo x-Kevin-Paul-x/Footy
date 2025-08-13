@@ -1,27 +1,47 @@
 import sqlite3
 from db_setup import DB_FILE
 
-def create_coach(name, specialty, experience_level, team_id=None, db_file=DB_FILE): 
+def create_coach(name, specialty, experience_level, team_id=None, learning_rate=0.1, exploration_rate=0.2, improvement_history=None, training_effectiveness=None, training_methods=None, session_results=None, player_progress=None, db_file=DB_FILE):
     """Inserts a new coach into the database."""
     conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
+
+    improvement_history_json = json.dumps(improvement_history) if improvement_history else None
+    training_effectiveness_json = json.dumps(training_effectiveness) if training_effectiveness else None
+    training_methods_json = json.dumps(training_methods) if training_methods else None
+    session_results_json = json.dumps(session_results) if session_results else None
+    player_progress_json = json.dumps(player_progress) if player_progress else None
+
     cursor.execute("""
-        INSERT INTO Coach (name, specialty, experience_level, team_id, learning_rate, exploration_rate)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (name, specialty, experience_level, team_id, 0.1, 0.2))
+        INSERT INTO Coach (name, specialty, experience_level, team_id, learning_rate, exploration_rate, improvement_history, training_effectiveness, training_methods, session_results, player_progress)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (name, specialty, experience_level, team_id, learning_rate, exploration_rate, improvement_history_json, training_effectiveness_json, training_methods_json, session_results_json, player_progress_json))
     coach_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return coach_id
+
+import json
 
 def get_coach(coach_id, db_file=DB_FILE):
     """Retrieves a coach by its ID."""
     conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM Coach WHERE coach_id = ?", (coach_id,))
-    coach = cursor.fetchone()
+    coach_row = cursor.fetchone()
     conn.close()
-    return coach
+    if not coach_row:
+        return None
+
+    coach_data = list(coach_row)
+    # Deserialize JSON fields
+    coach_data[7] = json.loads(coach_data[7]) if coach_data[7] else None
+    coach_data[8] = json.loads(coach_data[8]) if coach_data[8] else None
+    coach_data[9] = json.loads(coach_data[9]) if coach_data[9] else None
+    coach_data[10] = json.loads(coach_data[10]) if coach_data[10] else []
+    coach_data[11] = json.loads(coach_data[11]) if coach_data[11] else None
+
+    return tuple(coach_data)
 
 def get_all_coaches(db_file=DB_FILE):
     """Retrieves all coaches."""
@@ -32,7 +52,7 @@ def get_all_coaches(db_file=DB_FILE):
     conn.close()
     return coaches
 
-def update_coach(coach_id, name=None, specialty=None, experience_level=None, team_id=None, learning_rate=None, exploration_rate=None, db_file=DB_FILE):
+def update_coach(coach_id, name=None, specialty=None, experience_level=None, team_id=None, learning_rate=None, exploration_rate=None, improvement_history=None, training_effectiveness=None, training_methods=None, session_results=None, player_progress=None, db_file=DB_FILE):
     """Updates a coach's information."""
     conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
@@ -58,10 +78,25 @@ def update_coach(coach_id, name=None, specialty=None, experience_level=None, tea
     if exploration_rate is not None:
         update_fields.append("exploration_rate = ?")
         update_values.append(exploration_rate)
+    if improvement_history is not None:
+        update_fields.append("improvement_history = ?")
+        update_values.append(json.dumps(improvement_history))
+    if training_effectiveness is not None:
+        update_fields.append("training_effectiveness = ?")
+        update_values.append(json.dumps(training_effectiveness))
+    if training_methods is not None:
+        update_fields.append("training_methods = ?")
+        update_values.append(json.dumps(training_methods))
+    if session_results is not None:
+        update_fields.append("session_results = ?")
+        update_values.append(json.dumps(session_results))
+    if player_progress is not None:
+        update_fields.append("player_progress = ?")
+        update_values.append(json.dumps(player_progress))
 
     if not update_fields:
         conn.close()
-        return  # Nothing to update
+        return
 
     update_query = f"UPDATE Coach SET {', '.join(update_fields)} WHERE coach_id = ?"
     update_values.append(coach_id)

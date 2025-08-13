@@ -9,7 +9,7 @@ from manager import Manager
 class TestTransferSystem(unittest.TestCase):
     def setUp(self):
         # Create test teams
-        self.team_a = Team("Team A", budget=100000)
+        self.team_a = Team("Team A", budget=5000000)
         self.team_b = Team("Team B", budget=5000000)
 
         # Create test players
@@ -18,7 +18,11 @@ class TestTransferSystem(unittest.TestCase):
         self.midfielder = FootballPlayer.create_player(position="CM", age=31) # Average player
         self.midfielder.potential = 65 # Set potential *after* creation
 
-        log_path = "transfer_logs\\debug_test_transfers.txt"
+        import os
+        log_dir = "transfer_logs"
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+        log_path = os.path.join(log_dir, "debug_test_transfers.txt")
 
         # Initialize transfer market
         self.market = TransferMarket(log_path=log_path)
@@ -53,15 +57,19 @@ class TestTransferSystem(unittest.TestCase):
         """Test complete transfer lifecycle with detailed debugging."""
         print("\n--- Starting Transfer Workflow Test ---")
 
+        # Open the summer transfer window
+        self.market.current_day = 1
+        self.market.current_window = "summer"
+
         # Add players to team_a first
         self.team_a.add_player(self.striker)
         self.team_a.add_player(self.goalie)
         self.team_a.add_player(self.midfielder)
 
         # Team A lists players
-        listing1 = self.market.list_player(self.striker, self.team_a, asking_price=self.market.calculate_player_value(self.striker) * 0.89)  # High value
-        listing2 = self.market.list_player(self.goalie, self.team_a, asking_price=self.market.calculate_player_value(self.goalie) * 0.99)   # Lower value
-        listing3 = self.market.list_player(self.midfielder, self.team_a, asking_price=self.market.calculate_player_value(self.midfielder) * 0.99) # Mid value
+        listing1, _ = self.market.list_player(self.striker, self.team_a, asking_price=self.market.calculate_player_value(self.striker) * 0.89)  # High value
+        listing2, _ = self.market.list_player(self.goalie, self.team_a, asking_price=self.market.calculate_player_value(self.goalie) * 0.99)   # Lower value
+        listing3, _ = self.market.list_player(self.midfielder, self.team_a, asking_price=self.market.calculate_player_value(self.midfielder) * 0.99) # Mid value
 
         print(f"\n--- Players Listed on Transfer Market ---")
         print(f"Listing 1: {listing1.player.name}, Asking Price: {listing1.asking_price} , Value = {self.market.calculate_player_value(self.striker)}")

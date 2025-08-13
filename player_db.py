@@ -74,9 +74,23 @@ def get_all_players(db_file=DB_FILE):
 
     return players
 
+def get_players_for_team(team_id, db_file=DB_FILE):
+    """Retrieves all players for a given team."""
+    conn = sqlite3.connect(db_file)
+    cursor = conn.cursor()
+    cursor.execute("SELECT player_id FROM Player WHERE team_id = ?", (team_id,))
+    player_ids = [row[0] for row in cursor.fetchall()]
+    conn.close()
+
+    players = []
+    for player_id in player_ids:
+        players.append(get_player(player_id, db_file))
+
+    return players
+
 def update_player(player_id, name=None, age=None, position=None, team_id=None, potential=None, wage=None,
-                  contract_length=None, squad_role=None, attributes=None, db_file=DB_FILE):
-    """Updates a player's information and attributes."""
+                  contract_length=None, squad_role=None, attributes=None, stats=None, db_file=DB_FILE):
+    """Updates a player's information, attributes, and stats."""
     conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
 
@@ -123,6 +137,23 @@ def update_player(player_id, name=None, age=None, position=None, team_id=None, p
                     INSERT INTO PlayerAttributes (player_id, attribute_type, sub_attribute, value)
                     VALUES (?, ?, ?, ?)
                 """, (player_id, attr_type, sub_attr, value))
+
+    # Update stats
+    if stats:
+        cursor.execute("""
+            UPDATE PlayerStats
+            SET goals = ?, assists = ?, appearances = ?, fitness = ?, clean_sheets = ?, yellow_cards = ?, red_cards = ?
+            WHERE player_id = ?
+        """, (
+            stats.get('goals', 0),
+            stats.get('assists', 0),
+            stats.get('appearances', 0),
+            stats.get('fitness', 100),
+            stats.get('clean_sheets', 0),
+            stats.get('yellow_cards', 0),
+            stats.get('red_cards', 0),
+            player_id
+        ))
 
     conn.commit()
     conn.close()

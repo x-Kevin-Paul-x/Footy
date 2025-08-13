@@ -7,18 +7,120 @@ from datetime import datetime
 from team import Team
 from player import FootballPlayer
 from manager import Manager
+from manager_profile import ManagerProfile
+from collections import defaultdict
+import ast
+from coach import Coach
 from transfer import TransferMarket
-from db_setup import initialize_fresh_database
+from db_setup import create_tables, check_tables_exist
 from match_db import save_match_to_db
+import league_db
+import team_db
+import player_db
+import manager_db
+import coach_db
+
+def load_or_create_premier_league():
+    """Loads the Premier League from the database, or creates it if it doesn't exist."""
+    print("Attempting to load league from database...")
+    leagues = league_db.get_all_leagues()
+
+    if leagues:
+        print("League found in database. Loading data...")
+        # Assuming only one league for now
+        league_data = leagues[0]
+        premier_league = League(league_data[1]) # name
+        premier_league.league_id = league_data[0] # league_id
+        premier_league.season_year = league_data[2] # season_year
+
+        teams_data = team_db.get_teams_for_league(premier_league.league_id)
+        for team_data in teams_data:
+            team = Team(name=team_data[1], budget=team_data[2])
+            team.team_id = team_data[0]
+            team.weekly_budget = team_data[3]
+            team.transfer_budget = team_data[4]
+            team.wage_budget = team_data[5]
+
+            # Load players for the team
+            players_data = player_db.get_players_for_team(team.team_id)
+            for player_data in players_data:
+                # The player_data from get_player is a dict
+                player = FootballPlayer(
+                    name=player_data['name'],
+                    age=player_data['age'],
+                    position=player_data['position'],
+                    potential=player_data['potential'],
+                    wage=player_data['wage']
+                )
+                player.attributes = player_data['attributes']
+                player.player_id = player_data['player_id']
+                player.team_id = player_data['team_id']
+                player.contract_length = player_data['contract_length']
+                player.squad_role = player_data['squad_role']
+                team.add_player(player, force=True)
+
+            # Load manager for the team
+            if team_data[6]: # manager_id
+                manager_data = manager_db.get_manager(team_data[6])
+
+                profile = ManagerProfile()
+                if manager_data[4]:
+                    profile_data = json.loads(manager_data[4])
+                    profile.__dict__ = profile_data
+
+                manager = Manager(
+                    name=manager_data[1],
+                    experience_level=manager_data[2],
+                    profile=profile
+                )
+                manager.manager_id = manager_data[0]
+
+                if manager_data[5]: # brain
+                    # Brain loading is disabled for now due to serialization issues.
+                    pass
+
+                if manager_data[6]:
+                    manager.tactics = json.loads(manager_data[6])
+                if manager_data[7]:
+                    manager.transfer_history = json.loads(manager_data[7])
+                if manager_data[8]:
+                    manager.match_history = json.loads(manager_data[8])
+                if manager_data[9]:
+                    manager.performance_history = json.loads(manager_data[9])
+                if manager_data[10]:
+                    manager.market_state_history = json.loads(manager_data[10])
+
+                manager.transfers_made = manager_data[11]
+                manager.successful_transfers = manager_data[12]
+                manager.formation = manager_data[13]
+                manager.matches_played = manager_data[14]
+                manager.wins = manager_data[15]
+                manager.draws = manager_data[16]
+                manager.losses = manager_data[17]
+                manager.total_rewards = manager_data[18]
+
+                team.set_manager(manager)
+
+            premier_league.teams.append(team)
+
+        print("League loaded successfully.")
+        return premier_league
+    else:
+        print("No league found in database. Creating a new one...")
+        return _create_and_save_premier_league()
 
 def initialize_database():
-    """Initialize the database with fresh start - clear all data"""
-    print("Initializing database...")
-    initialize_fresh_database()
-    print("Database initialized successfully!")
+    """Initialize the database if it doesn't exist or is empty."""
+    print("Checking database status...")
+    if not check_tables_exist():
+        print("Database not found or is empty. Creating new tables...")
+        create_tables()
+        print("Database created successfully!")
+    else:
+        print("Database already exists. Skipping creation.")
 
-def create_premier_league():
-    """Create Premier League with 20 teams and enhanced realism"""
+def _create_and_save_premier_league():
+    """Create Premier League with 20 teams and enhanced realism and save to DB"""
     teams = [
         "Arsenal", "Aston Villa", "Bournemouth", "Brentford", "Brighton",
         "Chelsea", "Crystal Palace", "Everton", "Fulham", "Liverpool",
@@ -52,6 +154,7 @@ def create_premier_league():
     }
     
     premier_league = League("Premier League")
+    premier_league.league_id = league_db.create_league(premier_league.name, premier_league.season_year)
     premier_league.teams = []  # Clear default teams
     
     print("Creating Premier League teams with enhanced financial system...")
@@ -67,6 +170,8 @@ def create_premier_league():
         # Save team to database
         team.save_to_database()
         
+        league_db.add_team_to_league(premier_league.league_id, team.team_id, premier_league.season_year)
+
         premier_league.teams.append(team)
         
         # Create and assign manager with profile
@@ -339,8 +444,14 @@ def simulate_season_with_transfers(premier_league, transfer_market):
     
     return premier_league.get_final_table()
 
+import argparse
+
 def main():
     """Enhanced main function with comprehensive simulation"""
+    parser = argparse.ArgumentParser(description="Footy: A Football League Simulation")
+    parser.add_argument("--seasons", type=int, default=5, help="Number of seasons to simulate")
+    args = parser.parse_args()
+
     # Initialize database with fresh start
     initialize_database()
     
@@ -349,10 +460,10 @@ def main():
     os.makedirs("transfer_logs", exist_ok=True)
     os.makedirs("match_reports", exist_ok=True)
     
-    num_seasons = 5
+    num_seasons = args.seasons
     
     # Create league and transfer market
-    premier_league = create_premier_league()
+    premier_league = load_or_create_premier_league()
     transfer_market = TransferMarket()
     
     print(f"\nInitial Financial Overview:")

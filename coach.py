@@ -1,6 +1,7 @@
 import random
 import numpy as np
 import names
+from coach_db import create_coach, update_coach
 
 from collections import defaultdict
 
@@ -68,6 +69,7 @@ class Coach:
         # Performance tracking
         self.session_results = []
         self.player_progress = defaultdict(lambda: defaultdict(list))
+        self.coach_id = None
     
     def select_training_method(self):
         """
@@ -142,6 +144,7 @@ class Coach:
             "players_improved": len(results["improvements"])
         })
         
+        self.save_to_database()
         return results
     
     def adapt_training_approach(self):
@@ -162,7 +165,43 @@ class Coach:
         
         # Adjust learning rate based on experience
         self.learning_rate = max(0.05, min(0.2, self.learning_rate * (1 + avg_improvement)))
+        self.save_to_database()
     
+    def save_to_database(self):
+        """Save coach to database and return coach_id"""
+        if self.coach_id is None:
+            # Create new coach
+            self.coach_id = create_coach(
+                name=self.name,
+                specialty=self.specialty,
+                experience_level=self.experience_level,
+                team_id=self.team.team_id if self.team else None,
+                learning_rate=self.learning_rate,
+                exploration_rate=self.exploration_rate,
+                improvement_history=dict(self.improvement_history),
+                training_effectiveness=dict(self.training_effectiveness),
+                training_methods=self.training_methods,
+                session_results=self.session_results,
+                player_progress={k: dict(v) for k, v in self.player_progress.items()}
+            )
+        else:
+            # Update existing coach
+            update_coach(
+                coach_id=self.coach_id,
+                name=self.name,
+                specialty=self.specialty,
+                experience_level=self.experience_level,
+                team_id=self.team.team_id if self.team else None,
+                learning_rate=self.learning_rate,
+                exploration_rate=self.exploration_rate,
+                improvement_history=dict(self.improvement_history),
+                training_effectiveness=dict(self.training_effectiveness),
+                training_methods=self.training_methods,
+                session_results=self.session_results,
+                player_progress={k: dict(v) for k, v in self.player_progress.items()}
+            )
+        return self.coach_id
+
     def analyze_progress(self, timeframe=10):
         """
         Analyze training effectiveness over recent sessions.
@@ -193,4 +232,5 @@ class Coach:
         if analysis["average_improvement"] > 0.3:
             self.experience_level = min(10, self.experience_level + 0.1)
         
+        self.save_to_database()
         return analysis

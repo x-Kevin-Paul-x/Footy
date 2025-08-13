@@ -31,7 +31,7 @@ def save_match_to_db(match_data: Dict[str, Any], season_year: int, match_number:
                 home_fouls, away_fouls,
                 home_corners, away_corners,
                 home_offsides, away_offsides
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             match_number,
             match_data.get("date", "N/A"),

@@ -251,6 +251,14 @@ class Team:
             "budget": self.budget
         })
         
+        # Save the updated state to the database
+        if self.team_id is not None:
+            update_team(
+                team_id=self.team_id,
+                budget=self.budget,
+                statistics=self.statistics
+            )
+
         return {
             "revenue": weekly_revenue,
             "expenses": weekly_expenses,
@@ -282,6 +290,11 @@ class Team:
                 "remaining_years": duration
             }
             self.sponsorship_deals.append(new_deal)
+
+            # Save changes to the database
+            if self.team_id is not None:
+                update_team(self.team_id, sponsorship_deals=self.sponsorship_deals)
+
             return True, f"Sponsorship deal signed: £{offer_value:,.0f} per year for {duration} years"
         
         return False, f"Offer too low. Minimum acceptable: £{min_acceptable:,.0f}"
@@ -334,6 +347,11 @@ class Team:
             # Boost attendance by improving stadium experience
             self.average_attendance *= 1.05
         
+        # Save changes to the database
+        if self.team_id is not None:
+            self.statistics['stadium_capacity'] = self.stadium_capacity
+            update_team(self.team_id, budget=self.budget, statistics=self.statistics)
+
         return True, f"Stadium upgrade completed: {upgrade_type}"
 
     def get_players_by_position(self, position):
@@ -441,6 +459,9 @@ class Team:
         experience_multiplier = 1 + (manager.experience_level / 100)
         manager.salary = base_salary * experience_multiplier
 
+        if self.team_id is not None:
+            update_team(self.team_id, manager_id=self.manager.manager_id)
+
     def add_coach(self, coach):
         """Add a coach to the team with salary calculation."""
         if len(self.coaches) >= 5:
@@ -452,11 +473,19 @@ class Team:
         self.coaches.append(coach)
         coach.team = self
 
+        if self.team_id and coach.coach_id:
+            from coach_db import add_coach_to_team
+            add_coach_to_team(coach.coach_id, self.team_id)
+
     def remove_coach(self, coach):
         """Remove a coach from the team."""
         if coach in self.coaches:
             self.coaches.remove(coach)
             coach.team = None
+
+            if self.team_id and coach.coach_id:
+                from coach_db import remove_coach_from_team
+                remove_coach_from_team(coach.coach_id, self.team_id)
 
     def get_formation(self):
         """Get team formation from manager."""
@@ -546,6 +575,14 @@ class Team:
                     "wage_saved": player.wage * 52,
                     "net_benefit": fee + (player.wage * 52)
                 })
+                if self.team_id is not None:
+                    update_team(
+                        team_id=self.team_id,
+                        budget=self.budget,
+                        transfer_budget=self.transfer_budget,
+                        wage_budget=self.wage_budget,
+                        statistics=self.statistics
+                    )
                 return True
             return False
         else:  # Buying
@@ -572,6 +609,13 @@ class Team:
                 "annual_wage_cost": annual_wage_cost,
                 "total_cost": fee + annual_wage_cost
             })
+            if self.team_id is not None:
+                update_team(
+                    team_id=self.team_id,
+                    budget=self.budget,
+                    transfer_budget=self.transfer_budget,
+                    statistics=self.statistics
+                )
             return True
 
     def can_afford_transfer(self, fee, player_wage=None, include_wages=True):
