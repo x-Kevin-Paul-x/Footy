@@ -2,7 +2,7 @@ from league import League
 import json
 import os
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from team import Team
 from player import FootballPlayer
@@ -15,6 +15,19 @@ def initialize_database():
     """Initialize the database with fresh start - clear all data"""
     print("Initializing database...")
     initialize_fresh_database()
+    # Clean up old report files so previous runs do not appear in the UI
+    import shutil
+    for d in ("match_reports", "season_reports", "transfer_logs"):
+        if os.path.exists(d):
+            for fname in os.listdir(d):
+                fpath = os.path.join(d, fname)
+                try:
+                    if os.path.isfile(fpath) or os.path.islink(fpath):
+                        os.remove(fpath)
+                    elif os.path.isdir(fpath):
+                        shutil.rmtree(fpath)
+                except Exception as e:
+                    print(f"Warning: failed to remove {fpath}: {e}")
     print("Database initialized successfully!")
 
 def create_premier_league():
@@ -262,9 +275,17 @@ def simulate_season_with_transfers(premier_league, transfer_market):
     january_start = total_matches // 2
     
     print(f"\nPlaying first half of season ({january_start} matches)...")
+    # Compute scheduling helpers
     for i in range(january_start):
         match = premier_league.schedule[i]
         match_result = premier_league.play_match(match[0], match[1])
+        # Assign scheduled date consistent with League.play_season
+        season_start = datetime(premier_league.season_year, 8, 1)
+        matches_per_week = max(1, len(premier_league.teams) // 2)
+        matchday = i // matches_per_week
+        scheduled_date = season_start + timedelta(days=7 * matchday)
+        if match_result is not None:
+            match_result['date'] = scheduled_date.isoformat()
         save_match_to_db(match_result, premier_league.season_year, i + 1)
         matches_played += 1
         
@@ -317,9 +338,17 @@ def simulate_season_with_transfers(premier_league, transfer_market):
     
     # Play remaining matches
     print(f"\nPlaying second half of season...")
+    # Compute scheduling helpers
     for i in range(january_start, total_matches):
         match = premier_league.schedule[i]
         match_result = premier_league.play_match(match[0], match[1])
+        # Assign scheduled date consistent with League.play_season
+        season_start = datetime(premier_league.season_year, 8, 1)
+        matches_per_week = max(1, len(premier_league.teams) // 2)
+        matchday = i // matches_per_week
+        scheduled_date = season_start + timedelta(days=7 * matchday)
+        if match_result is not None:
+            match_result['date'] = scheduled_date.isoformat()
         save_match_to_db(match_result, premier_league.season_year, i + 1)
         matches_played += 1
         
@@ -349,7 +378,7 @@ def main():
     os.makedirs("transfer_logs", exist_ok=True)
     os.makedirs("match_reports", exist_ok=True)
     
-    num_seasons = 5
+    num_seasons = 1
     
     # Create league and transfer market
     premier_league = create_premier_league()

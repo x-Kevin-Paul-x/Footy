@@ -188,6 +188,7 @@ class League:
 
     def play_season(self):
         """Play all matches in the season and close the transfer log."""
+        from datetime import datetime, timedelta
         match_day = 1
 
         # Initialize the transfer log for the season
@@ -196,8 +197,14 @@ class League:
             f.write(f"Transfer Activity for Season {self.season_year}\n")
             f.write("=" * 80 + "\n\n")
 
+        # Schedule: assume matches_per_week = len(self.teams) // 2
+        season_start = datetime(self.season_year, 8, 1)
+        matches_per_week = max(1, len(self.teams) // 2)
         for idx, (home, away) in enumerate(self.schedule):
+            matchday = idx // matches_per_week
+            scheduled_date = season_start + timedelta(days=7 * matchday)
             result = self.play_match(home, away)
+            result["date"] = scheduled_date.isoformat()
             self.save_match_report_simple(home, away, result, idx+1)
 
     def save_match_report_simple(self, home_team, away_team, result, match_number):

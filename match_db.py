@@ -9,18 +9,36 @@ def get_db_connection():
 
 def save_match_to_db(match_data: Dict[str, Any], season_year: int, match_number: int):
     """
-    Save a completed match to the database.
-    
-    Args:
-        match_data (dict): Dictionary containing all match details.
-        season_year (int): The year the season took place.
-        match_number (int): The match number in the season.
+    Save a completed match to the database, with validation.
     """
+    import logging
     conn = get_db_connection()
     cursor = conn.cursor()
 
+    # Defensive extraction
+    def get_team_id(val):
+        if hasattr(val, "team_id"):
+            return val.team_id
+        return int(val)
+
+    # Validation
+    date = match_data.get("date")
+    score = match_data.get("score")
+    home_team_id = get_team_id(match_data.get("home_team_id"))
+    away_team_id = get_team_id(match_data.get("away_team_id"))
+
+    # Only save if valid
+    if not date or date == "N/A":
+        logging.warning(f"Skipping match: missing/invalid date in match_data: {match_data}")
+        return None
+    if not isinstance(score, (list, tuple)) or len(score) != 2:
+        logging.warning(f"Skipping match: missing/invalid score in match_data: {match_data}")
+        return None
+    if not isinstance(home_team_id, int) or not isinstance(away_team_id, int):
+        logging.warning(f"Skipping match: missing/invalid team ids in match_data: {match_data}")
+        return None
+
     try:
-        # 1. Insert into Match table
         cursor.execute("""
             INSERT INTO Match (
                 match_number, date, season_year, home_team_id, away_team_id,
@@ -31,18 +49,18 @@ def save_match_to_db(match_data: Dict[str, Any], season_year: int, match_number:
                 home_fouls, away_fouls,
                 home_corners, away_corners,
                 home_offsides, away_offsides
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             match_number,
-            match_data.get("date", "N/A"),
+            date,
             season_year,
-            match_data["home_team_id"],
-            match_data["away_team_id"],
-            match_data["score"][0],
-            match_data["score"][1],
-            match_data["possession"][0],
-            match_data["possession"][1],
-            match_data["weather"],
+            home_team_id,
+            away_team_id,
+            score[0],
+            score[1],
+            match_data.get("possession", [0, 0])[0],
+            match_data.get("possession", [0, 0])[1],
+            match_data.get("weather"),
             match_data.get("intensity", "normal"),
             match_data.get("passes_attempted", [0, 0])[0],
             match_data.get("passes_attempted", [0, 0])[1],
