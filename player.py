@@ -30,6 +30,7 @@ class FootballPlayer:
         self.recovery_time = 0
         self.injury_history = []  # List of dicts: {"type": ..., "duration": ..., "start_age": ...}
         self.squad_role = "RESERVE"  # STARTER/BENCH/YOUTH
+        self.recently_transferred = False
 
         # Transfer/contract negotiation attributes
         self.desired_wage = self.wage * random.uniform(1.05, 1.25)
