@@ -108,7 +108,9 @@ export interface FinancialSummary {
 }
 
 export interface TeamDetail {
+  id?: string | number;
   name: string;
+  crest?: string | null;
   manager_name: string;
   manager_formation: string;
   budget: number;

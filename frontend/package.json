@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"cd .. && python api.py\" \"vite\"",
+    "test": "jest --watchAll=false",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
