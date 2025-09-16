@@ -671,7 +671,12 @@ class Team:
             dict: A dictionary containing detailed analysis of squad needs.
         """
         if not self.manager:
-            return {"needs": [], "position_analysis": {}}
+            return {
+                "needs": [],
+                "position_analysis": {},
+                "squad_balance": {},
+                "recommended_signings": []
+            }
 
         formation = self.manager.formation
         starter_positions = self.manager.get_positions_for_formation(formation)
