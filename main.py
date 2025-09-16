@@ -255,6 +255,7 @@ def simulate_season_with_transfers(premier_league, transfer_market):
         
         # AI transfer activity (every 3 days)
         if day % 3 == 0:
+            # AI managers act on their scouting lists
             transfer_market.simulate_ai_transfers(premier_league.teams)
         
         # Print progress every 20 days
@@ -306,6 +307,10 @@ def simulate_season_with_transfers(premier_league, transfer_market):
         # Age players and apply decline
         if matches_played % 10 == 0:  # Every 10 matches
             for team in premier_league.teams:
+                # Manager scouts for talent
+                if team.manager:
+                    team.manager.scout_for_talent(premier_league.teams, transfer_market)
+
                 # Check and reinforce squad if necessary
                 team.check_and_reinforce_squad(transfer_market)
                 
@@ -326,6 +331,7 @@ def simulate_season_with_transfers(premier_league, transfer_market):
         
         # More active January window
         if day % 2 == 0:
+            # AI managers act on their scouting lists
             transfer_market.simulate_ai_transfers(premier_league.teams)
         
         if day % 10 == 0:
@@ -360,6 +366,12 @@ def simulate_season_with_transfers(premier_league, transfer_market):
                     team.calculate_matchday_revenue(attendance_factor)
                 
                 team.process_weekly_finances()
+
+        if matches_played % 10 == 0:
+             for team in premier_league.teams:
+                # Manager scouts for talent
+                if team.manager:
+                    team.manager.scout_for_talent(premier_league.teams, transfer_market)
     
     # Process contract expiries at end of season
     expired_contracts = transfer_market.process_contract_expiries(premier_league.teams)
@@ -378,7 +390,7 @@ def main():
     os.makedirs("transfer_logs", exist_ok=True)
     os.makedirs("match_reports", exist_ok=True)
     
-    num_seasons = 1
+    num_seasons = 2
     
     # Create league and transfer market
     premier_league = create_premier_league()

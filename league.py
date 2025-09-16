@@ -402,25 +402,22 @@ class League:
         return {"name": "N/A", "experience": 0, "formation": "N/A", "transfer_success_rate": 0.0, "market_trends": {}}
 
     def get_best_players(self, num=11):
-        """Select best players from all teams and return as a list of dictionaries."""
-        all_players_objects = []
+        """Get best players in the league based on overall rating"""
+        all_players = []
         for team in self.teams:
-            all_players_objects.extend(team.players)
-            
-        # Sort players by average attribute rating
-        sorted_players = sorted(all_players_objects,
-                                key=lambda p: sum(
-                                    sum(category.values()) for category in p.attributes.values()
-                                ) / sum(len(category) for category in p.attributes.values()),
-                                reverse=True)[:num]
+            all_players.extend(team.players)
 
+        # Sort players by overall rating
+        all_players.sort(key=lambda p: p.get_overall_rating(), reverse=True)
+
+        # Get top players and their details
         best_players_data = []
-        for player_obj in sorted_players:
+        for player_obj in all_players[:num]:
             player_info = player_obj.get_player_info(detail_level="full")
             player_info["value"] = self.transfer_market.calculate_player_value(player_obj)
-            # Ensure team name is present
             player_info["team"] = player_obj.team if player_obj.team else "N/A"
             best_players_data.append(player_info)
+
         return best_players_data
 
     def increment_season(self):
