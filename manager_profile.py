@@ -1,7 +1,7 @@
 """Manager profile system for defining strategic preferences and learning parameters."""
 
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict
 
 @dataclass
@@ -25,6 +25,14 @@ class ManagerProfile:
     financial_conservation: float = 0.5
     bargaining_aggression: float = 0.5
 
+    # Scouting focus
+    scouting_focus: Dict[str, float] = field(default_factory=lambda: {
+        "young_players": 0.5,  # Focus on players under 23
+        "peak_age_players": 0.5, # Focus on players 24-29
+        "experienced_players": 0.2, # Focus on players 30+
+        "bargain_deals": 0.5, # Focus on players with <1 year on contract
+    })
+
     def __post_init__(self):
         """Validate that strategic focus weights sum to 1.0"""
         if not 0.99 <= (self.short_term_weight + self.long_term_weight) <= 1.01:
@@ -46,7 +54,13 @@ class ManagerProfile:
             possession_preference=random.uniform(0.3, 0.7),
             youth_preference=random.uniform(0.3, 0.7),
             financial_conservation=random.uniform(0.3, 0.7),
-            bargaining_aggression=random.uniform(0.3, 0.7)
+            bargaining_aggression=random.uniform(0.3, 0.7),
+            scouting_focus={
+                "young_players": random.uniform(0.3, 0.8),
+                "peak_age_players": random.uniform(0.4, 0.9),
+                "experienced_players": random.uniform(0.1, 0.5),
+                "bargain_deals": random.uniform(0.4, 0.9),
+            }
         )
     
     def calculate_match_reward(self, result: Dict) -> float:

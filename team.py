@@ -658,48 +658,119 @@ class Team:
             if generated_count > 0:
                 print(f"  Generated and promoted {generated_count} emergency youth players.")
 
-    def get_squad_needs(self):
-        """Enhanced squad analysis with quality assessment."""
-        position_analysis = {
-            "GK": {"current": 0, "ideal": 2, "quality": 0},
-            "DEF": {"current": 0, "ideal": 8, "quality": 0}, 
-            "MID": {"current": 0, "ideal": 8, "quality": 0},
-            "FWD": {"current": 0, "ideal": 5, "quality": 0}
-        }
-        
-        # Analyze current squad
+    def get_squad_needs(self, quality_threshold=None):
+        """
+        Analyzes squad needs based on manager's formation, player quality, and depth.
+        A dynamic quality threshold is used if none is provided.
+
+        Args:
+            quality_threshold (int, optional): The overall rating below which a starter is considered a weakness.
+                                               If None, it's dynamically calculated based on the team's average.
+
+        Returns:
+            dict: A dictionary containing detailed analysis of squad needs.
+        """
+        if not self.manager:
+            return {"needs": [], "position_analysis": {}}
+
+        formation = self.manager.formation
+        starter_positions = self.manager.get_positions_for_formation(formation)
+
+        # 1. Group players by their specific position and determine starters
+        players_by_pos = {pos: [] for pos in set(starter_positions)}
         for player in self.players:
-            category = "GK" if player.position == "GK" else \
-                      "DEF" if player.position in ["CB", "LB", "RB", "LWB", "RWB", "SW"] else \
-                      "MID" if player.position in ["CM", "CDM", "CAM", "LM", "RM", "DM"] else "FWD"
-            
-            position_analysis[category]["current"] += 1
-            position_analysis[category]["quality"] += player.get_overall_rating()
+            if player.position in players_by_pos:
+                players_by_pos[player.position].append(player)
+
+        for pos in players_by_pos:
+            players_by_pos[pos].sort(key=lambda p: p.get_overall_rating(), reverse=True)
+
+        # Determine the starting XI to calculate average quality
+        starting_xi = []
+        temp_positions = list(starter_positions)
+        for pos in set(temp_positions):
+            num_in_formation = temp_positions.count(pos)
+            starters_for_pos = players_by_pos.get(pos, [])[:num_in_formation]
+            starting_xi.extend(starters_for_pos)
+
+        # 2. Calculate dynamic quality threshold if not provided
+        if quality_threshold is None:
+            if starting_xi:
+                average_starter_rating = sum(p.get_overall_rating() for p in starting_xi) / len(starting_xi)
+                # A team should look for players who are a modest improvement on their current starters
+                quality_threshold = average_starter_rating * 1.05
+            else:
+                # If there's no team, set a low baseline to start building
+                quality_threshold = 40
         
-        # Calculate average quality
-        for pos_data in position_analysis.values():
-            if pos_data["current"] > 0:
-                pos_data["quality"] = pos_data["quality"] / pos_data["current"]
-        
-        # Determine needs
+        # 3. Identify needs
         needs = []
-        for pos, data in position_analysis.items():
-            shortage = data["ideal"] - data["current"]
-            if shortage > 0:
-                priority = "Critical" if pos == "GK" and data["current"] < 1 else \
-                          "High" if shortage >= data["ideal"] * 0.5 else "Medium"
+        position_analysis = {}
+        IDEAL_DEPTH = 2  # One starter, one backup
+
+        for pos in set(starter_positions):
+            num_in_formation = starter_positions.count(pos)
+            players_in_pos = players_by_pos.get(pos, [])
+
+            analysis = {
+                "position": pos,
+                "required_starters": num_in_formation,
+                "current_players": len(players_in_pos),
+                "ideal_total": num_in_formation * IDEAL_DEPTH,
+                "starter_quality": 0,
+                "depth_quality": 0
+            }
+
+            # Assess starters
+            starters = players_in_pos[:num_in_formation]
+            if starters:
+                analysis["starter_quality"] = sum(p.get_overall_rating() for p in starters) / len(starters)
+                for i, starter in enumerate(starters):
+                    if starter.get_overall_rating() < quality_threshold:
+                        needs.append({
+                            "type": "quality",
+                            "position": pos,
+                            "priority": "High",
+                            "description": f"Starter quality at {pos} is below threshold ({starter.get_overall_rating():.1f} < {quality_threshold:.1f})."
+                        })
+
+            # Assess depth
+            backups = players_in_pos[num_in_formation:]
+            if backups:
+                analysis["depth_quality"] = sum(p.get_overall_rating() for p in backups) / len(backups)
+
+            # Check for numerical shortage (starters)
+            if len(players_in_pos) < num_in_formation:
                 needs.append({
+                    "type": "shortage",
                     "position": pos,
-                    "shortage": shortage,
-                    "priority": priority,
-                    "quality": data["quality"]
+                    "priority": "Critical",
+                    "description": f"Not enough players for starting {pos} role(s). Need {num_in_formation - len(players_in_pos)}."
                 })
-        
+            # Check for numerical shortage (depth)
+            elif len(players_in_pos) < num_in_formation * IDEAL_DEPTH:
+                 needs.append({
+                    "type": "depth",
+                    "position": pos,
+                    "priority": "Medium",
+                    "description": f"Lack of depth at {pos}. Have {len(players_in_pos)}, ideal is {num_in_formation * IDEAL_DEPTH}."
+                })
+
+            position_analysis[pos] = analysis
+
+        # Deduplicate needs for the same position
+        unique_needs = []
+        seen_positions = set()
+        for need in sorted(needs, key=lambda x: x['priority'] == 'Critical', reverse=True):
+            if need['position'] not in seen_positions:
+                unique_needs.append(need)
+                seen_positions.add(need['position'])
+
         return {
+            "needs": unique_needs,
             "position_analysis": position_analysis,
-            "needs": needs,
-            "squad_balance": "Excellent" if not needs else "Good" if len(needs) <= 2 else "Needs Work",
-            "recommended_signings": len(needs)
+            "squad_balance": "Excellent" if not unique_needs else "Good" if len(unique_needs) <= 2 else "Needs Work",
+            "recommended_signings": len(unique_needs)
         }
 
     def calculate_weekly_expenses(self):

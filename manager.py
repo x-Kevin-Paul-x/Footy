@@ -29,6 +29,7 @@ class Manager:
         self.transfer_attempts = []  # List of bools for success/failure
         self.transfers_made = 0
         self.successful_transfers = 0
+        self.scouting_targets = [] # List of (player, score) tuples
         
         # All possible formations
         self.formations = [
@@ -496,6 +497,68 @@ class Manager:
                     break
         return actions
 
+    def scout_for_talent(self, all_teams: List['Team'], transfer_market: 'TransferMarket'):
+        """
+        Scans all players in the league that fit the team's needs and manager's profile.
+        This method populates the manager's scouting_targets list with player objects, not listings.
+        """
+        if not self.team:
+            return
+
+        squad_needs_data = self.team.get_squad_needs()
+        if not squad_needs_data.get("needs"):
+            return  # No needs, no scouting
+
+        needed_positions = {need["position"] for need in squad_needs_data["needs"]}
+
+        # Build a list of all players from other teams
+        all_players = []
+        for team in all_teams:
+            if team.name != self.team.name:
+                all_players.extend(team.players)
+
+        new_targets = []
+        for player in all_players:
+            # 1. Check if player's position is needed
+            player_pos_group = self._get_position_group(player.position)
+            if player_pos_group not in needed_positions:
+                continue
+
+            # 2. Score the player based on manager's scouting profile
+            score = 0
+            profile = self.profile
+
+            # Age preference
+            if player.age < 23:
+                score += profile.scouting_focus.get("young_players", 0.5)
+            elif 24 <= player.age <= 29:
+                score += profile.scouting_focus.get("peak_age_players", 0.5)
+            else:
+                score += profile.scouting_focus.get("experienced_players", 0.2)
+
+            # Bargain preference
+            if player.contract_length <= 1:
+                score += profile.scouting_focus.get("bargain_deals", 0.5)
+
+            # Quality and Potential
+            score += (player.get_overall_rating() / 100) * 2 # Weight quality higher
+            score += (player.potential / 100)
+
+            # 3. Financial viability (hypothetical)
+            market_value = transfer_market.calculate_player_value(player)
+            if not self.team.can_afford_transfer(market_value, player.wage):
+                 score *= 0.5 # Penalize if likely unaffordable
+
+            if score > 1.5: # Simple threshold to qualify as a target
+                new_targets.append((player, score)) # Store player and score
+
+        # Sort by score and update scouting list (top 10 targets)
+        new_targets.sort(key=lambda x: x[1], reverse=True)
+        self.scouting_targets = new_targets[:10]
+        if self.scouting_targets:
+             pass
+
+
     def make_transfer_decision(self, transfer_market):
         """Make transfer decisions using Q-learning. Aggressively buy and sign free agents if squad is thin."""
         raw_state = self.get_state()
@@ -524,6 +587,16 @@ class Manager:
                 action = self.brain.select_action(state, possible_actions, "transfer")
         else:
             action = self.brain.select_action(state, possible_actions, "transfer")
+
+        # --- HEURISTIC OVERRIDE TO KICK-START TRANSFERS ---
+        # If the manager has made no transfers and there are buy actions, force exploration.
+        if self.successful_transfers == 0:
+            buy_actions = [a for a in possible_actions if a[0] == "buy"]
+            if buy_actions:
+                # 50% chance to override the brain and pick a random good buy action
+                if random.random() < 0.5:
+                    action = random.choice(buy_actions)
+        # --- END HEURISTIC OVERRIDE ---
 
         self.last_transfer_state = state
         self.last_transfer_action = action
@@ -565,95 +638,89 @@ class Manager:
         return transfer_actions
     
     def _get_possible_transfer_actions(self, transfer_market):
-        """Generate possible transfer actions with enhanced market incentives."""
+        """
+        Generate possible transfer actions, prioritizing scouted targets and then
+        falling back to general market searches based on needs.
+        """
         actions = []
         squad_needs = self.team.get_squad_needs()
-        
-        # Selling actions
-        if len(self.team.players) > 18:  # Only sell if squad is not thin
+        needed_positions = {need["position"] for need in squad_needs.get("needs", [])}
+        processed_player_ids = set()
+
+        # --- 1. Selling Actions ---
+        if len(self.team.players) > 18:
             for player in self.team.players:
                 market_value = transfer_market.calculate_player_value(player)
-                
-                # Simplified selling logic: sell older players or if position is overstaffed
                 position_group = self._get_position_group(player.position)
-                current_in_pos = squad_needs["position_analysis"][position_group]["current"]
-                ideal_in_pos = squad_needs["position_analysis"][position_group]["ideal"]
+                pos_info = squad_needs.get("position_analysis", {}).get(position_group, {})
+                current, ideal = pos_info.get("current", 0), pos_info.get("ideal", 0)
 
-                if player.age > 30 or current_in_pos > ideal_in_pos:
+                if player.age > 30 or (ideal > 0 and current > ideal):
                     actions.append(("sell", player, market_value * random.uniform(0.9, 1.1)))
 
-        # Buying actions - more aggressive when squad is small
-        if len(self.team.players) < 25:
-            budget_for_buys = self.team.transfer_budget
-            if len(self.team.players) < 18:
-                budget_for_buys *= 1.5 # Use more budget if desperate
+        # --- 2. Buying Actions: Prioritize Scouted Targets ---
+        if self.scouting_targets:
+            for player, score in self.scouting_targets:
+                processed_player_ids.add(player.player_id)
 
-            available_players = transfer_market.get_available_players(max_price=budget_for_buys)
-            
-            for listing in available_players:
-                # Prioritize signing players for positions in need
-                player_pos_group = self._get_position_group(listing.player.position)
-                pos_needs = squad_needs["needs"]
-                is_needed = any(need["position"] == player_pos_group for need in pos_needs)
+                # Find the current listing for the scouted player
+                current_listing = transfer_market.get_listing_for_player(player)
+                if not current_listing:
+                    continue
 
-                # Be more likely to bid if the position is needed or squad is very small
-                if is_needed or len(self.team.players) < 15:
-                    offer_price = listing.asking_price * random.uniform(0.85, 1.05)
-                    if self.team.can_afford_transfer(offer_price, listing.player.wage):
-                         actions.append(("buy", listing.listing_id, offer_price))
+                # Check if the need for this player's position still exists
+                if self._get_position_group(player.position) in needed_positions:
+                    aggression_factor = 1 + (self.profile.bargaining_aggression * 0.05)
+                    # Higher score = better target = willing to pay more
+                    offer_price = current_listing.asking_price * random.uniform(0.9, 1.05) * aggression_factor * (1 + (score - 1.5) * 0.1)
+                    offer_price = max(offer_price, current_listing.asking_price * 0.75)
 
-        # Always have a "do nothing" option
+                    if self.team.can_afford_transfer(offer_price, player.wage):
+                        actions.append(("buy", current_listing.listing_id, offer_price))
+
+        # --- 3. Fallback Buying Actions: General Market Search ---
+        budget_for_buys = self.team.transfer_budget
+        available_players = transfer_market.get_available_players(max_price=budget_for_buys)
+
+        for listing in available_players:
+            player = listing.player
+            if player.player_id in processed_player_ids:
+                continue
+
+            player_pos_group = self._get_position_group(player.position)
+            if player_pos_group in needed_positions:
+                aggression_factor = 1 + (self.profile.bargaining_aggression * 0.1)
+                offer_price = listing.asking_price * random.uniform(0.85, 1.0) * aggression_factor
+                offer_price = max(offer_price, listing.asking_price * 0.7)
+
+                if self.team.can_afford_transfer(offer_price, player.wage):
+                    actions.append(("buy", listing.listing_id, offer_price))
+
+        # --- 4. Always have a "do nothing" option ---
         actions.append(("none", None, 0))
         return actions
 
     def _convert_q_action_to_transfer_actions(self, q_action, transfer_market):
-        """Convert Q-learning action to actual transfer actions."""
-        action_type, target, _ = q_action  # Ignore the Q-value 'price'
-        if action_type == "none":
+        """
+        Convert the action chosen by the Q-learning brain into a list of actions
+        for the transfer market to process.
+        """
+        if not q_action or q_action[0] == "none":
             return []
 
-        actions = []
-        if action_type == "sell":
-            # Find the corresponding "sell" action in possible_actions to get the intended price
-            for possible_action in self._get_possible_transfer_actions(transfer_market):
-                if possible_action[0] == "sell" and possible_action[1] == target:
-                    actions.append(("list", target, possible_action[2])) # Use the price from possible_actions
-                    break  # Exit inner loop once found
-        elif action_type == "buy":
-            # Find the listing by ID
-            listing = None
-            for l in transfer_market.transfer_list:
-                if l.listing_id == target:
-                    listing = l
-                    break
-            if listing: # 'listing' is the TransferListing object, 'target' is the listing_id (int)
-                # Find the corresponding "buy" action in possible_actions to get the intended offer price
-                # The 'target' (listing_id) is what league.py expects.
-                # The price should come from the Q-action's parameters or be re-evaluated.
-                # Let's assume the price from the original q_action is what we want to offer.
-                # q_action was (action_type, target_id, price_from_q_value)
-                # So, the price is q_action[2]
-                
-                # We need to find the original offer price associated with this listing_id from _get_possible_transfer_actions
-                # as the q_action's price component might be a Q-value, not the offer.
-                # The q_action is ("buy", listing_id_int, q_value_or_price_indicator)
-                # The actual offer price was determined in _get_possible_transfer_actions.
-                
-                original_offer_price = None
-                for pa in self._get_possible_transfer_actions(transfer_market):
-                    if pa[0] == "buy" and pa[1] == target: # target is listing_id_int
-                        original_offer_price = pa[2] # This is the offer price
-                        break
-                
-                if original_offer_price is not None:
-                    actions.append(("buy", target, original_offer_price)) # target is listing_id (int)
-                else:
-                    # This case should ideally not happen if target was in possible_actions
-                    # Fallback or log error
-                    print(f"Warning (Manager): Could not find original offer price for listing ID {target}. Using listing asking price.")
-                    actions.append(("buy", target, listing.asking_price)) # Fallback to asking price
+        action_type, target, price = q_action
 
-        return actions
+        if action_type == "sell":
+            # The 'target' is the player object, 'price' is the asking price.
+            # The action for the market is to "list" the player.
+            return [("list", target, price)]
+
+        elif action_type == "buy":
+            # The 'target' is the listing_id, 'price' is the offer.
+            # The action for the market is "buy".
+            return [("buy", target, price)]
+
+        return []
 
 
     def set_debug(self, enabled=True):
@@ -814,7 +881,7 @@ class Manager:
         # Decode the selected action
         formation, players = action
         self.formation = formation
-        positions = self._get_positions_for_formation(formation)
+        positions = self.get_positions_for_formation(formation)
         
         return players, positions
     
@@ -823,7 +890,7 @@ class Manager:
         # Exclude injured players
         healthy_players = [p for p in available_players if not getattr(p, "is_injured", False)]
         formation = self.formation
-        positions = self._get_positions_for_formation(formation)
+        positions = self.get_positions_for_formation(formation)
         
         # Group players by position
         goalkeepers = [p for p in healthy_players if p.position == "GK"]
@@ -886,7 +953,7 @@ class Manager:
         """Generate possible lineup combinations."""
         actions = []
         for formation in self.formations:
-            positions = self._get_positions_for_formation(formation)
+            positions = self.get_positions_for_formation(formation)
             
             # Group players by position type
             players_by_type = {
@@ -1088,7 +1155,7 @@ class Manager:
         else:
             return "FWD"
             
-    def _get_positions_for_formation(self, formation: str) -> List[str]:
+    def get_positions_for_formation(self, formation: str) -> List[str]:
         """Convert formation string to list of positions."""
         positions = ["GK"]  # Always need a goalkeeper
         parts = formation.split("-")

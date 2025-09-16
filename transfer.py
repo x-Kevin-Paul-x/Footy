@@ -299,6 +299,23 @@ class TransferMarket:
             available.append(player)
         return available
 
+    def get_listing_for_player(self, player: 'FootballPlayer') -> Optional['TransferListing']:
+        """Find the current transfer listing for a specific player."""
+        if player.player_id is None:
+            # Cannot reliably find a player without an ID.
+            # This can happen if a player object is created but not saved to the DB.
+            # Fallback to name and age, though this is not guaranteed to be unique.
+            for listing in self.transfer_list:
+                if listing.player.name == player.name and listing.player.age == player.age:
+                    return listing
+            return None
+
+        for listing in self.transfer_list:
+            # player_id is the most reliable way to identify a player.
+            if listing.player.player_id and listing.player.player_id == player.player_id:
+                return listing
+        return None
+
     def make_transfer_offer(self, buying_team, listing, offer_amount):
         """Enhanced transfer system with agent fees and installments"""
         if not self.is_transfer_window_open():
