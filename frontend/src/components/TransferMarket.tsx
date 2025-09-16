@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Box,
   Typography,
@@ -9,113 +9,222 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Button,
-  Modal,
-  Stepper,
-  Step,
-  StepLabel,
   CircularProgress,
   Alert,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Tooltip,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
 } from "@mui/material";
-import { getSeasonReportData } from "../services/api";
-import type { SeasonReport } from "../services/api"; // Type-only import
+import { getSeasonReportData, getAvailableSeasons } from "../services/api";
+import type { SeasonReport } from "../services/api";
 
-const steps = ["Window Open", "Negotiations", "Window Close"];
+/**
+ * TransferMarket - read-only view showing completed transfers by season.
+ * - Lazy fetches season report when user selects a season (or defaults to latest).
+ * - Shows compact currency formatting (GBP) for fees.
+ * - Provides a small "Details" dialog to inspect a transfer's raw data.
+ */
 
 const TransferMarket: React.FC = () => {
-  const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState<number | null>(null);
-  const [activeStep] = useState(1); // Removed setActiveStep as it's unused
+  const [seasons, setSeasons] = useState<number[]>([]);
+  const [selectedSeason, setSelectedSeason] = useState<number | null>(null);
   const [transfers, setTransfers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingSeasons, setLoadingSeasons] = useState(true);
+  const [loadingTransfers, setLoadingTransfers] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailIdx, setDetailIdx] = useState<number | null>(null);
 
   useEffect(() => {
-    // Fetch latest season (demo: 2025)
-    getSeasonReportData(2025)
-      .then((data: SeasonReport) => {
-        setTransfers(data.transfers?.all_completed_transfers || []);
-        setLoading(false);
-      })
-      .catch(() => {
-        setError("Failed to fetch transfer market data.");
-        setLoading(false);
-      });
+    const loadSeasons = async () => {
+      try {
+        const s = await getAvailableSeasons();
+        const sorted = (s ?? []).slice().sort((a: number, b: number) => b - a);
+        setSeasons(sorted);
+        if (sorted.length) setSelectedSeason(sorted[0]);
+      } catch (err) {
+        setError("Failed to load available seasons.");
+      } finally {
+        setLoadingSeasons(false);
+      }
+    };
+    loadSeasons();
   }, []);
 
-  const handleOpen = (index: number) => { // Renamed idx to index
-    setSelected(index);
-    setOpen(true);
+  useEffect(() => {
+    if (!selectedSeason) return;
+    let cancelled = false;
+    const loadTransfers = async () => {
+      setLoadingTransfers(true);
+      try {
+        const report: SeasonReport = await getSeasonReportData(selectedSeason);
+        if (cancelled) return;
+        const data = report.transfers?.all_completed_transfers ?? [];
+        setTransfers(data);
+      } catch (err) {
+        if (!cancelled) setError("Failed to load transfer data for season.");
+      } finally {
+        if (!cancelled) setLoadingTransfers(false);
+      }
+    };
+    loadTransfers();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSeason]);
+
+  const handleSeasonChange = (year: number) => {
+    setSelectedSeason(year);
+    setTransfers([]); // clear while loading
+    setError(null);
   };
-  const handleClose = () => setOpen(false);
+
+  const normalize = (t: any) => {
+    const player = t.player || t.name || t.player_name || t.player_fullname || "Unknown";
+    const from = t.from || t.seller || t.old_team || t.from_team || "—";
+    const to = t.to || t.buyer || t.new_team || t.to_team || "—";
+    const fee =
+      t.fee !== undefined
+        ? Number(t.fee)
+        : t.price !== undefined
+        ? Number(t.price)
+        : t.amount !== undefined
+        ? Number(t.amount)
+        : null;
+    const date = t.date || t.completed_at || t.transferred_on || t.timestamp || null;
+    const type = t.type || t.transfer_type || t.move_type || "";
+    return { player, from, to, fee, date, type, raw: t };
+  };
+
+  const currencyFormatter = new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+    notation: "compact",
+    maximumFractionDigits: 1,
+  });
 
   return (
-    <Box sx={{ p: 3, maxWidth: 700, mx: "auto" }}>
-      <Typography variant="h4" gutterBottom>Transfer Market</Typography>
-      <Stepper activeStep={activeStep} sx={{ mb: 3 }}>
-        {steps.map((label, idx) => (
-          <Step key={label}>
-            <StepLabel>{label}</StepLabel>
-          </Step>
-        ))}
-      </Stepper>
-      {loading && <CircularProgress />}
-      {error && <Alert severity="error">{error}</Alert>}
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Player</TableCell>
-              <TableCell>From</TableCell>
-              <TableCell>To</TableCell>
-              <TableCell>Fee</TableCell>
-              <TableCell>Bid</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {transfers.map((t, idx) => (
-              <TableRow key={idx}>
-                <TableCell>{t.player || t.name}</TableCell>
-                <TableCell>{t.from || t.seller || t.old_team}</TableCell>
-                <TableCell>{t.to || t.buyer || t.new_team}</TableCell>
-                <TableCell>{t.fee || t.price || t.amount || "-"}</TableCell>
-                <TableCell>
-                  <Button variant="contained" size="small" onClick={() => handleOpen(idx)}>
-                    Bid
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <Modal open={open} onClose={handleClose}>
-        <Box sx={{
-          position: "absolute",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
-          bgcolor: "background.paper",
-          boxShadow: 24,
-          p: 4,
-          minWidth: 300,
-        }}>
-          <Typography variant="h6" gutterBottom>Place Bid</Typography>
-          {selected !== null && transfers[selected] && (
-            <>
-              <Typography variant="body1">
-                Player: {transfers[selected].player || transfers[selected].name}
-              </Typography>
-              <Typography variant="body2" sx={{ mb: 2 }}>
-                From: {transfers[selected].from || transfers[selected].seller || transfers[selected].old_team} → To: {transfers[selected].to || transfers[selected].buyer || transfers[selected].new_team}
-              </Typography>
-              <Button variant="contained" color="primary" onClick={handleClose}>
-                Submit Bid (placeholder)
-              </Button>
-            </>
-          )}
+    <Box sx={{ p: 3, maxWidth: 1000, mx: "auto" }}>
+      <Typography variant="h4" gutterBottom>
+        Transfer Market — Completed Transfers
+      </Typography>
+
+      {loadingSeasons ? (
+        <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
+          <CircularProgress size={20} />
+          <Typography>Loading seasons...</Typography>
         </Box>
-      </Modal>
+      ) : (
+        <FormControl sx={{ mb: 2, minWidth: 160 }} size="small">
+          <InputLabel id="season-select-label">Season</InputLabel>
+          <Select
+            labelId="season-select-label"
+            value={selectedSeason ?? ""}
+            label="Season"
+            onChange={(e) => handleSeasonChange(Number(e.target.value))}
+          >
+            {seasons.map((y) => (
+              <MenuItem key={y} value={y}>
+                {y}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      )}
+
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+      {loadingTransfers ? (
+        <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
+          <CircularProgress size={20} />
+          <Typography>Loading transfers...</Typography>
+        </Box>
+      ) : (
+        <TableContainer component={Paper}>
+          <Table aria-label="completed transfers">
+            <TableHead>
+              <TableRow>
+                <TableCell>Player</TableCell>
+                <TableCell>From</TableCell>
+                <TableCell>To</TableCell>
+                <TableCell>Fee</TableCell>
+                <TableCell>Date</TableCell>
+                <TableCell>Type</TableCell>
+                <TableCell align="right">Details</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {transfers.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7}>
+                    <Typography variant="body2" sx={{ py: 2 }}>
+                      No completed transfers for this season.
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              )}
+              {transfers.map((t, idx) => {
+                const n = normalize(t);
+                return (
+                  <TableRow key={idx} hover>
+                    <TableCell>
+                      <Tooltip title={n.player}>
+                        <span>{n.player}</span>
+                      </Tooltip>
+                    </TableCell>
+                    <TableCell>
+                      <Tooltip title={n.from}>
+                        <span>{n.from}</span>
+                      </Tooltip>
+                    </TableCell>
+                    <TableCell>
+                      <Tooltip title={n.to}>
+                        <span>{n.to}</span>
+                      </Tooltip>
+                    </TableCell>
+                    <TableCell>
+                      {n.fee !== null && Number.isFinite(n.fee)
+                        ? currencyFormatter.format(n.fee)
+                        : "-"}
+                    </TableCell>
+                    <TableCell>{n.date ? String(n.date) : "-"}</TableCell>
+                    <TableCell>{n.type || "-"}</TableCell>
+                    <TableCell align="right">
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          setDetailIdx(idx);
+                          setDetailOpen(true);
+                        }}
+                      >
+                        Details
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+
+      <Dialog open={detailOpen} onClose={() => setDetailOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Transfer Details</DialogTitle>
+        <DialogContent>
+          <DialogContentText component="pre" sx={{ whiteSpace: "pre-wrap" }}>
+            {detailIdx !== null && transfers[detailIdx]
+              ? JSON.stringify(transfers[detailIdx], null, 2)
+              : "No details available."}
+          </DialogContentText>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };

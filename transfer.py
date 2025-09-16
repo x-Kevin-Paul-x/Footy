@@ -3,6 +3,8 @@ import os
 from typing import List, Dict, Optional
 import random
 from datetime import datetime
+import sqlite3
+from db_setup import DB_FILE
 
 from player import FootballPlayer
 from team import Team
@@ -228,6 +230,25 @@ class TransferMarket:
             listed_date=self.current_day,
         )
         self.transfer_list.append(listing)
+
+        # Persist listing to DB if we have reliable IDs
+        try:
+            if hasattr(player, "player_id") and getattr(player, "player_id", None) is not None and hasattr(team, "team_id") and getattr(team, "team_id", None) is not None:
+                conn = sqlite3.connect(DB_FILE)
+                cur = conn.cursor()
+                cur.execute(
+                    "INSERT OR IGNORE INTO TransferListing (listing_id, player_id, asking_price, selling_team_id, listed_date, expires_in) VALUES (?, ?, ?, ?, ?, ?)",
+                    (listing.listing_id, int(player.player_id), float(listing.asking_price), int(team.team_id), int(listing.listed_date), int(listing.expires_in))
+                )
+                conn.commit()
+                conn.close()
+        except Exception as e:
+            # log DB write failure but allow listing to continue in memory
+            try:
+                self._log_transfer_attempt("DB_WRITE_ERROR_LISTING", {"error": str(e), "listing_id": listing.listing_id})
+            except Exception:
+                pass
+
         return listing, "Player listed successfully"
 
     def list_player_for_loan(self, player, team, loan_fee=None, wage_contribution=0.5, 
@@ -390,8 +411,41 @@ class TransferMarket:
 
         self._log_transfer_attempt("COMPLETED", transfer_record)
 
-        # Remove listing
-        self.transfer_list.remove(listing)
+        # Persist transfer to DB and remove listing row if possible
+        try:
+            conn = sqlite3.connect(DB_FILE)
+            cur = conn.cursor()
+            player_id = getattr(player, "player_id", None)
+            from_team_id = getattr(listing.selling_team, "team_id", None)
+            to_team_id = getattr(buying_team, "team_id", None)
+            season_year = getattr(self, "season_year", None) or datetime.now().year
+
+            # Only insert if we have at least player_id and team ids
+            if player_id is not None and from_team_id is not None and to_team_id is not None:
+                cur.execute(
+                    "INSERT INTO TransferHistory (player_id, from_team_id, to_team_id, amount, day, season_year) VALUES (?, ?, ?, ?, ?, ?)",
+                    (int(player_id), int(from_team_id), int(to_team_id), float(offer_amount), int(self.current_day), int(season_year))
+                )
+                # Remove corresponding TransferListing row if it exists in DB
+                try:
+                    cur.execute("DELETE FROM TransferListing WHERE listing_id = ?", (int(listing.listing_id),))
+                except Exception:
+                    # non-fatal if delete fails
+                    pass
+                conn.commit()
+            conn.close()
+        except Exception as e:
+            try:
+                self._log_transfer_attempt("DB_WRITE_ERROR_TRANSFER", {"error": str(e), "player": player.name, "listing_id": listing.listing_id})
+            except Exception:
+                pass
+
+        # Remove listing from in-memory list
+        try:
+            self.transfer_list.remove(listing)
+        except ValueError:
+            # already removed or not present
+            pass
 
         return True, f"Transfer completed! {player.name} signs {contract_length}-year deal worth £{wage_demand:,.0f}/week"
 

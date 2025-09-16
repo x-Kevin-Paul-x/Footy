@@ -100,13 +100,100 @@ def get_seasons():
 
 @app.route('/get-season-report/<int:year>', methods=['GET'])
 def get_season_report(year):
+    """
+    Return the season report JSON but augment it with DB-backed transfer history if available.
+    This keeps the season report authoritative while ensuring completed transfers persistently
+    stored in the DB are surfaced to the frontend.
+    """
     try:
         report_path = os.path.join(SEASON_REPORTS_DIR, f"season_report_{year}.json")
         if not os.path.exists(report_path):
             return jsonify({"status": "error", "message": f"Season report for {year} not found."}), 404
-        
+
         with open(report_path, 'r') as f:
             data = json.load(f)
+
+        # Attempt to enrich the report with TransferHistory rows from the DB (durable source)
+        try:
+            import sqlite3
+            from db_setup import DB_FILE
+
+            conn = sqlite3.connect(DB_FILE)
+            cur = conn.cursor()
+
+            cur.execute(
+                "SELECT transfer_id, player_id, from_team_id, to_team_id, amount, day, season_year FROM TransferHistory WHERE season_year = ? ORDER BY transfer_id ASC",
+                (year,),
+            )
+            rows = cur.fetchall()
+
+            db_transfers = []
+            for tr in rows:
+                transfer_id, player_id, from_team_id, to_team_id, amount, day, season_year_row = tr
+
+                # Resolve human-readable names where possible
+                player_name = None
+                from_team_name = None
+                to_team_name = None
+
+                try:
+                    cur.execute("SELECT name FROM Player WHERE player_id = ?", (player_id,))
+                    pr = cur.fetchone()
+                    if pr:
+                        player_name = pr[0]
+                except Exception:
+                    player_name = None
+
+                try:
+                    cur.execute("SELECT name FROM Team WHERE team_id = ?", (from_team_id,))
+                    fr = cur.fetchone()
+                    if fr:
+                        from_team_name = fr[0]
+                except Exception:
+                    from_team_name = None
+
+                try:
+                    cur.execute("SELECT name FROM Team WHERE team_id = ?", (to_team_id,))
+                    trn = cur.fetchone()
+                    if trn:
+                        to_team_name = trn[0]
+                except Exception:
+                    to_team_name = None
+
+                db_transfers.append({
+                    "transfer_id": int(transfer_id),
+                    "player_id": int(player_id) if player_id is not None else None,
+                    "player": player_name or f"player[{player_id}]",
+                    "from_team_id": int(from_team_id) if from_team_id is not None else None,
+                    "from_team": from_team_name or f"team[{from_team_id}]",
+                    "to_team_id": int(to_team_id) if to_team_id is not None else None,
+                    "to_team": to_team_name or f"team[{to_team_id}]",
+                    "amount": float(amount),
+                    "day": int(day),
+                    "season_year": int(season_year_row),
+                })
+
+            # Attach DB transfers into the report under a common key expected by frontend
+            if "transfers" not in data or not isinstance(data.get("transfers"), dict):
+                data["transfers"] = {}
+
+            # Prefer existing 'all_completed_transfers' if present, but override with DB-backed list when available
+            if db_transfers:
+                data["transfers"]["all_completed_transfers"] = db_transfers
+
+            # Add a small summary from DB counts if useful
+            try:
+                cur.execute("SELECT COUNT(*) FROM TransferHistory WHERE season_year = ?", (year,))
+                count = cur.fetchone()[0]
+                data["transfers"]["db_transfers_count"] = int(count)
+            except Exception:
+                data["transfers"]["db_transfers_count"] = None
+
+            conn.close()
+        except Exception as e:
+            # Non-fatal: log and return original report if DB read fails
+            print(f"Warning: failed to read TransferHistory from DB: {e}")
+
         return jsonify(data), 200
     except Exception as e:
         print(f"Error getting season report for {year}: {str(e)}")
