@@ -655,7 +655,7 @@ class Manager:
                 pos_info = squad_needs.get("position_analysis", {}).get(position_group, {})
                 current, ideal = pos_info.get("current", 0), pos_info.get("ideal", 0)
 
-                if player.age > 30 or (ideal > 0 and current > ideal) and not player.recently_transferred:
+                if (player.age > 30 or (ideal > 0 and current > ideal)) and not player.recently_transferred:
                     actions.append(("sell", player, market_value * random.uniform(0.9, 1.1)))
 
         # --- 2. Buying Actions: Prioritize Scouted Targets ---
