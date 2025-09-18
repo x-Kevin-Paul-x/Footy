@@ -119,6 +119,7 @@ class TransferMarket:
 
     def _init_transfer_log(self):
         """Initialize log file for current season"""
+        self.close_log()
         log_path = f"transfer_logs/season_{self.season_year}_transfers.txt"
         with open(log_path, "w", encoding="utf-8") as f:
             f.write(f"Transfer Activity for Season {self.season_year}\n")
@@ -384,6 +385,7 @@ class TransferMarket:
         player.contract_length = contract_length
         player.transfer_interest = False
         player.team = buying_team.name
+        player.recently_transferred = True
 
         # Handle team finances
         if not buying_team.handle_transfer(player, total_cost, is_selling=False, day_of_window=self.current_day):
@@ -674,7 +676,7 @@ class TransferMarket:
                     player = params[0]
                     success, message = self.sign_free_agent(team, player)
 
-    def advance_day(self):
+    def advance_day(self, all_teams):
         """Advance transfer market by one day"""
         self.current_day += 1
 
@@ -696,7 +698,14 @@ class TransferMarket:
                 self._log_transfer_attempt("WINDOW_OPEN", {"window": current_window, "day": self.current_day})
             else:
                 self._log_transfer_attempt("WINDOW_CLOSED", {"previous_window": self.current_window, "day": self.current_day})
+                self.end_transfer_window(all_teams)
             self.current_window = current_window
+
+    def end_transfer_window(self, all_teams):
+        """Reset recently_transferred flag for all players."""
+        for team in all_teams:
+            for player in team.players:
+                player.recently_transferred = False
 
     def get_market_analysis(self):
         """Enhanced market analysis"""

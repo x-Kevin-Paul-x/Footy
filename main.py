@@ -251,7 +251,7 @@ def simulate_season_with_transfers(premier_league, transfer_market):
     # Summer transfer window (days 1-61)
     print("\n=== SUMMER TRANSFER WINDOW OPEN ===")
     for day in range(1, 62):
-        transfer_market.advance_day()
+        transfer_market.advance_day(premier_league.teams)
         
         # AI transfer activity (every 3 days)
         if day % 3 == 0:
@@ -327,7 +327,7 @@ def simulate_season_with_transfers(premier_league, transfer_market):
     transfer_market.current_day = 183
     
     for day in range(183, 215):
-        transfer_market.advance_day()
+        transfer_market.advance_day(premier_league.teams)
         
         # More active January window
         if day % 2 == 0:
@@ -405,6 +405,8 @@ def main():
         print(f"{'='*60}")
         
         # Simulate season with transfer activity
+        transfer_market.season_year = premier_league.season_year
+        transfer_market._init_transfer_log()
         final_table = simulate_season_with_transfers(premier_league, transfer_market)
         
         # Generate comprehensive season report
