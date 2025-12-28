@@ -127,6 +127,40 @@ def update_player(player_id, name=None, age=None, position=None, team_id=None, p
     conn.commit()
     conn.close()
 
+def update_player_stats(player_id, stats, db_file=DB_FILE):
+    """
+    Updates or inserts player statistics into the PlayerStats table.
+
+    Args:
+        player_id (int): The ID of the player.
+        stats (dict): A dictionary containing stats (goals, assists, etc.).
+    """
+    conn = sqlite3.connect(db_file)
+    cursor = conn.cursor()
+
+    # Extract stats with defaults
+    goals = stats.get('goals', 0)
+    assists = stats.get('assists', 0)
+    appearances = stats.get('appearances', 0)
+    fitness = stats.get('fitness', 100.0)
+    clean_sheets = stats.get('clean_sheets', 0)
+    yellow_cards = stats.get('yellow_cards', 0)
+    red_cards = stats.get('red_cards', 0)
+
+    # Use INSERT OR REPLACE to update stats
+    cursor.execute("""
+        INSERT OR REPLACE INTO PlayerStats (
+            player_id, goals, assists, appearances, fitness,
+            clean_sheets, yellow_cards, red_cards
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        player_id, goals, assists, appearances, fitness,
+        clean_sheets, yellow_cards, red_cards
+    ))
+
+    conn.commit()
+    conn.close()
+
 def delete_player(player_id, db_file=DB_FILE):
     """Deletes a player and their attributes."""
     conn = sqlite3.connect(db_file)
@@ -186,6 +220,29 @@ def test_player_db(db_file="test_football_sim.db"):
     assert updated_player["wage"] == new_wage
     print(f"  Updated player: {updated_player}")
 
+    # Test stats update
+    stats = {
+        "goals": 10,
+        "assists": 5,
+        "appearances": 20,
+        "fitness": 95.0,
+        "clean_sheets": 0,
+        "yellow_cards": 2,
+        "red_cards": 0
+    }
+    update_player_stats(player_id, stats, db_file=db_file)
+    print(f"  Updated player stats for ID: {player_id}")
+
+    # Verify stats (need manual query as get_player doesn't return stats yet)
+    conn = sqlite3.connect(db_file)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM PlayerStats WHERE player_id = ?", (player_id,))
+    stats_row = cursor.fetchone()
+    conn.close()
+    assert stats_row is not None
+    assert stats_row[1] == 10 # Goals
+    print(f"  Verified stats: {stats_row}")
+
     # Get all players
     all_players = get_all_players(db_file=db_file)
     assert all_players is not None
@@ -202,4 +259,3 @@ def test_player_db(db_file="test_football_sim.db"):
 
 if __name__ == '__main__':
     test_player_db()
-

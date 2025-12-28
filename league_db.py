@@ -54,6 +54,17 @@ def update_league(league_id, name=None, season_year=None, num_teams=None, db_fil
     conn.commit()
     conn.close()
 
+def add_team_to_league(league_id, team_id, season_year, db_file=DB_FILE):
+    """Links a team to a league for a specific season."""
+    conn = sqlite3.connect(db_file)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT OR IGNORE INTO LeagueTeams (league_id, team_id, season_year)
+        VALUES (?, ?, ?)
+    """, (league_id, team_id, season_year))
+    conn.commit()
+    conn.close()
+
 def delete_league(league_id, db_file=DB_FILE):
     """Deletes a league from the database."""
     conn = sqlite3.connect(db_file)
@@ -98,6 +109,20 @@ def test_league_db(db_file="test_football_sim.db"):
     assert updated_league["name"] == new_name
     assert updated_league["season_year"] == new_season
     print(f"  Updated league: {updated_league}")
+
+    # Add team to league
+    team_id = 1
+    add_team_to_league(league_id, team_id, new_season, db_file=db_file)
+    print(f"  Added team {team_id} to league {league_id}")
+
+    # Verify link
+    conn = sqlite3.connect(db_file)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM LeagueTeams WHERE league_id = ? AND team_id = ?", (league_id, team_id))
+    link = cursor.fetchone()
+    conn.close()
+    assert link is not None
+    print(f"  Verified league-team link: {link}")
 
     # Retrieve all leagues
     all_leagues = get_all_leagues(db_file=db_file)

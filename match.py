@@ -76,6 +76,9 @@ class Match:
             "windy": {"passing": 0.85, "shooting": 0.9, "dribbling": 0.95},
             "snowy": {"passing": 0.8, "shooting": 0.85, "dribbling": 0.8}
         }
+
+        # Global difficulty modifier to reduce crazy goal counts
+        self.shot_difficulty_modifier = 0.7  # Multiplier for shot success chance
     
     def _calculate_position_penalty(self, player, assigned_position):
         """Calculate performance penalty for playing out of position."""
@@ -357,8 +360,9 @@ class Match:
             shot_rating *= shot_position_mod
             
             # Final probability calculation
-            success_chance = (shot_rating - save_rating + 50) / 150  # Normalized to 0-1 range
-            return random.random() < success_chance
+            # Reduced probability to lower scores
+            success_chance = ((shot_rating - save_rating + 50) / 150) * self.shot_difficulty_modifier
+            return random.random() < max(0.01, success_chance)
             
         elif action_type == "pass":
             base_chance = 0.75  # Base 75% pass success rate

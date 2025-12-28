@@ -313,13 +313,13 @@ class FootballPlayer:
         # Generate random potential based on age
         if potential is None:
             if age < 21:
-                potential = random.randint(60, 95)  # Young players higher potential
+                potential = random.randint(50, 85)  # Young players higher potential
             elif age < 25:
-                potential = random.randint(55, 90)
+                potential = random.randint(45, 80)
             elif age < 30:
-                potential = random.randint(50, 85)
+                potential = random.randint(40, 75)
             else:
-                potential = random.randint(45, 80)  # Older players lower potential
+                potential = random.randint(35, 70)  # Older players lower potential
         
         # Calculate base wage based on potential and age
         base_wage = 500 + (potential * 50)  # Higher potential = higher wage
@@ -375,6 +375,10 @@ class FootballPlayer:
             else:
                 min_val, max_val = 30, 65  # Default range for non-specialized attributes
             
+            # Apply global reduction to base ranges for low ratings requirement
+            min_val = int(min_val * 0.7)
+            max_val = int(max_val * 0.7)
+
             # Set each sub-attribute
             for sub_attr in player.attributes[attr_type]:
                 # Add some randomness within the range, scaled by potential and age

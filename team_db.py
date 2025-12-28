@@ -70,6 +70,35 @@ def update_team(team_id, name=None, budget=None, weekly_budget=None, transfer_bu
     conn.commit()
     conn.close()
 
+def update_team_stats(team_id, stats, db_file=DB_FILE):
+    """
+    Updates or inserts team statistics into the TeamStatistics table.
+
+    Args:
+        team_id (int): The ID of the team.
+        stats (dict): A dictionary containing stats (wins, draws, losses, goals_for, goals_against).
+    """
+    conn = sqlite3.connect(db_file)
+    cursor = conn.cursor()
+
+    # Map from league.py standings keys (which might be abbreviations) to DB columns
+    # league.py uses: 'won', 'drawn', 'lost', 'gf', 'ga'
+    wins = stats.get('won', stats.get('wins', 0))
+    draws = stats.get('drawn', stats.get('draws', 0))
+    losses = stats.get('lost', stats.get('losses', 0))
+    goals_for = stats.get('gf', 0)
+    goals_against = stats.get('ga', 0)
+
+    # Use INSERT OR REPLACE
+    cursor.execute("""
+        INSERT OR REPLACE INTO TeamStatistics (
+            team_id, wins, draws, losses, goals_for, goals_against
+        ) VALUES (?, ?, ?, ?, ?, ?)
+    """, (team_id, wins, draws, losses, goals_for, goals_against))
+
+    conn.commit()
+    conn.close()
+
 def delete_team(team_id, db_file=DB_FILE):
     """Deletes a team by its ID."""
     conn = sqlite3.connect(db_file)
@@ -113,6 +142,27 @@ def test_team_db(db_file="test_football_sim.db"):
     assert updated_team[2] == new_budget
     print(f"  Updated team: {updated_team}")
 
+    # Test stats update
+    stats = {
+        "wins": 5,
+        "draws": 2,
+        "losses": 1,
+        "gf": 15,
+        "ga": 8
+    }
+    update_team_stats(team_id, stats, db_file=db_file)
+    print(f"  Updated team stats for ID: {team_id}")
+
+    # Verify stats
+    conn = sqlite3.connect(db_file)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM TeamStatistics WHERE team_id = ?", (team_id,))
+    stats_row = cursor.fetchone()
+    conn.close()
+    assert stats_row is not None
+    assert stats_row[1] == 5 # wins
+    print(f"  Verified stats: {stats_row}")
+
     # Get all teams
     all_teams = get_all_teams(db_file=db_file)
     assert all_teams is not None
@@ -129,4 +179,3 @@ def test_team_db(db_file="test_football_sim.db"):
 
 if __name__ == '__main__':
     test_team_db()
-

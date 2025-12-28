@@ -7,7 +7,9 @@ from team import Team
 from manager import Manager
 from coach import Coach
 from transfer import TransferMarket
-from league_db import create_league, get_league, update_league, delete_league
+from league_db import create_league, get_league, update_league, delete_league, add_team_to_league
+from player_db import update_player_stats
+from team_db import update_team_stats
 
 class League:
     def __init__(self, name, num_teams=20):
@@ -47,6 +49,12 @@ class League:
                 season_year=self.season_year,
                 num_teams=len(self.teams)
             )
+
+        # Save team links
+        for team in self.teams:
+            if team.team_id:
+                add_team_to_league(self.league_id, team.team_id, self.season_year)
+
         return self.league_id
 
     @classmethod
@@ -156,6 +164,19 @@ class League:
         try:
             result = match.play_match()
             self.update_standings(home_team, away_team, result)
+
+            # Persist player stats to DB
+            all_involved_players = match.home_lineup + match.away_lineup
+            for player in all_involved_players:
+                if player.player_id:
+                    update_player_stats(player.player_id, player.stats)
+
+            # Persist team stats to DB
+            if home_team.team_id and home_team.name in self.standings:
+                update_team_stats(home_team.team_id, self.standings[home_team.name])
+            if away_team.team_id and away_team.name in self.standings:
+                update_team_stats(away_team.team_id, self.standings[away_team.name])
+
             result['home_team_id'] = home_team.team_id
             result['away_team_id'] = away_team.team_id
             return result

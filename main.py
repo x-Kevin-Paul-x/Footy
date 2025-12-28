@@ -31,43 +31,42 @@ def initialize_database():
     print("Database initialized successfully!")
 
 def create_premier_league():
-    """Create Premier League with 20 teams and enhanced realism"""
+    """Create Fictional League with 20 teams"""
     teams = [
-        "Arsenal", "Aston Villa", "Bournemouth", "Brentford", "Brighton",
-        "Chelsea", "Crystal Palace", "Everton", "Fulham", "Liverpool",
-        "Luton", "Manchester City", "Manchester United", "Newcastle",
-        "Nottingham Forest", "Sheffield United", "Tottenham", "West Ham",
-        "Wolves", "Burnley"
+        "Harchester United", "Melchester Rovers", "Dream Team FC", "Earls Park FC", "Renford Rejects",
+        "Warbury Warriors", "Walford Town", "Weatherfield County", "Holby City FC", "Sun Hill FC",
+        "Causton City", "Denton Burn", "Fulchester United", "Huxley United", "Ambridge Athletic",
+        "Borsetshire FC", "Felpersham FC", "Nutwood FC", "Trumpton Town", "Camberwick Green"
     ]
     
-    # More realistic budgets based on actual Premier League finances
+    # Fictional budgets
     budgets = {
-        "Manchester City": 650000000,
-        "Manchester United": 580000000,
-        "Chelsea": 550000000,
-        "Arsenal": 450000000,
-        "Liverpool": 450000000,
-        "Tottenham": 350000000,
-        "Newcastle": 300000000,
-        "West Ham": 250000000,
-        "Aston Villa": 220000000,
-        "Brighton": 180000000,
-        "Crystal Palace": 170000000,
-        "Wolves": 160000000,
-        "Fulham": 150000000,
-        "Brentford": 140000000,
-        "Bournemouth": 130000000,
-        "Everton": 180000000,
-        "Nottingham Forest": 120000000,
-        "Burnley": 110000000,
-        "Sheffield United": 100000000,
-        "Luton": 95000000
+        "Harchester United": 500000000,
+        "Melchester Rovers": 480000000,
+        "Dream Team FC": 450000000,
+        "Earls Park FC": 400000000,
+        "Renford Rejects": 100000000, # Underdogs
+        "Warbury Warriors": 250000000,
+        "Walford Town": 200000000,
+        "Weatherfield County": 220000000,
+        "Holby City FC": 180000000,
+        "Sun Hill FC": 170000000,
+        "Causton City": 160000000,
+        "Denton Burn": 150000000,
+        "Fulchester United": 140000000,
+        "Huxley United": 130000000,
+        "Ambridge Athletic": 120000000,
+        "Borsetshire FC": 110000000,
+        "Felpersham FC": 100000000,
+        "Nutwood FC": 95000000,
+        "Trumpton Town": 90000000,
+        "Camberwick Green": 85000000
     }
     
-    premier_league = League("Premier League")
+    premier_league = League("Fictional Premier League")
     premier_league.teams = []  # Clear default teams
     
-    print("Creating Premier League teams with enhanced financial system...")
+    print("Creating teams with fictional names and enhanced financial system...")
     
     from team_db import get_all_teams
     existing_team_names = set(t[1] for t in get_all_teams())
@@ -75,7 +74,9 @@ def create_premier_league():
         if team_name in existing_team_names:
             print(f"Team '{team_name}' already exists in database, skipping creation.")
             continue
-        team = Team(team_name, budgets[team_name])
+        # Fallback for budget if missing
+        budget = budgets.get(team_name, 100000000)
+        team = Team(team_name, budget)
         
         # Save team to database
         team.save_to_database()
@@ -142,6 +143,9 @@ def create_premier_league():
         #      f"Expenses £{financial_summary['expenses']:,.0f}, "
         #      f"Net £{financial_summary['net']:,.0f}")
     
+    # Save league to establish DB ID and link teams
+    premier_league.save_to_database()
+
     return premier_league   
 
 def print_league_table(table):
