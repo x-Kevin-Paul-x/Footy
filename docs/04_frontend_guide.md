@@ -23,7 +23,7 @@ frontend/src/
 
 ## API Integration (`services/api.ts`)
 
-The frontend communicates with the Flask backend via `http://localhost:5001`.
+The frontend communicates with the FastAPI backend via `http://localhost:5001`.
 
 ### Key Functions
 *   `runSimulation()`: Triggers the backend simulation (POST `/run-simulation`).
@@ -67,7 +67,7 @@ Visualizes the transfer activity:
 
 ## Development Workflow
 
-1.  **Start Backend**: `python api.py` (Port 5001).
+1.  **Start Backend**: `python api_fastapi.py` (Port 5001).
 2.  **Start Frontend**: `npm run dev` (Port 5173).
 3.  **Simulate**: Click "Run Simulation" in the UI to generate data on the backend.
 4.  **View**: The frontend fetches the new JSON reports and displays them.

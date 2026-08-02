@@ -7,20 +7,20 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'Avenir', 'Helvetica', 'Arial', 'sans-serif'],
-        heading: ['Montserrat', 'system-ui', 'Avenir', 'Helvetica', 'Arial', 'sans-serif'],
+        sans: ['Inter', 'Outfit', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        heading: ['Outfit', 'Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
       },
       colors: {
-        'primary-bg': '#1A1A1A',
-        'secondary-bg': '#2A2A2A',
-        'tertiary-bg': '#333333',
-        'primary-text': '#E0E0E0',
-        'secondary-text': '#999999',
-        'accent-blue': '#007BFF',    // Example: Bootstrap Blue
-        'accent-green': '#39FF14',   // Neon Green
-        'accent-purple': '#8A2BE2',  // BlueViolet
-        'accent-cyan': '#00FFFF',    // Aqua/Cyan
-        // You can add more specific shades if needed, e.g., accent-blue-hover
+        indigo: {
+          500: '#6366f1',
+          600: '#4f46e5',
+          700: '#4338ca',
+        },
+        navy: {
+          800: '#1b1d2e',
+          900: '#121420',
+          950: '#0b0d14',
+        },
       },
     },
   },

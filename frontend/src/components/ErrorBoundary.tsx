@@ -1,6 +1,9 @@
-// TypeScript React Error Boundary for global error handling
-
-import React from "react";
+import React from 'react';
+import Box from '@mui/material/Box';
+import Paper from '@mui/material/Paper';
+import Typography from '@mui/material/Typography';
+import Alert from '@mui/material/Alert';
+import AlertTitle from '@mui/material/AlertTitle';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -21,19 +24,26 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+  componentDidCatch(_error: Error, _errorInfo: React.ErrorInfo) {
     // You can log error info here or send to a monitoring service
-    // console.error("ErrorBoundary caught an error", error, errorInfo);
   }
 
   render() {
     if (this.state.hasError) {
       return (
-        <div role="alert" className="p-8 m-8 bg-red-100 text-red-800 rounded-lg shadow-lg text-center">
-          <h2 className="text-2xl font-bold mb-4">Something went wrong.</h2>
-          <p className="mb-2">{this.state.error?.message}</p>
-          <p className="text-sm text-gray-600">Please refresh the page or contact support.</p>
-        </div>
+        <Box sx={{ p: 4, display: 'flex', justifyContent: 'center' }}>
+          <Paper elevation={3} sx={{ p: 4, maxWidth: 600, width: '100%', borderRadius: 3 }}>
+            <Alert severity="error" sx={{ borderRadius: 2 }}>
+              <AlertTitle>Something went wrong</AlertTitle>
+              <Typography variant="body1" sx={{ mt: 1, mb: 1, fontWeight: 500 }}>
+                {this.state.error?.message || 'An unexpected error occurred.'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Please refresh the page or contact support if the issue persists.
+              </Typography>
+            </Alert>
+          </Paper>
+        </Box>
       );
     }
     return this.props.children;

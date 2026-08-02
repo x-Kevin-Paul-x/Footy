@@ -1,0 +1,5 @@
+-r requirements-dev.txt
+gymnasium==1.2.3
+pandas==3.0.0
+scikit-learn==1.6.1
+torch>=2.10,<2.11

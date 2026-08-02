@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+    container_name: footy_backend
+    ports:
+      - "5001:5001"
+    environment:
+      - API_PORT=5001
+      - API_DEBUG=False
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/reports:/app/reports
+    restart: always
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend.Dockerfile
+    container_name: footy_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: always
