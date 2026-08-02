@@ -1,7 +1,6 @@
-import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import LeagueOverview from "../LeagueOverview";
+import LeagueOverview from "../../pages/LeagueOverview";
 import * as api from "../../services/api";
 
 jest.mock("../../services/api");

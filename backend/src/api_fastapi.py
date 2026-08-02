@@ -1,0 +1,800 @@
+import json
+import logging
+import os
+import sys
+import asyncio
+import io
+from datetime import datetime
+from typing import List, Dict, Any, Optional
+from pathlib import Path
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Request, WebSocket, WebSocketDisconnect
+
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from urllib.parse import unquote
+
+# DB query functions (these currently use raw sqlite)
+from database.team_db import get_all_teams
+from database.player_db import get_all_players
+from database.match_db import get_matches_for_season, get_match_details
+from database.report_db import get_all_season_reports, get_season_report_by_year, get_all_transfer_reports, get_transfer_report_by_year
+from config import (
+    API_DEBUG,
+    API_PORT,
+    BASE_DIR,
+    MATCH_REPORTS_DIR,
+    ML_REPORTS_DIR,
+    PROJECT_ROOT,
+    SEASON_REPORTS_DIR,
+    SIMULATION_SCRIPT,
+    SIMULATION_TIMEOUT_SECONDS,
+    TRANSFER_LOGS_DIR,
+    ensure_report_directories,
+)
+
+# For running simulation in-process
+import main as footy_main
+
+logger = logging.getLogger("footy.api")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+app = FastAPI(title="Footy API", description="FastAPI Backend for Footy Simulation")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(message)
+            except Exception:
+                pass
+
+    async def broadcast_event(self, event: str, message: Optional[str] = None, data: Optional[Dict[str, Any]] = None):
+        payload = json.dumps({"event": event, "message": message, "data": data})
+        await self.broadcast(payload)
+
+manager = ConnectionManager()
+
+def _load_json_file(file_path: Path):
+    with file_path.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+def build_simulation_env():
+    env = os.environ.copy()
+    pythonpath_entries = [str(BASE_DIR)]
+    existing_pythonpath = env.get("PYTHONPATH")
+    if existing_pythonpath:
+        pythonpath_entries.append(existing_pythonpath)
+    env["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
+    return env
+
+from schemas import (
+    TeamRead,
+    PlayerRead,
+    SeasonReportSummary,
+    TransferReportSummary,
+    SimulationStatusResponse,
+    SaveStateItem,
+    SaveStateResponse,
+    WebSocketEventFrame
+)
+import shutil
+from database.session import DB_FILE
+
+SAVES_DIR = Path(DB_FILE).parent / "saves"
+SAVES_DIR.mkdir(parents=True, exist_ok=True)
+
+simulation_lock = asyncio.Lock()
+
+async def run_simulation_task():
+    """Runs the simulation as a background task asynchronously with lock protection."""
+    if simulation_lock.locked():
+        logger.warning("Simulation task requested while another simulation is in progress.")
+        await manager.broadcast_event("WARNING", message="Simulation already running.")
+        return
+
+    async with simulation_lock:
+        logger.info("Starting background simulation task")
+        ensure_report_directories()
+        
+        await manager.broadcast_event("SIMULATION_START", message="Simulation starting...")
+        
+        loop = asyncio.get_running_loop()
+        try:
+            await loop.run_in_executor(None, footy_main.main)
+            await manager.broadcast_event("SIMULATION_COMPLETE", message="Simulation completed successfully!")
+        except Exception as e:
+            logger.error(f"Simulation failed with error {e}")
+            await manager.broadcast_event("SIMULATION_ERROR", message=f"Simulation failed: {e}")
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
+@app.post("/run-simulation", response_model=SimulationStatusResponse)
+async def trigger_simulation(background_tasks: BackgroundTasks):
+    if simulation_lock.locked():
+        return SimulationStatusResponse(status="busy", message="Simulation is already running")
+    background_tasks.add_task(run_simulation_task)
+    return SimulationStatusResponse(status="success", message="Simulation started in the background")
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "service": "Footy API"}
+
+@app.get("/saves", response_model=List[SaveStateItem])
+async def list_saves():
+    try:
+        saves = []
+        if SAVES_DIR.exists():
+            for f in os.listdir(SAVES_DIR):
+                if f.endswith(".db"):
+                    fpath = SAVES_DIR / f
+                    stat = fpath.stat()
+                    save_id = f.replace(".db", "")
+                    saves.append(
+                        SaveStateItem(
+                            save_id=save_id,
+                            filename=f,
+                            created_at=datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                            size_bytes=stat.st_size
+                        )
+                    )
+        saves.sort(key=lambda s: s.created_at, reverse=True)
+        return saves
+    except Exception as e:
+        logger.error(f"Error listing save states: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list saves: {e}")
+
+@app.post("/saves", response_model=SaveStateResponse)
+async def create_save():
+    try:
+        from database.session import init_db
+        if not os.path.exists(DB_FILE):
+            init_db()
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        save_id = f"save_{timestamp}"
+        target_path = SAVES_DIR / f"{save_id}.db"
+        shutil.copy2(DB_FILE, target_path)
+        return SaveStateResponse(status="success", message="Save state created successfully", save_id=save_id)
+    except Exception as e:
+        logger.error(f"Error creating save state: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create save state: {e}")
+
+@app.post("/load/{save_id}", response_model=SaveStateResponse)
+async def load_save(save_id: str):
+    try:
+        source_path = SAVES_DIR / f"{save_id}.db"
+        if not source_path.exists():
+            raise HTTPException(status_code=404, detail="Save state file not found.")
+        if simulation_lock.locked():
+            raise HTTPException(status_code=409, detail="Cannot load save state while simulation is running.")
+        shutil.copy2(source_path, DB_FILE)
+        return SaveStateResponse(status="success", message=f"Loaded save state '{save_id}' successfully.", save_id=save_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error loading save state: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load save state: {e}")
+
+@app.get("/teams", response_model=List[TeamRead])
+async def get_teams():
+    try:
+        teams = get_all_teams()
+        return [
+            TeamRead(
+                id=t[0],
+                name=t[1],
+                budget=t[2],
+                weekly_budget=t[3],
+                transfer_budget=t[4],
+                wage_budget=t[5]
+            )
+            for t in teams
+        ]
+    except Exception as e:
+        logger.error(f"Error fetching teams: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/players", response_model=List[PlayerRead])
+async def get_players():
+    try:
+        players = get_all_players()
+        return [
+            PlayerRead(
+                id=p["player_id"],
+                name=p["name"],
+                age=p["age"],
+                position=p["position"],
+                team_id=p["team_id"],
+                potential=p["potential"],
+                wage=p["wage"],
+                contract_length=p["contract_length"],
+                squad_role=p["squad_role"]
+            )
+            for p in players
+        ]
+    except Exception as e:
+        logger.error(f"Error fetching players: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/season-reports", response_model=List[SeasonReportSummary])
+async def get_season_reports():
+    try:
+        reports = get_all_season_reports()
+        return [
+            SeasonReportSummary(
+                id=r[0],
+                season=r[1],
+                champion=r[2],
+                created_at=r[3]
+            )
+            for r in reports
+        ]
+    except Exception as e:
+        logger.error(f"Error fetching season reports: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/season-reports/{season_year}")
+async def get_season_report_detail(season_year: int):
+    try:
+        report_data = get_season_report_by_year(season_year)
+        if not report_data:
+            raise HTTPException(status_code=404, detail="Report not found for given year.")
+        return report_data
+    except Exception as e:
+        logger.error(f"Error fetching season report details: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/transfer-reports", response_model=List[TransferReportSummary])
+async def get_transfer_reports():
+    try:
+        reports = get_all_transfer_reports()
+        return [
+            TransferReportSummary(
+                id=r[0],
+                season=r[1],
+                created_at=r[2]
+            )
+            for r in reports
+        ]
+    except Exception as e:
+        logger.error(f"Error fetching transfer reports: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/transfer-reports/{season_year}")
+async def get_transfer_report_detail(season_year: int):
+    try:
+        report_data = get_transfer_report_by_year(season_year)
+        if not report_data:
+            raise HTTPException(status_code=404, detail="Transfer report not found for given year.")
+        return report_data
+    except Exception as e:
+        logger.error(f"Error fetching transfer report details: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get('/get-seasons')
+async def get_seasons():
+    try:
+        if not os.path.exists(SEASON_REPORTS_DIR):
+            return JSONResponse(status_code=200, content={"seasons": [], "message": "Season reports directory not found."})
+        
+        report_files = [f for f in os.listdir(SEASON_REPORTS_DIR) if f.startswith("season_report_") and f.endswith(".json")]
+        seasons = []
+        for report_file in report_files:
+            try:
+                year = report_file.replace("season_report_", "").replace(".json", "")
+                seasons.append(int(year))
+            except ValueError:
+                logger.warning("Could not parse year from filename: %s", report_file)
+        
+        seasons.sort(reverse=True) # Show newest first
+        return JSONResponse(status_code=200, content={"seasons": seasons})
+    except Exception as e:
+        print(f"Error getting seasons: {str(e)}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@app.get("/get-season-report/{year:int}")
+async def get_season_report(year: int):
+    """
+    Return the season report JSON but augment it with DB-backed transfer history if available.
+    This keeps the season report authoritative while ensuring completed transfers persistently
+    stored in the DB are surfaced to the frontend.
+    """
+    try:
+        report_path = os.path.join(SEASON_REPORTS_DIR, f"season_report_{year}.json")
+        if not os.path.exists(report_path):
+            return JSONResponse(status_code=404, content={"status": "error", "message": f"Season report for {year} not found."})
+
+        with open(report_path, 'r') as f:
+            data = json.load(f)
+
+        conn = None
+        try:
+            import sqlite3
+            from database.db_setup import DB_FILE
+
+            conn = sqlite3.connect(DB_FILE)
+            cur = conn.cursor()
+
+            cur.execute(
+                "SELECT transfer_id, player_id, from_team_id, to_team_id, amount, day, season_year FROM TransferHistory WHERE season_year = ? ORDER BY transfer_id ASC",
+                (year,),
+            )
+            rows = cur.fetchall()
+
+            db_transfers = []
+            for tr in rows:
+                transfer_id, player_id, from_team_id, to_team_id, amount, day, season_year_row = tr
+
+                # Resolve human-readable names where possible
+                player_name = None
+                from_team_name = None
+                to_team_name = None
+
+                try:
+                    cur.execute("SELECT name FROM Player WHERE player_id = ?", (player_id,))
+                    pr = cur.fetchone()
+                    if pr:
+                        player_name = pr[0]
+                except Exception:
+                    player_name = None
+
+                try:
+                    cur.execute("SELECT name FROM Team WHERE team_id = ?", (from_team_id,))
+                    fr = cur.fetchone()
+                    if fr:
+                        from_team_name = fr[0]
+                except Exception:
+                    from_team_name = None
+
+                try:
+                    cur.execute("SELECT name FROM Team WHERE team_id = ?", (to_team_id,))
+                    trn = cur.fetchone()
+                    if trn:
+                        to_team_name = trn[0]
+                except Exception:
+                    to_team_name = None
+
+                db_transfers.append({
+                    "transfer_id": int(transfer_id),
+                    "player_id": int(player_id) if player_id is not None else None,
+                    "player": player_name or f"player[{player_id}]",
+                    "from_team_id": int(from_team_id) if from_team_id is not None else None,
+                    "from_team": from_team_name or f"team[{from_team_id}]",
+                    "to_team_id": int(to_team_id) if to_team_id is not None else None,
+                    "to_team": to_team_name or f"team[{to_team_id}]",
+                    "amount": float(amount),
+                    "day": int(day),
+                    "season_year": int(season_year_row),
+                })
+
+            # Attach DB transfers into the report under a common key expected by frontend
+            if "transfers" not in data or not isinstance(data.get("transfers"), dict):
+                data["transfers"] = {}
+
+            # Prefer existing 'all_completed_transfers' if present, but override with DB-backed list when available
+            if db_transfers:
+                data["transfers"]["all_completed_transfers"] = db_transfers
+
+            # Add a small summary from DB counts if useful
+            try:
+                cur.execute("SELECT COUNT(*) FROM TransferHistory WHERE season_year = ?", (year,))
+                count = cur.fetchone()[0]
+                data["transfers"]["db_transfers_count"] = int(count)
+            except Exception:
+                data["transfers"]["db_transfers_count"] = None
+
+        except Exception as e:
+            # Non-fatal: log and return original report if DB read fails
+            logger.warning("Failed to read TransferHistory from DB: %s", e)
+        finally:
+            if conn:
+                conn.close()
+
+        return JSONResponse(status_code=200, content=data)
+    except Exception as e:
+        logger.exception("Error getting season report for %d", year)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+def _get_ml_report_paths() -> list[Path]:
+    if not ML_REPORTS_DIR.exists():
+        return []
+    return sorted(list(ML_REPORTS_DIR.glob("*.json")), key=lambda p: p.stat().st_mtime, reverse=True)
+
+
+def _build_ml_report_summary(report_path: Path, payload: dict) -> dict:
+    summary = payload.get("summary") or {}
+    policies = payload.get("policies") or {}
+    return {
+        "file_name": report_path.name,
+        "report_type": report_path.stem.split("_", 1)[0],
+        "generated_at": payload.get("generated_at") or payload.get("created_at") or str(report_path.stat().st_mtime),
+        "primary_policy": summary.get("primary_policy"),
+        "best_policy_by_reward": summary.get("best_policy_by_reward"),
+        "best_policy_by_points": summary.get("best_policy_by_points"),
+        "best_policy_by_position": summary.get("best_policy_by_position"),
+        "policy_count": len(policies),
+        "config": payload.get("config") or {},
+    }
+
+
+def _resolve_ml_report_path(report_name: str) -> Path | None:
+    safe_name = os.path.basename(report_name)
+    target_path = ML_REPORTS_DIR / safe_name
+    if target_path.exists():
+        return target_path
+    return None
+
+
+
+@app.get("/ml-reports")
+async def get_ml_reports():
+    try:
+        reports = []
+        for report_path in _get_ml_report_paths():
+            try:
+                payload = _load_json_file(report_path)
+                reports.append(_build_ml_report_summary(report_path, payload))
+            except (OSError, json.JSONDecodeError) as exc:
+                logger.warning("Skipping unreadable ML report %s: %s", report_path, exc)
+        return JSONResponse(status_code=200, content={"reports": reports})
+    except Exception as e:
+        logger.exception("Error getting ML reports")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@app.get("/ml-reports/{report_name}")
+async def get_ml_report(report_name):
+    try:
+        report_path = _resolve_ml_report_path(report_name)
+        if report_path is None or not report_path.exists() or report_path.parent != ML_REPORTS_DIR:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "ML report not found."})
+
+        payload = _load_json_file(report_path)
+        payload["report_name"] = report_path.name
+        payload["report_type"] = report_path.stem.split("_", 1)[0]
+        return JSONResponse(status_code=200, content=payload)
+    except json.JSONDecodeError:
+        logger.exception("ML report %s is not valid JSON", report_name)
+        return JSONResponse(status_code=500, content={"status": "error", "message": "ML report is invalid JSON."})
+    except Exception as e:
+        logger.exception("Error getting ML report %s", report_name)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+
+@app.get("/match/{match_id}")
+async def get_match(match_id):
+    """API endpoint to get detailed information for a single match."""
+    try:
+        match_details = get_match_details(match_id)
+        if not match_details:
+            return JSONResponse(status_code=404, content={"status": "error", "message": f"Match with ID {match_id} not found."})
+        return JSONResponse(status_code=200, content=match_details)
+    except Exception as e:
+        logger.exception("Error getting match details for match %s", match_id)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@app.get("/team-history/{team_name}")
+async def get_team_history(team_name):
+    """Get historical league positions and stats for a team across all seasons."""
+    try:
+        history = []
+        if not os.path.exists(SEASON_REPORTS_DIR):
+            return JSONResponse(status_code=200, content={"history": [], "team_name": team_name})
+
+        report_files = [f for f in os.listdir(SEASON_REPORTS_DIR) if f.startswith("season_report_") and f.endswith(".json")]
+        
+        for report_file in report_files:
+            try:
+                year = int(report_file.replace("season_report_", "").replace(".json", ""))
+                report_path = os.path.join(SEASON_REPORTS_DIR, report_file)
+                with open(report_path, 'r') as f:
+                    data = json.load(f)
+                
+                # Find team in table
+                table = data.get("table", [])
+                for pos, (name, stats) in enumerate(table, 1):
+                    if name == team_name:
+                        history.append({
+                            "season": year,
+                            "position": pos,
+                            "points": stats.get("points", 0),
+                            "won": stats.get("won", 0),
+                            "drawn": stats.get("drawn", 0),
+                            "lost": stats.get("lost", 0),
+                            "gf": stats.get("gf", 0),
+                            "ga": stats.get("ga", 0),
+                            "gd": stats.get("gd", 0)
+                        })
+                        break
+            except Exception as e:
+                logger.warning("Error processing %s: %s", report_file, e)
+                continue
+        
+        # Sort by season
+        history.sort(key=lambda x: x["season"])
+        return JSONResponse(status_code=200, content={"history": history, "team_name": team_name})
+    except Exception as e:
+        logger.exception("Error getting team history for %s", team_name)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@app.get("/financial-summary")
+async def get_financial_summary():
+    """Get league-wide financial summary from the latest season report."""
+    try:
+        if not os.path.exists(SEASON_REPORTS_DIR):
+            return JSONResponse(status_code=404, content={"status": "error", "message": "No season data available."})
+        
+        report_files = [f for f in os.listdir(SEASON_REPORTS_DIR) if f.startswith("season_report_") and f.endswith(".json")]
+        if not report_files:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "No season reports found."})
+        
+        # Get latest season
+        latest_file = sorted(report_files, reverse=True)[0]
+        report_path = os.path.join(SEASON_REPORTS_DIR, latest_file)
+        
+        with open(report_path, 'r') as f:
+            data = json.load(f)
+        
+        financial_summary = data.get("financial_summary", [])
+        
+        # Aggregate stats
+        total_budget = sum(f.get("budget", 0) for f in financial_summary)
+        total_revenue = sum(f.get("annual_revenue", 0) for f in financial_summary)
+        total_expenses = sum(f.get("annual_expenses", 0) for f in financial_summary)
+        
+        health_counts = {}
+        for f in financial_summary:
+            health = f.get("financial_health", "Unknown")
+            health_counts[health] = health_counts.get(health, 0) + 1
+        
+        # Top/Bottom teams by budget
+        sorted_by_budget = sorted(financial_summary, key=lambda x: x.get("budget", 0), reverse=True)
+        
+        return JSONResponse(status_code=200, content={
+            "season": int(latest_file.replace("season_report_", "").replace(".json", "")),
+            "league_totals": {
+                "total_budget": total_budget,
+                "average_budget": total_budget / len(financial_summary) if financial_summary else 0,
+                "total_revenue": total_revenue,
+                "total_expenses": total_expenses,
+                "net_position": total_revenue - total_expenses
+            },
+            "health_distribution": health_counts,
+            "top_5_richest": sorted_by_budget[:5],
+            "bottom_5": sorted_by_budget[-5:] if len(sorted_by_budget) >= 5 else sorted_by_budget
+        })
+    except Exception as e:
+        logger.exception("Error getting financial summary")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@app.get("/matches/{season_year}")
+async def get_matches_by_season(season_year: int):
+    """API endpoint to get all matches for a given season."""
+    try:
+        from database.match_db import get_matches_for_season
+        matches = get_matches_for_season(season_year)
+        if not matches:
+            return JSONResponse(status_code=200, content={"matches": [], "message": f"No matches found for season {season_year}."})
+        return JSONResponse(status_code=200, content={"matches": matches})
+    except Exception as e:
+        logger.exception("Error getting matches for season %s", season_year)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@app.get("/youth-prospects")
+async def get_youth_prospects():
+    """Get top youth prospects from the latest season report."""
+    try:
+        if not os.path.exists(SEASON_REPORTS_DIR):
+            return JSONResponse(status_code=200, content={"prospects": []})
+
+        report_files = [f for f in os.listdir(SEASON_REPORTS_DIR) if f.startswith("season_report_") and f.endswith(".json")]
+        if not report_files:
+            return JSONResponse(status_code=200, content={"prospects": []})
+
+        # Get latest season
+        latest_file = sorted(report_files, reverse=True)[0]
+        report_path = os.path.join(SEASON_REPORTS_DIR, latest_file)
+
+        import json
+        with open(report_path, 'r') as f:
+            data = json.load(f)
+
+        all_youth = []
+        all_teams_details = data.get("all_teams_details", [])
+
+        for team in all_teams_details:
+            team_name = team.get("name", "Unknown")
+            players = team.get("players", [])
+            for player in players:
+                # Players 21 and under are considered youth prospects
+                if player.get("age", 99) <= 21:
+                    all_youth.append({
+                        "name": player.get("name", "Unknown"),
+                        "team": team_name,
+                        "age": player.get("age", 0),
+                        "position": player.get("position", "N/A"),
+                        "potential": player.get("potential", 0),
+                        "current_rating": player.get("overall_rating", 0)
+                    })
+
+        # Sort by potential, then current rating
+        all_youth.sort(key=lambda x: (x["potential"], x["current_rating"]), reverse=True)
+
+        return JSONResponse(status_code=200, content={
+            "prospects": all_youth[:15],  # Top 15
+            "total_youth": len(all_youth)
+        })
+    except Exception as e:
+        logger.exception("Error getting youth prospects")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@app.get("/transfer-activity")
+async def get_transfer_activity():
+    """Get recent transfer activity summary."""
+    try:
+        # Check backend/reports dir for transfer_summary_YYYY.json
+        REPORTS_DIR = os.path.join(BASE_DIR, "reports")
+        if not os.path.exists(REPORTS_DIR):
+            return JSONResponse(status_code=200, content={"transfers": [], "summary": {}})
+
+        transfer_files = [f for f in os.listdir(REPORTS_DIR) if f.startswith("transfer_summary_") and f.endswith(".json")]
+        if not transfer_files:
+            return JSONResponse(status_code=200, content={"transfers": [], "summary": {}})
+
+        latest_file = sorted(transfer_files, reverse=True)[0]
+        report_path = os.path.join(REPORTS_DIR, latest_file)
+
+        import json
+        with open(report_path, 'r') as f:
+            data = json.load(f)
+            
+        transfers = data.get("transfer_history", [])
+        # Return top 20 most expensive ones
+        transfers_sorted = sorted(transfers, key=lambda x: x.get("amount", 0), reverse=True)
+
+        return JSONResponse(status_code=200, content={
+            "transfers": transfers_sorted[:20],
+            "summary": {
+                "total_transfers": len(transfers),
+                "total_volume": sum(t.get("amount", 0) for t in transfers)
+            }
+        })
+    except Exception as e:
+        logger.exception("Error getting transfer activity")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@app.get("/all-seasons-overview")
+async def get_all_seasons_overview():
+    """Get aggregated overview data for all available seasons for cross-season comparisons."""
+    try:
+        if not os.path.exists(SEASON_REPORTS_DIR):
+            return JSONResponse(status_code=200, content={"seasons": [], "message": "No season data available."})
+        
+        report_files = [f for f in os.listdir(SEASON_REPORTS_DIR) if f.startswith("season_report_") and f.endswith(".json")]
+        if not report_files:
+            return JSONResponse(status_code=200, content={"seasons": [], "message": "No season reports found."})
+        
+        all_seasons_data = []
+        team_positions = {}  # {team_name: [{season, position, points}]}
+        
+        for report_file in sorted(report_files):
+            try:
+                year = int(report_file.replace("season_report_", "").replace(".json", ""))
+                report_path = os.path.join(SEASON_REPORTS_DIR, report_file)
+                
+                with open(report_path, 'r') as f:
+                    data = json.load(f)
+                
+                # Extract key metrics for this season
+                table = data.get("table", [])
+                season_stats = data.get("season_stats", {})
+                transfer_summary = data.get("transfer_summary", {})
+                best_players = data.get("best_players", [])
+                
+                # Find top scorer from best_players
+                top_scorer = None
+                max_goals = 0
+                for player in best_players:
+                    goals = player.get("stats", {}).get("goals", 0)
+                    if goals > max_goals:
+                        max_goals = goals
+                        top_scorer = {
+                            "name": player.get("name"),
+                            "team": player.get("team"),
+                            "goals": goals
+                        }
+                
+                # Get champion and their stats
+                champion_name = data.get("champions", "")
+                champion_stats = {}
+                for team_name, stats in table:
+                    if team_name == champion_name:
+                        champion_stats = stats
+                        break
+                
+                # Track team positions for trend charts
+                for pos, (team_name, stats) in enumerate(table, 1):
+                    if team_name not in team_positions:
+                        team_positions[team_name] = []
+                    team_positions[team_name].append({
+                        "season": year,
+                        "position": pos,
+                        "points": stats.get("points", 0)
+                    })
+                
+                # Build season summary
+                season_summary = {
+                    "season_year": year,
+                    "champions": champion_name,
+                    "champion_points": champion_stats.get("points", 0),
+                    "top_scorer": top_scorer,
+                    "total_goals": season_stats.get("total_goals", 0),
+                    "total_matches": season_stats.get("total_matches", 0),
+                    "avg_goals_per_match": season_stats.get("average_goals_per_match", 0),
+                    "best_attack": {
+                        "team": season_stats.get("best_attack", [None, {}])[0],
+                        "goals": season_stats.get("best_attack", [None, {}])[1].get("gf", 0)
+                    },
+                    "best_defense": {
+                        "team": season_stats.get("best_defense", [None, {}])[0],
+                        "goals_conceded": season_stats.get("best_defense", [None, {}])[1].get("ga", 0)
+                    },
+                    "transfers_completed": transfer_summary.get("transfers_completed", 0),
+                    "total_market_value": transfer_summary.get("total_market_value", 0)
+                }
+                
+                all_seasons_data.append(season_summary)
+                
+            except Exception as e:
+                logger.warning("Error processing %s: %s", report_file, e)
+                continue
+        
+        # Sort by season year
+        all_seasons_data.sort(key=lambda x: x["season_year"], reverse=True)
+        
+        return JSONResponse(status_code=200, content={
+            "seasons": all_seasons_data,
+            "team_position_trends": team_positions,
+            "total_seasons": len(all_seasons_data)
+        })
+        
+    except Exception as e:
+        logger.exception("Error getting all seasons overview")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("api_fastapi:app", host="0.0.0.0", port=API_PORT, reload=API_DEBUG)

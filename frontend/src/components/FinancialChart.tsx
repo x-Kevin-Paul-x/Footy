@@ -28,20 +28,34 @@ const FinancialChart: React.FC<FinancialChartProps> = ({ items, maxValue }) => {
         const pct = Math.round((it.value / max) * 100);
         const formatted = compact.format(it.value);
         return (
-          <Box key={it.label} sx={{ mb: 1 }}>
+          <Box key={it.label} sx={{ mb: 1.5 }}>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-              <Typography variant="body2">{it.label}</Typography>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, color: "text.primary" }}>{it.label}</Typography>
+              <Typography variant="body2" sx={{ fontWeight: 800, color: "#4f46e5" }}>
                 {formatted}
               </Typography>
             </Box>
-            <LinearProgress variant="determinate" value={pct} aria-label={`${it.label} ${formatted}`} />
+            <LinearProgress
+              variant="determinate"
+              value={pct}
+              aria-label={`${it.label} ${formatted}`}
+              sx={{
+                height: 7,
+                borderRadius: 4,
+                bgcolor: '#f1f5f9',
+                '& .MuiLinearProgress-bar': {
+                  borderRadius: 4,
+                  background: 'linear-gradient(90deg, #4f46e5 0%, #6366f1 100%)'
+                }
+              }}
+            />
           </Box>
         );
       })}
-      {items.length === 0 && <Typography variant="body2">No financial data available</Typography>}
+      {items.length === 0 && <Typography variant="body2" sx={{ color: "#64748b" }}>No financial data available</Typography>}
     </Box>
   );
 };
 
 export default FinancialChart;
+

@@ -77,9 +77,14 @@ match_reports/
 season_reports/
 transfer_logs/
 football_sim.db
+*.db
+backend/data/*.db
+backend/data/saves/
+backend/reports/
 implementation_plan.md
 test_data.py
 test_database.py
 test_transfers.log
 test_training.py
 test_transfers.py
+ml/
