@@ -123,14 +123,22 @@ class Manager:
         if not data:
             return None
             
-        manager = cls(
-            name=data["name"],
-            experience_level=data["experience_level"]
-        )
-        manager.manager_id = data["manager_id"]
-        manager.formation = data["formation"]
-        manager.tactics = data["tactics"]
-        manager.salary = data["salary"]
+        if isinstance(data, (tuple, list)):
+            manager = cls(
+                name=data[1],
+                experience_level=data[2]
+            )
+            manager.manager_id = data[0]
+            manager.formation = data[7] if len(data) > 7 else "4-4-2"
+        else:
+            manager = cls(
+                name=data["name"],
+                experience_level=data["experience_level"]
+            )
+            manager.manager_id = data["manager_id"]
+            manager.formation = data.get("formation", "4-4-2")
+            manager.tactics = data.get("tactics")
+            manager.salary = data.get("salary")
         return manager
 
     def train_players(self, perf_multiplier=1.0):

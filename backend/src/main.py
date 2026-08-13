@@ -66,11 +66,45 @@ def create_premier_league():
     logger.info("Creating Premier League teams with enhanced financial system...")
     
     from database.team_db import get_all_teams
-    existing_team_names = set(t[1] for t in get_all_teams())
+    from database.player_db import get_all_players
+    
+    existing_teams = {t[1]: t[0] for t in get_all_teams()}
+    all_db_players = get_all_players() if existing_teams else []
+
     for team_name in teams:
-        if team_name in existing_team_names:
-            logger.info(f"Team '{team_name}' already exists in database, skipping creation.")
-            continue
+        if team_name in existing_teams:
+            logger.info(f"Team '{team_name}' exists in database, loading team and roster.")
+            team_id = existing_teams[team_name]
+            team = Team.load_from_database(team_id)
+            if team:
+                # Load existing players for this team
+                team_players = [p for p in all_db_players if p.get("team_id") == team_id]
+                for p_data in team_players:
+                    p_obj = FootballPlayer(
+                        name=p_data["name"],
+                        age=p_data["age"],
+                        position=p_data["position"],
+                        potential=p_data["potential"],
+                        wage=p_data["wage"]
+                    )
+                    p_obj.player_id = p_data["player_id"]
+                    p_obj.squad_role = p_data.get("squad_role", "STARTER")
+                    p_obj.contract_length = p_data.get("contract_length", 3)
+                    if p_data.get("attributes"):
+                        p_obj.attributes = p_data["attributes"]
+                    team.add_player(p_obj, force=True)
+
+                # Ensure minimum squad if less than 11 senior players
+                if len(team.players) < 11:
+                    for i in range(11 - len(team.players)):
+                        pos = "ST" if i % 2 == 0 else "CM"
+                        p = FootballPlayer.create_player(position=pos)
+                        p.save_to_database(team.team_id)
+                        team.add_player(p, force=True)
+
+                premier_league.teams.append(team)
+                continue
+        
         team = Team(team_name, budgets[team_name])
         
         # Save team to database

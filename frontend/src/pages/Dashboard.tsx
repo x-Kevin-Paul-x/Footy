@@ -100,7 +100,7 @@ const Dashboard: React.FC = () => {
     fetchAvailableSeasons();
   }, [fetchAvailableSeasons]);
 
-  const latestSeasonYear = availableSeasons.length > 0 ? Math.max(...availableSeasons) : 2025;
+  const latestSeasonYear = availableSeasons.length > 0 ? Math.max(...availableSeasons) : null;
 
   // 1. All Seasons Overview
   const { data: allSeasonsData, error: seasonsErr } = useQuery({
@@ -111,15 +111,15 @@ const Dashboard: React.FC = () => {
   // 2. Latest Season Detailed Report (for Standings Table)
   const { data: seasonReport } = useQuery({
     queryKey: ['seasonReport', latestSeasonYear],
-    queryFn: () => getSeasonReportData(latestSeasonYear),
-    enabled: !!latestSeasonYear,
+    queryFn: () => getSeasonReportData(latestSeasonYear!),
+    enabled: latestSeasonYear !== null,
   });
 
   // 3. Recent Matches (for Match Center)
   const { data: matchesData } = useQuery({
     queryKey: ['matchesBySeason', latestSeasonYear],
-    queryFn: () => getMatchesBySeason(latestSeasonYear),
-    enabled: !!latestSeasonYear,
+    queryFn: () => getMatchesBySeason(latestSeasonYear!),
+    enabled: latestSeasonYear !== null,
   });
 
   const runSimMutation = useMutation({
@@ -184,16 +184,16 @@ const Dashboard: React.FC = () => {
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 0.5 }}>
-            <Typography variant="h4" sx={{ fontWeight: 900, fontFamily: 'Outfit, sans-serif', color: 'text.primary', letterSpacing: '-0.03em' }}>
+            <Typography variant="h4" sx={{ fontWeight: 900, fontFamily: 'Outfit, sans-serif', color: '#ffffff', letterSpacing: '-0.02em', textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>
               Premier League Command Center
             </Typography>
             <Chip
               label={`Season ${latestSeasonYear}`}
               size="small"
-              sx={{ bgcolor: 'rgba(79, 70, 229, 0.12)', color: '#4f46e5', fontWeight: 800, borderRadius: 9999 }}
+              sx={{ bgcolor: 'rgba(34, 197, 94, 0.2)', color: '#4ade80', fontWeight: 800, borderRadius: 9999, border: '1px solid rgba(74, 222, 128, 0.3)' }}
             />
           </Box>
-          <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, color: '#a7f3d0' }}>
             Real-time league standings, match results, top goalscorers, and AI season simulation. ({totalSeasons} seasons simulated • Champion: {championTeam} {championPoints} PTS)
           </Typography>
         </Box>
@@ -201,15 +201,15 @@ const Dashboard: React.FC = () => {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <IconButton
             sx={{
-              bgcolor: 'background.paper',
-              border: 1,
-              borderColor: 'divider',
+              bgcolor: 'rgba(8, 32, 14, 0.75)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
               borderRadius: 9999,
               p: 1.2,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+              color: '#ffffff',
+              boxShadow: '4px 4px 10px rgba(0,0,0,0.3)'
             }}
           >
-            <TuneIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+            <TuneIcon fontSize="small" sx={{ color: '#4ade80' }} />
           </IconButton>
 
           <Button
@@ -218,17 +218,17 @@ const Dashboard: React.FC = () => {
             disabled={runSimMutation.isPending}
             startIcon={runSimMutation.isPending ? <CircularProgress size={18} color="inherit" /> : <AddIcon />}
             sx={{
-              background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
+              background: 'linear-gradient(145deg, rgba(34, 197, 94, 0.9), rgba(21, 128, 61, 0.95))',
               color: '#ffffff',
               px: 3,
               py: 1.2,
               borderRadius: 9999,
               fontWeight: 800,
               fontSize: '0.88rem',
-              boxShadow: '0 8px 20px rgba(79, 70, 229, 0.35)',
+              boxShadow: '5px 5px 15px rgba(0, 15, 4, 0.5), -2px -2px 6px rgba(255, 255, 255, 0.3)',
+              border: '1px solid rgba(255, 255, 255, 0.3)',
               '&:hover': {
-                background: 'linear-gradient(135deg, #4338ca 0%, #4f46e5 100%)',
-                boxShadow: '0 12px 28px rgba(79, 70, 229, 0.5)',
+                background: 'linear-gradient(145deg, rgba(74, 222, 128, 0.95), rgba(22, 163, 74, 1))',
               }
             }}
           >

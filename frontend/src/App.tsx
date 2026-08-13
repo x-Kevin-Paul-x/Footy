@@ -10,17 +10,12 @@ import {
   Chip,
   Avatar,
   IconButton,
-  Badge,
 } from "@mui/material";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import HomeIcon from "@mui/icons-material/Home";
 import SportsSoccerIcon from "@mui/icons-material/SportsSoccer";
-import NotificationsIcon from "@mui/icons-material/Notifications";
-import SettingsIcon from "@mui/icons-material/Settings";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
-import BookmarkIcon from "@mui/icons-material/Bookmark";
-import ViewModuleIcon from "@mui/icons-material/ViewModule";
 
 // Lazy / direct page imports from src/pages
 import Dashboard from "./pages/Dashboard";
@@ -116,13 +111,13 @@ function AppBreadcrumbs() {
               size="small"
               clickable={!isLast && isValidRoute}
               sx={{
-                bgcolor: isLast ? 'rgba(79, 70, 229, 0.12)' : 'transparent',
-                color: isLast ? '#4f46e5' : 'text.primary',
+                bgcolor: isLast ? 'rgba(22, 163, 74, 0.15)' : 'transparent',
+                color: isLast ? '#15803d' : 'text.primary',
                 fontWeight: isLast ? 700 : 500,
                 height: 24,
                 fontSize: '0.75rem',
                 textTransform: 'capitalize',
-                border: isLast ? '1px solid rgba(79, 70, 229, 0.25)' : 'none',
+                border: isLast ? '1px solid rgba(34, 197, 94, 0.3)' : 'none',
               }}
             />
           );
@@ -141,126 +136,109 @@ function MainLayout({ mode, setMode, toast, setToast }: {
   const location = useLocation();
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: mode === 'dark' ? '#0b0d14' : '#f3f4f8', color: mode === 'dark' ? '#f1f5f9' : '#1e293b' }}>
-      {/* Top FINNOVA Header Bar - Single Row Alignment */}
+    <Box sx={{ minHeight: '100vh', color: mode === 'dark' ? '#f1f5f9' : '#1e293b' }}>
+      {/* Top Floating Header Bar - Clean Floating Anchorpoint Capsule */}
       <Box
         sx={{
-          px: { xs: 2, md: 3, lg: 4 },
-          height: 64,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'nowrap',
-          borderBottom: mode === 'dark' ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(0, 0, 0, 0.06)',
-          background: mode === 'dark' ? '#0f111a' : '#ffffff',
+          maxWidth: 1600,
+          mx: 'auto',
+          px: { xs: 2, md: 4 },
+          pt: 2,
+          pb: 1,
           position: 'sticky',
           top: 0,
           zIndex: 1100,
-          boxShadow: mode === 'dark' ? '0 4px 20px rgba(0,0,0,0.4)' : '0 4px 20px rgba(0,0,0,0.03)',
-          overflowX: 'auto',
-          '&::-webkit-scrollbar': { display: 'none' }
         }}
       >
-        {/* Left: Brand Logo & Title */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, whiteSpace: 'nowrap', flexShrink: 0 }}>
-          <Avatar
-            sx={{
-              bgcolor: '#4f46e5',
-              width: 36,
-              height: 36,
-              boxShadow: '0 4px 14px rgba(79, 70, 229, 0.4)',
-            }}
-          >
-            <SportsSoccerIcon sx={{ color: '#ffffff', fontSize: 20 }} />
-          </Avatar>
-          <Box sx={{ display: { xs: 'none', sm: 'block' } }}>
-            <Typography variant="h6" sx={{ fontWeight: 900, lineHeight: 1.1, fontFamily: 'Outfit, sans-serif', letterSpacing: '-0.02em', color: mode === 'dark' ? '#ffffff' : '#0f172a', fontSize: '1rem' }}>
-              FOOTY
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, fontSize: '0.65rem', display: 'block' }}>
-              Smart Analytics, Better Football
-            </Typography>
-          </Box>
-          <Chip
-            label="80"
-            size="small"
-            sx={{
-              bgcolor: mode === 'dark' ? 'rgba(255,255,255,0.1)' : '#f1f5f9',
-              color: mode === 'dark' ? '#cbd5e1' : '#64748b',
-              fontWeight: 800,
-              height: 20,
-              fontSize: '0.7rem',
-              borderRadius: 9999,
-            }}
-          />
-        </Box>
-
-        {/* Center: Capsule Pill Navigation */}
         <Box
           className="finnova-nav-capsule"
           sx={{
-            display: { xs: 'none', md: 'flex' },
+            width: '100%',
+            display: 'flex',
             alignItems: 'center',
-            gap: 0.3,
-            mx: 2,
-            flexShrink: 1,
-            overflowX: 'auto',
-            '&::-webkit-scrollbar': { display: 'none' }
+            justifyContent: 'space-between',
+            px: { xs: 2, md: 3 },
+            py: 1,
           }}
         >
-          {sections.map((sec) => {
-            const isActive = location.pathname === sec.path || (sec.path !== '/' && location.pathname.startsWith(sec.path));
-            return (
-              <Link
-                key={sec.path}
-                to={sec.path}
-                className={`finnova-nav-item ${isActive ? 'active' : ''}`}
-              >
-                {sec.label}
-              </Link>
-            );
-          })}
-        </Box>
+          {/* Left: Brand Logo & Title */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, whiteSpace: 'nowrap', flexShrink: 0 }}>
+            <Avatar
+              sx={{
+                bgcolor: 'rgba(34, 197, 94, 0.25)',
+                color: '#ffffff',
+                width: 38,
+                height: 38,
+                border: '1px solid rgba(74, 222, 128, 0.4)',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+              }}
+            >
+              <SportsSoccerIcon sx={{ color: '#4ade80', fontSize: 22 }} />
+            </Avatar>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 900, lineHeight: 1.1, fontFamily: 'Outfit, sans-serif', letterSpacing: '0.05em', color: '#ffffff', fontSize: '1.05rem' }}>
+                FOOTY
+              </Typography>
+              <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '0.65rem', display: 'block', color: '#4ade80', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                Tactical Infrastructure
+              </Typography>
+            </Box>
+          </Box>
 
-        {/* Right: Actions & User Avatar */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexShrink: 0, justifyContent: 'flex-end' }}>
-          <IconButton size="small" sx={{ color: mode === 'dark' ? '#94a3b8' : '#64748b' }}>
-            <BookmarkIcon fontSize="small" />
-          </IconButton>
-          <IconButton size="small" sx={{ color: mode === 'dark' ? '#94a3b8' : '#64748b' }}>
-            <ViewModuleIcon fontSize="small" />
-          </IconButton>
-          <IconButton size="small" sx={{ color: mode === 'dark' ? '#94a3b8' : '#64748b' }}>
-            <Badge variant="dot" color="error">
-              <NotificationsIcon fontSize="small" />
-            </Badge>
-          </IconButton>
-          <IconButton size="small" sx={{ color: mode === 'dark' ? '#94a3b8' : '#64748b' }}>
-            <SettingsIcon fontSize="small" />
-          </IconButton>
-          <IconButton
-            size="small"
-            onClick={() => setMode(mode === 'light' ? 'dark' : 'light')}
-            sx={{ color: mode === 'dark' ? '#fbbf24' : '#64748b' }}
-          >
-            {mode === 'light' ? <DarkModeIcon fontSize="small" /> : <LightModeIcon fontSize="small" />}
-          </IconButton>
-          <Avatar
+          {/* Center: Segmented Navigation */}
+          <Box
             sx={{
-              width: 36,
-              height: 36,
-              ml: 1,
-              bgcolor: '#4f46e5',
-              color: '#ffffff',
-              fontWeight: 800,
-              fontSize: '0.85rem',
-              border: '2px solid #818cf8',
-              boxShadow: '0 4px 12px rgba(79, 70, 229, 0.4)',
-              cursor: 'pointer'
+              display: { xs: 'none', md: 'flex' },
+              alignItems: 'center',
+              gap: 0.5,
+              mx: 2,
+              flexShrink: 1,
+              overflowX: 'auto',
+              '&::-webkit-scrollbar': { display: 'none' }
             }}
           >
-            FM
-          </Avatar>
+            {sections.map((sec) => {
+              const isActive = location.pathname === sec.path || (sec.path !== '/' && location.pathname.startsWith(sec.path));
+              return (
+                <Link
+                  key={sec.path}
+                  to={sec.path}
+                  className={`finnova-nav-item ${isActive ? 'active' : ''}`}
+                >
+                  {sec.label}
+                </Link>
+              );
+            })}
+          </Box>
+
+          {/* Right: + INITIATE Button & User Avatar */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, flexShrink: 0 }}>
+            <button className="turf-pill-btn">
+              + INITIATE
+            </button>
+            <IconButton
+              size="small"
+              onClick={() => setMode(mode === 'light' ? 'dark' : 'light')}
+              sx={{ color: '#ffffff', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)' }}
+            >
+              {mode === 'light' ? <DarkModeIcon fontSize="small" /> : <LightModeIcon fontSize="small" />}
+            </IconButton>
+            <Avatar
+              sx={{
+                width: 36,
+                height: 36,
+                bgcolor: 'rgba(4, 28, 12, 0.85)',
+                color: '#ffffff',
+                fontWeight: 800,
+                fontSize: '0.85rem',
+                border: '1px solid rgba(255, 255, 255, 0.4)',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+                cursor: 'pointer'
+              }}
+            >
+              FM
+            </Avatar>
+          </Box>
         </Box>
       </Box>
 
@@ -315,27 +293,27 @@ function App() {
         palette: {
           mode,
           primary: {
-            main: '#4f46e5',
-            light: '#6366f1',
-            dark: '#3730a3',
+            main: '#16a34a',
+            light: '#22c55e',
+            dark: '#15803d',
             contrastText: '#ffffff',
           },
           secondary: {
-            main: '#fbbf24',
-            contrastText: '#0f172a',
+            main: '#4ade80',
+            contrastText: '#06170d',
           },
           background: {
-            default: mode === 'dark' ? '#0b0d14' : '#f3f4f8',
-            paper: mode === 'dark' ? '#161826' : '#ffffff',
+            default: 'transparent',
+            paper: '#154a22',
           },
           text: {
-            primary: mode === 'dark' ? '#f1f5f9' : '#0f172a',
-            secondary: mode === 'dark' ? '#94a3b8' : '#64748b',
+            primary: '#ffffff',
+            secondary: '#a7f3d0',
           },
-          divider: mode === 'dark' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+          divider: 'rgba(255, 255, 255, 0.14)',
         },
         typography: {
-          fontFamily: "'Inter', sans-serif",
+          fontFamily: "'Nunito', 'Inter', sans-serif",
           h1: { fontFamily: "'Outfit', sans-serif", fontWeight: 800 },
           h2: { fontFamily: "'Outfit', sans-serif", fontWeight: 800 },
           h3: { fontFamily: "'Outfit', sans-serif", fontWeight: 800 },
@@ -348,16 +326,74 @@ function App() {
             styleOverrides: {
               root: {
                 backgroundImage: 'none',
-                borderRadius: '16px',
+                backgroundColor: '#154a22 !important',
+                borderRadius: '28px',
+                border: '1px solid rgba(255, 255, 255, 0.14)',
+                boxShadow: '9px 9px 20px rgba(3, 14, 6, 0.88), -9px -9px 20px rgba(36, 128, 58, 0.38)',
+                color: '#ffffff',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                '&:hover': {
+                  transform: 'translateY(-3px)',
+                  boxShadow: '14px 14px 28px rgba(3, 14, 6, 0.95), -12px -12px 24px rgba(36, 128, 58, 0.48)',
+                  borderColor: 'rgba(74, 222, 128, 0.35)',
+                },
+              },
+            },
+          },
+          MuiPaper: {
+            styleOverrides: {
+              root: {
+                backgroundImage: 'none',
+                backgroundColor: '#154a22 !important',
+                borderRadius: '28px',
+                border: '1px solid rgba(255, 255, 255, 0.14)',
+                boxShadow: '9px 9px 20px rgba(3, 14, 6, 0.88), -9px -9px 20px rgba(36, 128, 58, 0.38)',
+                color: '#ffffff',
               },
             },
           },
           MuiButton: {
             styleOverrides: {
               root: {
-                borderRadius: '10px',
-                textTransform: 'none',
-                fontWeight: 600,
+                borderRadius: '9999px',
+                textTransform: 'uppercase',
+                fontWeight: 800,
+                letterSpacing: '0.05em',
+                boxShadow: '6px 6px 14px rgba(3, 14, 6, 0.88), -5px -5px 12px rgba(36, 128, 58, 0.38)',
+              },
+              contained: {
+                backgroundColor: '#154a22 !important',
+                color: '#ffffff !important',
+                border: '1px solid rgba(255, 255, 255, 0.25)',
+                '&:hover': {
+                  backgroundColor: '#1c5e2d !important',
+                  color: '#4ade80 !important',
+                  boxShadow: '9px 9px 18px rgba(3, 14, 6, 0.95), -7px -7px 15px rgba(36, 128, 58, 0.45)',
+                },
+                '&:active': {
+                  boxShadow: 'inset 5px 5px 10px rgba(2, 10, 4, 0.85), inset -5px -5px 10px rgba(28, 98, 45, 0.3) !important',
+                },
+              },
+            },
+          },
+          MuiChip: {
+            styleOverrides: {
+              root: {
+                fontWeight: 800,
+                borderRadius: '9999px',
+              },
+            },
+          },
+          MuiTableCell: {
+            styleOverrides: {
+              root: {
+                borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                color: '#ffffff',
+              },
+              head: {
+                color: '#4ade80',
+                fontWeight: 800,
+                backgroundColor: '#0a2711',
               },
             },
           },

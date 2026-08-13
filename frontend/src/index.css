@@ -1,21 +1,30 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Outfit:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-heading: 'Outfit', 'Inter', sans-serif;
+  --font-sans: 'Nunito', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-heading: 'Outfit', 'Nunito', sans-serif;
   
-  --radius-sm: 12px;
-  --radius-md: 16px;
-  --radius-lg: 24px;
+  --radius-sm: 14px;
+  --radius-md: 20px;
+  --radius-lg: 28px;
   --radius-pill: 9999px;
 
-  color-scheme: light dark;
-  color: #1e293b;
-  background-color: #f3f4f8;
+  /* Anchorpoint Pitch Neumorphic Color Tokens */
+  --neu-bg: #113e1c;
+  --neu-bg-light: #144922;
+  --neu-bg-dark: #0a2711;
+  --neu-dark-shadow: rgba(3, 14, 6, 0.85);
+  --neu-light-shadow: rgba(36, 128, 58, 0.35);
+  --neu-text-light: #ffffff;
+  --neu-text-emerald: #4ade80;
+
+  color-scheme: dark;
+  color: #ffffff;
+  background-color: #0b2e15;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -23,124 +32,165 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Seamless Blurred Grass Background (Anchorpoint Style) */
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background-color: #f3f4f8;
-  color: #1e293b;
+  background-color: #0b2e15;
+  color: #ffffff;
   font-family: var(--font-sans);
-  transition: background-color 0.3s ease, color 0.3s ease;
+  position: relative;
+  overflow-x: hidden;
 }
 
-/* FINNOVA Theme-Adaptive Capsule Pill Nav */
+/* Background Blur Layer for Silky Seamless Turf Canvas */
+body::before {
+  content: '';
+  position: fixed;
+  top: -20px;
+  left: -20px;
+  right: -20px;
+  bottom: -20px;
+  z-index: -10;
+  background-color: #0b2e15;
+  background-image: 
+    radial-gradient(circle at 50% 25%, rgba(34, 197, 94, 0.2) 0%, rgba(3, 16, 7, 0.9) 85%),
+    linear-gradient(to right, rgba(0, 0, 0, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.08) 1px, transparent 1px),
+    url('/grass_texture.jpg');
+  background-size: 100% 100%, 80px 80px, 80px 80px, 350px 350px;
+  background-repeat: no-repeat, repeat, repeat, repeat;
+  background-position: center;
+  filter: blur(14px);
+  transform: scale(1.05);
+}
+
+/* ANCHORPOINT Neumorphic Raised Surface (Outset 3D Clay Card) */
+.neu-raised, .finnova-card {
+  background-color: rgba(20, 70, 34, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 
+    8px 8px 22px rgba(2, 10, 4, 0.75),
+    -6px -6px 18px rgba(36, 128, 58, 0.3);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 26px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #ffffff;
+}
+
+.neu-raised-hover:hover, .finnova-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 
+    12px 12px 26px rgba(2, 10, 4, 0.85),
+    -8px -8px 22px rgba(36, 128, 58, 0.4);
+  border-color: rgba(74, 222, 128, 0.4);
+}
+
+/* ANCHORPOINT Neumorphic Pressed Surface (Debossed Inset Cutout Panel) */
+.neu-pressed, .finnova-dark-container, .finnova-spotlight-card {
+  background-color: rgba(8, 30, 13, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 
+    inset 7px 7px 14px rgba(2, 10, 4, 0.9),
+    inset -7px -7px 14px rgba(28, 98, 45, 0.35);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 28px;
+  color: #ffffff;
+}
+
+.finnova-spotlight-subcard {
+  background-color: rgba(17, 62, 28, 0.6);
+  box-shadow: 
+    inset 4px 4px 8px rgba(2, 10, 4, 0.7),
+    inset -4px -4px 8px rgba(28, 98, 45, 0.25);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 16px;
+  transition: all 0.2s ease;
+}
+
+/* Floating Neumorphic Pill Header Bar (Fixed Clipping & Weird Shadow) */
 .finnova-nav-capsule {
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  background: rgba(14, 48, 22, 0.88);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-radius: var(--radius-pill);
-  padding: 4px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  padding: 6px 16px;
+  box-shadow: 
+    0 12px 32px rgba(0, 10, 4, 0.6),
+    inset 1px 1px 2px rgba(255, 255, 255, 0.35);
   transition: all 0.3s ease;
 }
 
 .finnova-nav-item {
-  color: #64748b;
-  padding: 6px 14px;
+  color: #d1fae5;
+  padding: 8px 18px;
   border-radius: var(--radius-pill);
   font-size: 0.8rem;
-  font-weight: 600;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   white-space: nowrap;
+  text-transform: uppercase;
 }
 
 .finnova-nav-item:hover {
-  color: #0f172a;
-  background: #e2e8f0;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
 }
 
 .finnova-nav-item.active {
-  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.35), rgba(21, 128, 61, 0.5));
   color: #ffffff;
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+  border: 1px solid rgba(74, 222, 128, 0.45);
+  box-shadow: 0 4px 14px rgba(34, 197, 94, 0.35);
 }
 
-/* Dark Mode Nav Capsule Overrides */
-[data-theme="dark"] .finnova-nav-capsule, body.dark-mode .finnova-nav-capsule {
-  background: #161927;
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-}
-
-[data-theme="dark"] .finnova-nav-item, body.dark-mode .finnova-nav-item {
-  color: #94a3b8;
-}
-
-[data-theme="dark"] .finnova-nav-item:hover, body.dark-mode .finnova-nav-item:hover {
+/* ANCHORPOINT Neumorphic Interactive 3D Button (`+ INITIATE`) */
+.turf-pill-btn, .neu-button {
+  background: linear-gradient(145deg, rgba(34, 197, 94, 0.9), rgba(21, 128, 61, 0.95));
+  box-shadow: 
+    0 6px 18px rgba(0, 15, 4, 0.45),
+    inset 1px 1px 2px rgba(255, 255, 255, 0.5);
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 10px 22px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
   color: #ffffff;
-  background: rgba(255, 255, 255, 0.08);
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-[data-theme="dark"] .finnova-nav-item.active, body.dark-mode .finnova-nav-item.active {
-  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
-  color: #ffffff;
-  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.5);
-}
-
-/* FINNOVA Light Stat Card */
-.finnova-card {
-  background: #ffffff;
-  border-radius: var(--radius-lg);
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.04);
-  padding: 24px;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  overflow: hidden;
-}
-
-.finnova-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 16px 35px -5px rgba(79, 70, 229, 0.08);
-  border-color: rgba(99, 102, 241, 0.3);
-}
-
-/* FINNOVA High-Contrast Dark Navy Container */
-.finnova-dark-container {
-  background: #121420;
-  border-radius: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
-  padding: 28px;
-  color: #ffffff;
-}
-
-/* FINNOVA Vibrant Indigo Spotlight Card */
-.finnova-spotlight-card {
-  background: linear-gradient(135deg, #4b45d0 0%, #5951e5 100%);
-  border-radius: var(--radius-lg);
-  padding: 26px;
-  color: #ffffff;
-  box-shadow: 0 14px 40px rgba(84, 76, 217, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-}
-
-.finnova-spotlight-subcard {
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  padding: 16px;
-  transition: all 0.2s ease;
-}
-
-.finnova-spotlight-subcard:hover {
-  background: rgba(255, 255, 255, 0.18);
+.turf-pill-btn:hover, .neu-button:hover {
   transform: translateY(-2px);
+  box-shadow: 
+    0 8px 22px rgba(34, 197, 94, 0.45),
+    inset 1px 1px 2px rgba(255, 255, 255, 0.6);
+  color: #ffffff;
+}
+
+.turf-pill-btn:active, .neu-button:active {
+  transform: translateY(1px);
+  box-shadow: 
+    inset 4px 4px 10px rgba(2, 10, 4, 0.85),
+    inset -4px -4px 10px rgba(28, 98, 45, 0.3);
 }
 
 /* Trend Pills */
@@ -148,41 +198,38 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 10px;
+  padding: 4px 12px;
   border-radius: var(--radius-pill);
   font-size: 0.75rem;
-  font-weight: 700;
+  font-weight: 800;
+  box-shadow: inset 2px 2px 4px rgba(0,0,0,0.3);
 }
 
 .trend-pill-up {
-  background: rgba(79, 70, 229, 0.1);
-  color: #4f46e5;
+  background: rgba(74, 222, 128, 0.2);
+  color: #86efac;
+  border: 1px solid rgba(74, 222, 128, 0.3);
 }
 
 .trend-pill-down {
-  background: rgba(244, 63, 94, 0.1);
-  color: #f43f5e;
-}
-
-.trend-pill-cyan {
-  background: rgba(6, 182, 212, 0.1);
-  color: #0891b2;
-}
-
-.trend-pill-emerald {
-  background: rgba(16, 185, 129, 0.1);
-  color: #059669;
+  background: rgba(244, 63, 94, 0.2);
+  color: #fecdd3;
+  border: 1px solid rgba(244, 63, 94, 0.3);
 }
 
 /* Filter Bar Pills */
 .finnova-filter-pill {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background-color: rgba(20, 70, 34, 0.82);
+  backdrop-filter: blur(12px);
+  box-shadow: 
+    4px 4px 12px rgba(0, 10, 4, 0.4),
+    -4px -4px 10px rgba(36, 128, 58, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: var(--radius-pill);
-  padding: 8px 16px;
+  padding: 8px 18px;
   font-size: 0.85rem;
-  font-weight: 600;
-  color: #475569;
+  font-weight: 800;
+  color: #e2e8f0;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -191,11 +238,11 @@ body {
 }
 
 .finnova-filter-pill:hover {
-  border-color: #6366f1;
-  color: #4f46e5;
+  color: #4ade80;
+  transform: translateY(-1px);
 }
 
-/* List Item Highlight in Dark Navy Box */
+/* List Item Highlight in Recessed Cutouts */
 .finnova-list-item {
   border-radius: var(--radius-md);
   padding: 14px 18px;
@@ -206,30 +253,14 @@ body {
 }
 
 .finnova-list-item:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .finnova-list-item.selected {
-  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
-  color: #ffffff;
-  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-/* Dark Mode Overrides */
-[data-theme="dark"], body.dark-mode {
-  background-color: #0b0d14;
-  color: #f1f5f9;
-}
-
-[data-theme="dark"] .finnova-card, body.dark-mode .finnova-card {
-  background: #161826;
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-}
-
-[data-theme="dark"] .finnova-filter-pill, body.dark-mode .finnova-filter-pill {
-  background: #1a1d2e;
-  border-color: rgba(255, 255, 255, 0.1);
-  color: #cbd5e1;
+  background-color: var(--neu-bg-dark);
+  color: #4ade80;
+  box-shadow: 
+    inset 4px 4px 10px rgba(2, 10, 4, 0.85),
+    inset -4px -4px 10px rgba(28, 98, 45, 0.3);
+  border: 1px solid rgba(74, 222, 128, 0.3);
 }
