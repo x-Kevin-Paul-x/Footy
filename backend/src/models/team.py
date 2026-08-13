@@ -152,7 +152,7 @@ class Team:
         if not data:
             return None
             
-        if isinstance(data, tuple):
+        if isinstance(data, (tuple, list)):
             team = cls(
                 name=data[1],
                 budget=data[2]

@@ -18,6 +18,12 @@ def test_get_players_endpoint():
     assert response.status_code == 200
     assert isinstance(response.json(), list)
 
+def test_get_seasons_endpoint():
+    response = client.get("/get-seasons")
+    assert response.status_code == 200
+    assert "seasons" in response.json()
+    assert isinstance(response.json()["seasons"], list)
+
 def test_run_simulation_status():
     response = client.post("/run-simulation")
     assert response.status_code == 200

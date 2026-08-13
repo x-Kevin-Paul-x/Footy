@@ -161,7 +161,6 @@ def create_premier_league():
             team.process_weekly_finances()
             premier_league.teams.append(team)
             continue
-
         team = Team(team_name, budgets[team_name])
         
         # Save team to database
