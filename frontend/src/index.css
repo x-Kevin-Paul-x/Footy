@@ -8,14 +8,22 @@
   --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-heading: 'Outfit', 'Inter', sans-serif;
   
-  --radius-sm: 12px;
-  --radius-md: 16px;
-  --radius-lg: 24px;
+  --radius-sm: 14px;
+  --radius-md: 20px;
+  --radius-lg: 28px;
   --radius-pill: 9999px;
 
+  /* Explicit User Color Rules */
+  --bg-navbar: #F85525;    /* Dark Orange Navbar */
+  --bg-downpart: #FAA968;  /* Down Part / Page Background */
+  --bg-cards: #F6DCAC;     /* Neumorphic Soft Card Background */
+  --text-main: #028391;    /* Main Text Color */
+  --text-heading: #01204E; /* Dark Navy Heading Color */
+  --btn-main: #01204E;     /* Tactile Button Background */
+
   color-scheme: light dark;
-  color: #1e293b;
-  background-color: #f3f4f8;
+  color: #028391;
+  background-color: #FAA968;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -27,28 +35,40 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background-color: #f3f4f8;
-  color: #1e293b;
+  background-color: #FAA968;
+  color: #028391;
   font-family: var(--font-sans);
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* FINNOVA Theme-Adaptive Capsule Pill Nav */
+/* Floating Neumorphic / Soft-Tactile Navbar Capsule (Screenshot Style) */
+.finnova-header-bar {
+  background: #F85525;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 12px 36px rgba(248, 85, 37, 0.35), inset 0 1px 2px rgba(255, 255, 255, 0.4), inset 0 -2px 6px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s ease;
+}
+
+/* Embedded Floating Inset Nav Pill Capsule */
 .finnova-nav-capsule {
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: var(--radius-pill);
-  padding: 4px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+  padding: 5px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.05);
   transition: all 0.3s ease;
 }
 
 .finnova-nav-item {
-  color: #64748b;
-  padding: 6px 14px;
+  color: #01204E;
+  padding: 7px 16px;
   border-radius: var(--radius-pill);
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   text-decoration: none;
   display: inline-flex;
@@ -58,144 +78,157 @@ body {
 }
 
 .finnova-nav-item:hover {
-  color: #0f172a;
-  background: #e2e8f0;
+  color: #ffffff;
+  background: rgba(1, 32, 78, 0.7);
+  box-shadow: 0 4px 12px rgba(1, 32, 78, 0.2);
 }
 
 .finnova-nav-item.active {
-  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+  background: #01204E;
   color: #ffffff;
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+  box-shadow: 0 6px 18px rgba(1, 32, 78, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.3);
 }
 
-/* Dark Mode Nav Capsule Overrides */
-[data-theme="dark"] .finnova-nav-capsule, body.dark-mode .finnova-nav-capsule {
-  background: #161927;
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-}
-
-[data-theme="dark"] .finnova-nav-item, body.dark-mode .finnova-nav-item {
-  color: #94a3b8;
-}
-
-[data-theme="dark"] .finnova-nav-item:hover, body.dark-mode .finnova-nav-item:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-[data-theme="dark"] .finnova-nav-item.active, body.dark-mode .finnova-nav-item.active {
-  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
-  color: #ffffff;
-  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.5);
-}
-
-/* FINNOVA Light Stat Card */
+/* Soft-Tactile Cards (Warm Background-Matched Highlight) */
 .finnova-card {
-  background: #ffffff;
+  background: #F6DCAC;
   border-radius: var(--radius-lg);
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.04);
+  border: 1.5px solid rgba(250, 169, 104, 0.45);
+  box-shadow: 0 12px 32px rgba(1, 32, 78, 0.08), 0 2px 8px rgba(250, 169, 104, 0.3), inset 0 1px 2px rgba(255, 245, 225, 0.6);
   padding: 24px;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #028391;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
 }
 
 .finnova-card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 16px 35px -5px rgba(79, 70, 229, 0.08);
-  border-color: rgba(99, 102, 241, 0.3);
+  box-shadow: 0 16px 40px rgba(1, 32, 78, 0.12), 0 4px 14px rgba(250, 169, 104, 0.4);
+  border-color: rgba(1, 32, 78, 0.25);
 }
 
-/* FINNOVA High-Contrast Dark Navy Container */
-.finnova-dark-container {
-  background: #121420;
-  border-radius: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+/* Indented / Sunken Neumorphic Action Button */
+.finnova-indented-btn {
+  background: #FAA968 !important;
+  color: #01204E !important;
+  border-radius: 9999px !important;
+  border: 1px solid rgba(1, 32, 78, 0.18) !important;
+  box-shadow: inset 2px 3px 6px rgba(1, 32, 78, 0.22), inset -2px -2px 4px rgba(255, 255, 255, 0.6) !important;
+  padding: 6px 16px !important;
+  font-weight: 800 !important;
+  font-size: 0.8rem !important;
+  text-transform: none !important;
+  transition: all 0.2s ease !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  text-decoration: none !important;
+}
+
+.finnova-indented-btn:hover {
+  background: #f59a50 !important;
+  box-shadow: inset 3px 4px 8px rgba(1, 32, 78, 0.32), inset -1px -1px 3px rgba(255, 255, 255, 0.4) !important;
+  transform: translateY(0px) !important;
+}
+
+/* Inset Container Framed Main Base (Screenshot Style) */
+.finnova-main-frame {
+  background: #FAA968;
+  border-radius: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: inset 0 3px 12px rgba(0, 0, 0, 0.06), 0 20px 50px rgba(0, 0, 0, 0.08);
   padding: 28px;
-  color: #ffffff;
 }
 
-/* FINNOVA Vibrant Indigo Spotlight Card */
+.finnova-dark-container {
+  background: #F6DCAC;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 12px 20px 40px rgba(1, 32, 78, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.9);
+  padding: 28px;
+  color: #028391;
+}
+
 .finnova-spotlight-card {
-  background: linear-gradient(135deg, #4b45d0 0%, #5951e5 100%);
+  background: #F6DCAC;
   border-radius: var(--radius-lg);
   padding: 26px;
-  color: #ffffff;
-  box-shadow: 0 14px 40px rgba(84, 76, 217, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #028391;
+  box-shadow: 12px 20px 40px rgba(1, 32, 78, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
 .finnova-spotlight-subcard {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.5);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.6);
   padding: 16px;
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.8), 0 4px 12px rgba(1, 32, 78, 0.04);
   transition: all 0.2s ease;
+  color: #028391;
 }
 
 .finnova-spotlight-subcard:hover {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.75);
   transform: translateY(-2px);
 }
 
-/* Trend Pills */
-.trend-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: var(--radius-pill);
-  font-size: 0.75rem;
-  font-weight: 700;
+/* Tactile Soft Pill Buttons (Screenshot Style) */
+.finnova-tactile-btn {
+  background: #01204E !important;
+  color: #ffffff !important;
+  border-radius: var(--radius-pill) !important;
+  font-weight: 800 !important;
+  font-size: 0.85rem !important;
+  letter-spacing: 0.03em !important;
+  padding: 10px 24px !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 8px 20px rgba(1, 32, 78, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
+  transition: all 0.25s ease !important;
+  cursor: pointer;
 }
 
-.trend-pill-up {
-  background: rgba(79, 70, 229, 0.1);
-  color: #4f46e5;
+.finnova-tactile-btn:hover {
+  background: #028391 !important;
+  box-shadow: 0 12px 28px rgba(2, 131, 145, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
+  transform: translateY(-2px);
 }
 
-.trend-pill-down {
-  background: rgba(244, 63, 94, 0.1);
-  color: #f43f5e;
-}
-
-.trend-pill-cyan {
-  background: rgba(6, 182, 212, 0.1);
-  color: #0891b2;
-}
-
-.trend-pill-emerald {
-  background: rgba(16, 185, 129, 0.1);
-  color: #059669;
-}
-
-/* Filter Bar Pills */
+/* Filter Bar Pills / Buttons */
 .finnova-filter-pill {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: #F6DCAC;
+  border: 1px solid rgba(1, 32, 78, 0.2);
   border-radius: var(--radius-pill);
-  padding: 8px 16px;
+  padding: 8px 18px;
   font-size: 0.85rem;
-  font-weight: 600;
-  color: #475569;
+  font-weight: 800;
+  color: #01204E;
   display: inline-flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
+  box-shadow: 0 4px 12px rgba(1, 32, 78, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.8);
   transition: all 0.2s ease;
 }
 
 .finnova-filter-pill:hover {
-  border-color: #6366f1;
-  color: #4f46e5;
+  border-color: #028391;
+  color: #ffffff;
+  background: #028391;
+  box-shadow: 0 6px 16px rgba(2, 131, 145, 0.3);
 }
 
-/* List Item Highlight in Dark Navy Box */
+.finnova-filter-pill.active {
+  background: #01204E;
+  color: #ffffff;
+  border-color: #01204E;
+  box-shadow: 0 8px 20px rgba(1, 32, 78, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+}
+
+/* List Item Highlight */
 .finnova-list-item {
   border-radius: var(--radius-md);
   padding: 14px 18px;
@@ -206,30 +239,32 @@ body {
 }
 
 .finnova-list-item:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(1, 32, 78, 0.05);
 }
 
 .finnova-list-item.selected {
-  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+  background: #01204E;
   color: #ffffff;
-  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 20px rgba(1, 32, 78, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.25);
 }
 
 /* Dark Mode Overrides */
 [data-theme="dark"], body.dark-mode {
-  background-color: #0b0d14;
-  color: #f1f5f9;
+  background-color: #FAA968;
+  color: #028391;
 }
 
 [data-theme="dark"] .finnova-card, body.dark-mode .finnova-card {
-  background: #161826;
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  background: #F6DCAC;
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 12px 18px 36px rgba(1, 32, 78, 0.1);
 }
 
 [data-theme="dark"] .finnova-filter-pill, body.dark-mode .finnova-filter-pill {
-  background: #1a1d2e;
-  border-color: rgba(255, 255, 255, 0.1);
-  color: #cbd5e1;
+  background: #F6DCAC;
+  border-color: rgba(1, 32, 78, 0.25);
+  color: #01204E;
 }
+
+

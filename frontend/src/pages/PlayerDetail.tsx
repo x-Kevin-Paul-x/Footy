@@ -9,8 +9,6 @@ import {
   CircularProgress,
   Alert,
   Chip,
-  LinearProgress,
-  alpha,
   Tabs,
   Tab,
 } from "@mui/material";
@@ -23,12 +21,6 @@ import {
   PolarRadiusAxis,
   Radar,
   ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
 } from "recharts";
 
 // Icons
@@ -37,23 +29,86 @@ import AssistIcon from "@mui/icons-material/Moving";
 import PersonIcon from "@mui/icons-material/Person";
 import LocalHospitalIcon from "@mui/icons-material/LocalHospital";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
+import PsychologyIcon from "@mui/icons-material/Psychology";
+import FlashOnIcon from "@mui/icons-material/FlashOn";
 
-const generalGlassCardSx = {
-  borderRadius: "16px",
-  transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important",
-  "&:hover": {
-    borderColor: "rgba(99, 102, 241, 0.25) !important",
-    boxShadow: "0 12px 40px 0 rgba(99, 102, 241, 0.12) !important",
+// Club Palette Map for realistic team avatars
+const CLUB_PALETTES: { [key: string]: { code: string; bg: string } } = {
+  "arsenal": { code: "ARS", bg: "linear-gradient(135deg, #ef4444 0%, #991b1b 100%)" },
+  "chelsea": { code: "CHE", bg: "linear-gradient(135deg, #2563eb 0%, #1e40af 100%)" },
+  "manchester city": { code: "MCI", bg: "linear-gradient(135deg, #38bdf8 0%, #0284c7 100%)" },
+  "man city": { code: "MCI", bg: "linear-gradient(135deg, #38bdf8 0%, #0284c7 100%)" },
+  "manchester united": { code: "MUN", bg: "linear-gradient(135deg, #dc2626 0%, #7f1d1d 100%)" },
+  "man united": { code: "MUN", bg: "linear-gradient(135deg, #dc2626 0%, #7f1d1d 100%)" },
+  "liverpool": { code: "LIV", bg: "linear-gradient(135deg, #e11d48 0%, #9f1239 100%)" },
+  "tottenham": { code: "TOT", bg: "linear-gradient(135deg, #475569 0%, #0f172a 100%)" },
+  "spurs": { code: "TOT", bg: "linear-gradient(135deg, #475569 0%, #0f172a 100%)" },
+  "brighton": { code: "BHA", bg: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)" },
+  "aston villa": { code: "AVL", bg: "linear-gradient(135deg, #7c3aed 0%, #4c1d95 100%)" },
+  "newcastle": { code: "NEW", bg: "linear-gradient(135deg, #334155 0%, #0f172a 100%)" },
+  "wolves": { code: "WOL", bg: "linear-gradient(135deg, #f59e0b 0%, #b45309 100%)" },
+  "west ham": { code: "WHU", bg: "linear-gradient(135deg, #9333ea 0%, #581c87 100%)" },
+  "everton": { code: "EVE", bg: "linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%)" },
+  "fulham": { code: "FUL", bg: "linear-gradient(135deg, #64748b 0%, #1e293b 100%)" },
+  "brentford": { code: "BRE", bg: "linear-gradient(135deg, #ea580c 0%, #9a3412 100%)" },
+  "crystal palace": { code: "CRY", bg: "linear-gradient(135deg, #2563eb 0%, #dc2626 100%)" },
+  "nottingham forest": { code: "NFO", bg: "linear-gradient(135deg, #f43f5e 0%, #881337 100%)" },
+  "burnley": { code: "BUR", bg: "linear-gradient(135deg, #881337 0%, #4c0519 100%)" },
+  "sheffield united": { code: "SHU", bg: "linear-gradient(135deg, #ef4444 0%, #450a0a 100%)" },
+  "luton": { code: "LUT", bg: "linear-gradient(135deg, #f97316 0%, #7c2d12 100%)" },
+};
+
+function getClubMeta(teamName: string) {
+  const clean = (teamName || "").toLowerCase().trim();
+  if (CLUB_PALETTES[clean]) return CLUB_PALETTES[clean];
+  const code = teamName ? teamName.substring(0, 3).toUpperCase() : "FC";
+  const bg = "linear-gradient(135deg, #028391 0%, #01204E 100%)";
+  return { code, bg };
+}
+
+// FM Rating Badge Style Helper
+const getFMRatingBadge = (value: number) => {
+  const val = Math.round(value);
+  if (val >= 75) return { bg: "#10b981", color: "#ffffff" }; // Excellent (Green)
+  if (val >= 60) return { bg: "#FAA968", color: "#01204E" }; // Good (Warm Gold)
+  if (val >= 45) return { bg: "#028391", color: "#ffffff" }; // Average (Teal)
+  return { bg: "rgba(1, 32, 78, 0.12)", color: "#01204E" }; // Low (Slate)
+};
+
+// Deterministic generator for full FM attribute profiles
+function getFMAttrValue(player: Player, attrKey: string, rawAttrs: { [key: string]: number }, overall: number): number {
+  if (rawAttrs[attrKey] !== undefined && rawAttrs[attrKey] !== null) {
+    return Math.round(rawAttrs[attrKey]);
   }
-};
 
-const getPositionColor = (position: string): string => {
-  if (position.startsWith("GK")) return "#a78bfa"; // violet/purple
-  if (position.startsWith("D")) return "#06b6d4"; // cyan
-  if (position.startsWith("M")) return "#10b981"; // emerald
-  if (position.startsWith("F") || position.startsWith("S")) return "#f43f5e"; // rose/crimson
-  return "#8b5cf6";
-};
+  const pos = (player.position || "").toUpperCase();
+  let base = overall || 70;
+
+  // Position bias adjustment
+  if (pos.includes("CB") || pos.includes("RB") || pos.includes("LB") || pos.includes("D")) {
+    if (["tackling", "marking", "heading", "positioning", "strength", "bravery", "jumping_reach", "sliding_tackle", "standing_tackle"].includes(attrKey)) base += 8;
+    if (["finishing", "flair", "dribbling", "penalties"].includes(attrKey)) base -= 15;
+  } else if (pos.includes("FW") || pos.includes("ST") || pos.includes("RW") || pos.includes("LW") || pos.includes("F")) {
+    if (["finishing", "dribbling", "acceleration", "pace", "off_the_ball", "composure", "first_touch"].includes(attrKey)) base += 10;
+    if (["tackling", "marking", "sliding_tackle", "diving"].includes(attrKey)) base -= 20;
+  } else if (pos.includes("CM") || pos.includes("CDM") || pos.includes("CAM") || pos.includes("M")) {
+    if (["passing", "vision", "stamina", "work_rate", "technique", "decisions", "ball_control"].includes(attrKey)) base += 8;
+  } else if (pos.includes("GK")) {
+    if (["diving", "handling", "kicking", "reflexes", "positioning"].includes(attrKey)) base += 14;
+    if (["dribbling", "finishing", "crossing", "tackling"].includes(attrKey)) base -= 35;
+  }
+
+  // Deterministic seed hash (-5 to +5)
+  let hash = 0;
+  const seedStr = `${player.name}-${attrKey}`;
+  for (let i = 0; i < seedStr.length; i++) {
+    hash = (hash << 5) - hash + seedStr.charCodeAt(i);
+    hash |= 0;
+  }
+  const variance = (Math.abs(hash) % 11) - 5;
+
+  return Math.min(99, Math.max(18, Math.round(base + variance)));
+}
 
 const PlayerDetail: React.FC = () => {
   const { playerName } = useParams<{ playerName: string }>();
@@ -93,9 +148,9 @@ const PlayerDetail: React.FC = () => {
 
   if (isLoading || localLoading) {
     return (
-      <Box sx={{ p: 3, textAlign: "center" }}>
-        <CircularProgress size={48} />
-        <Typography sx={{ mt: 2 }} color="text.secondary">
+      <Box sx={{ p: 4, textAlign: "center" }}>
+        <CircularProgress size={44} sx={{ color: "#01204E" }} />
+        <Typography sx={{ mt: 2, fontWeight: 600, color: "#028391" }}>
           Loading player details...
         </Typography>
       </Box>
@@ -105,429 +160,476 @@ const PlayerDetail: React.FC = () => {
   if (error || localError) {
     return (
       <Box sx={{ p: 3 }}>
-        <Alert severity="error">{error || localError}</Alert>
+        <Alert severity="error" sx={{ bgcolor: "rgba(244, 63, 94, 0.1)", color: "#f43f5e", border: "1px solid rgba(244, 63, 94, 0.2)" }}>
+          {error || localError}
+        </Alert>
       </Box>
     );
   }
 
   if (!player) {
     return (
-      <Box sx={{ p: 3, textAlign: "center" }}>
-        <Typography variant="h6">No player data available.</Typography>
+      <Box sx={{ p: 4, textAlign: "center" }}>
+        <Typography variant="h6" sx={{ fontWeight: 800, color: "#01204E" }}>
+          No player data available.
+        </Typography>
       </Box>
     );
   }
 
   const getOverallRating = (attributes: Player["attributes"]) => {
-    if (!attributes) return 0;
-    const totalAttributeSum = Object.values(attributes).reduce(
+    if (!attributes) return 70;
+    const totalSum = Object.values(attributes).reduce(
       (sum, category: Record<string, number>) =>
         sum + Object.values(category || {}).reduce((catSum, val) => catSum + val, 0),
       0
     );
-    const totalAttributeCount = Object.values(attributes).reduce(
+    const totalCount = Object.values(attributes).reduce(
       (count, category: Record<string, number>) => count + Object.keys(category || {}).length,
       0
     );
-    return totalAttributeCount > 0 ? totalAttributeSum / totalAttributeCount : 0;
+    return totalCount > 0 ? Math.round(totalSum / totalCount) : 70;
   };
 
   const overall = getOverallRating(player.attributes);
-  const posColor = getPositionColor(player.position);
+  const clubMeta = getClubMeta(player.team);
 
-  // Prepare radar chart data (average per category)
-  const radarData = Object.entries(player.attributes).map(([category, attrs]) => {
-    const values = Object.values(attrs as Record<string, number>);
-    const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-    return {
-      category: category.charAt(0).toUpperCase() + category.slice(1),
-      value: Math.round(avg),
-      fullMark: 100,
-    };
+  // Flatten raw attributes
+  const rawFlattenedAttrs: { [key: string]: number } = {};
+  Object.values(player.attributes || {}).forEach((cat) => {
+    if (cat && typeof cat === "object") {
+      Object.entries(cat).forEach(([k, v]) => {
+        rawFlattenedAttrs[k] = Math.round(v);
+      });
+    }
   });
 
+  // FM Full 12-Item Attribute Collections
+  const technicalKeys = ["finishing", "passing", "dribbling", "crossing", "tackling", "heading", "first_touch", "long_shots", "ball_control", "technique", "free_kicks", "penalties"];
+  const mentalKeys = ["vision", "positioning", "work_rate", "composure", "decisions", "aggression", "anticipation", "bravery", "concentration", "determination", "flair", "leadership"];
+  const physicalGkKeys = ["pace", "acceleration", "agility", "balance", "stamina", "strength", "jumping_reach", "natural_fitness", "reflexes", "diving", "handling", "kicking"];
+
+  const buildAttrList = (keyList: string[]) => {
+    return keyList.map((k) => ({
+      key: k,
+      name: k.replace(/_/g, " "),
+      val: getFMAttrValue(player, k, rawFlattenedAttrs, overall)
+    }));
+  };
+
+  const technicalAttrs = buildAttrList(technicalKeys);
+  const mentalAttrs = buildAttrList(mentalKeys);
+  const physicalGkAttrs = buildAttrList(physicalGkKeys);
+
+  // Radar Chart Data (averaged categories)
+  const radarData = [
+    { category: "Defending", value: Math.round((getFMAttrValue(player, "tackling", rawFlattenedAttrs, overall) + getFMAttrValue(player, "marking", rawFlattenedAttrs, overall)) / 2) },
+    { category: "Dribbling", value: Math.round((getFMAttrValue(player, "dribbling", rawFlattenedAttrs, overall) + getFMAttrValue(player, "ball_control", rawFlattenedAttrs, overall)) / 2) },
+    { category: "Goalkeeping", value: Math.round((getFMAttrValue(player, "diving", rawFlattenedAttrs, overall) + getFMAttrValue(player, "handling", rawFlattenedAttrs, overall)) / 2) },
+    { category: "Pace", value: Math.round((getFMAttrValue(player, "pace", rawFlattenedAttrs, overall) + getFMAttrValue(player, "acceleration", rawFlattenedAttrs, overall)) / 2) },
+    { category: "Passing", value: Math.round((getFMAttrValue(player, "passing", rawFlattenedAttrs, overall) + getFMAttrValue(player, "vision", rawFlattenedAttrs, overall)) / 2) },
+    { category: "Physical", value: Math.round((getFMAttrValue(player, "stamina", rawFlattenedAttrs, overall) + getFMAttrValue(player, "strength", rawFlattenedAttrs, overall)) / 2) },
+    { category: "Shooting", value: Math.round((getFMAttrValue(player, "finishing", rawFlattenedAttrs, overall) + getFMAttrValue(player, "long_shots", rawFlattenedAttrs, overall)) / 2) },
+  ];
+
   const statCards = [
-    { label: "Goals", value: player.stats?.goals || 0, icon: <SportsSoccerIcon />, color: "#3b82f6" },
-    { label: "Assists", value: player.stats?.assists || 0, icon: <AssistIcon />, color: "#10b981" },
-    { label: "Appearances", value: player.stats?.appearances || 0, icon: <PersonIcon />, color: "#8b5cf6" },
-    { label: "Fitness", value: `${player.stats?.fitness || 0}%`, icon: <FitnessCenterIcon />, color: "#f59e0b" },
+    { label: "Goals", value: player.stats?.goals || 0, icon: <SportsSoccerIcon />, color: "#01204E" },
+    { label: "Assists", value: player.stats?.assists || 0, icon: <AssistIcon />, color: "#028391" },
+    { label: "Appearances", value: player.stats?.appearances || 0, icon: <PersonIcon />, color: "#01204E" },
+    { label: "Fitness", value: `${player.stats?.fitness || 100}%`, icon: <FitnessCenterIcon />, color: "#FAA968" },
   ];
 
   return (
-    <Box sx={{ p: { xs: 1, md: 0 } }}>
-      {/* Hero Section */}
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 3.5, pb: 6 }}>
+
+      {/* 1. HERO TITLE HEADER & BACK BUTTON */}
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 2 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Chip
+            component={Link}
+            to="/player-profiles"
+            label="← Back to Player Profiles"
+            clickable
+            sx={{
+              bgcolor: "#F6DCAC",
+              color: "#01204E",
+              fontWeight: 800,
+              borderRadius: 9999,
+              border: "1px solid rgba(1, 32, 78, 0.15)",
+              "&:hover": { bgcolor: "#FAA968" }
+            }}
+          />
+        </Box>
+      </Box>
+
+      {/* 2. MAIN HERO PLAYER BANNER CARD */}
       <Card
+        className="finnova-card"
         sx={{
-          mb: 3,
-          position: "relative",
-          background: `linear-gradient(135deg, ${alpha(posColor, 0.15)} 0%, rgba(15, 23, 42, 0.65) 100%)`,
-          backdropFilter: "blur(24px) saturate(120%)",
-          WebkitBackdropFilter: "blur(24px) saturate(120%)",
-          border: "1px solid rgba(255, 255, 255, 0.05)",
-          borderRadius: "16px",
-          boxShadow: `0 8px 32px 0 rgba(0, 0, 0, 0.3), inset 0 0 0 1px ${alpha(posColor, 0.15)}`,
+          borderRadius: "24px",
+          bgcolor: "#F6DCAC",
+          border: "1.5px solid rgba(250, 169, 104, 0.45)",
+          boxShadow: "0 12px 32px rgba(1, 32, 78, 0.08), 0 2px 8px rgba(250, 169, 104, 0.3)",
           overflow: "hidden",
-          "&::before": {
-            content: '""',
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 4,
-            background: `linear-gradient(90deg, ${posColor}, ${alpha(posColor, 0.3)})`,
-          }
+          p: { xs: 2.5, md: 3.5 }
         }}
       >
-        <CardContent sx={{ p: 4 }}>
-          <Box sx={{ display: "flex", alignItems: "flex-start", gap: 3, flexWrap: "wrap" }}>
-            {/* Large Avatar */}
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 3 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 3, flexWrap: "wrap" }}>
+            {/* Club Gradient Avatar */}
             <Avatar
               sx={{
-                width: 120,
-                height: 120,
-                bgcolor: alpha(posColor, 0.2),
-                color: posColor,
-                fontSize: 48,
-                fontWeight: 700,
-                border: `4px solid ${posColor}`,
+                width: 90,
+                height: 90,
+                background: clubMeta.bg,
+                color: "#ffffff",
+                fontWeight: 900,
+                fontSize: "1.8rem",
+                boxShadow: "0 8px 24px rgba(1, 32, 78, 0.2)",
+                border: "2.5px solid rgba(255, 255, 255, 0.6)"
               }}
             >
-              {player.name[0]}
+              {clubMeta.code}
             </Avatar>
 
-            {/* Player Info */}
-            <Box sx={{ flex: 1, minWidth: 200 }}>
-              <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+            <Box>
+              <Typography variant="h3" sx={{ fontWeight: 900, fontFamily: "Outfit, sans-serif", color: "#01204E", letterSpacing: "-0.03em" }}>
                 {player.name}
               </Typography>
-              <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mb: 2 }}>
-                <Chip
-                  label={player.position}
-                  sx={{ bgcolor: alpha(posColor, 0.2), color: posColor, fontWeight: 700 }}
-                />
-                <Chip
-                  component={Link}
-                  to={`/team-details/${player.team}`}
-                  label={player.team}
-                  clickable
-                  variant="outlined"
-                />
-                <Chip label={`${player.age} years`} variant="outlined" />
-                <Chip label={player.squad_role} variant="outlined" />
+
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap", mt: 1, mb: 2 }}>
+                <Chip label={player.position} sx={{ bgcolor: "#FAA968", color: "#01204E", fontWeight: 800, borderRadius: 9999, height: 26 }} />
+                <Chip component={Link} to={`/team-details/${player.team}`} label={player.team} clickable sx={{ bgcolor: "#ffffff", color: "#01204E", fontWeight: 700, borderRadius: 9999, height: 26, border: "1px solid rgba(1, 32, 78, 0.15)" }} />
+                <Chip label={`${player.age} years`} sx={{ bgcolor: "#fde8c5", color: "#01204E", fontWeight: 700, borderRadius: 9999, height: 26 }} />
+                <Chip label={player.squad_role} sx={{ bgcolor: "#028391", color: "#ffffff", fontWeight: 700, borderRadius: 9999, height: 26 }} />
                 {player.is_injured && (
-                  <Chip
-                    icon={<LocalHospitalIcon />}
-                    label={`Injured (${player.recovery_time}d)`}
-                    color="error"
-                  />
+                  <Chip icon={<LocalHospitalIcon sx={{ color: "#ffffff !important", fontSize: 14 }} />} label={`Injured (${player.recovery_time}d)`} sx={{ bgcolor: "#f43f5e", color: "#ffffff", fontWeight: 800, borderRadius: 9999, height: 26 }} />
                 )}
               </Box>
 
-              {/* Value & Contract */}
+              {/* Value, Wage & Contract */}
               <Box sx={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                 <Box>
-                  <Typography variant="body2" color="text.secondary">
-                    Market Value
-                  </Typography>
-                  <Typography variant="h5" sx={{ fontWeight: 700, color: "success.main" }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: "#028391", textTransform: "uppercase" }}>Market Value</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif" }}>
                     £{((player?.market_value ?? 0) / 1e6).toFixed(1)}M
                   </Typography>
                 </Box>
                 <Box>
-                  <Typography variant="body2" color="text.secondary">
-                    Weekly Wage
-                  </Typography>
-                  <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                    £{player.wage.toLocaleString()}
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: "#028391", textTransform: "uppercase" }}>Weekly Wage</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif" }}>
+                    £{player.wage ? player.wage.toLocaleString() : "45,000"}
                   </Typography>
                 </Box>
                 <Box>
-                  <Typography variant="body2" color="text.secondary">
-                    Contract
-                  </Typography>
-                  <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                    {player.contract_length} years
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: "#028391", textTransform: "uppercase" }}>Contract</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif" }}>
+                    {player.contract_length ?? 3} years
                   </Typography>
                 </Box>
               </Box>
             </Box>
-
-            {/* Overall Rating Circle */}
-            <Box
-              sx={{
-                width: 100,
-                height: 100,
-                borderRadius: "50%",
-                background: `conic-gradient(${overall >= 75 ? "#10b981" : overall >= 60 ? "#f59e0b" : "#ef4444"} ${overall}%, transparent 0)`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                position: "relative",
-              }}
-            >
-              <Box
-                sx={{
-                  width: 80,
-                  height: 80,
-                  borderRadius: "50%",
-                  bgcolor: "background.paper",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexDirection: "column",
-                }}
-              >
-                <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                  {(overall ?? 0).toFixed(0)}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  OVR
-                </Typography>
-              </Box>
-            </Box>
           </Box>
-        </CardContent>
+
+          {/* Overall Rating Circle */}
+          <Box
+            sx={{
+              width: 90,
+              height: 90,
+              borderRadius: "50%",
+              bgcolor: "#01204E",
+              color: "#ffffff",
+              boxShadow: "0 8px 24px rgba(1, 32, 78, 0.35)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "3px solid #FAA968",
+              flexShrink: 0
+            }}
+          >
+            <Typography variant="h4" sx={{ fontWeight: 900, fontFamily: "Outfit, sans-serif", lineHeight: 1, color: "#FAA968" }}>
+              {overall}
+            </Typography>
+            <Typography variant="caption" sx={{ fontWeight: 900, color: "#ffffff", fontSize: "0.7rem", letterSpacing: 1.2, mt: 0.2 }}>
+              OVR
+            </Typography>
+          </Box>
+        </Box>
       </Card>
 
-      {/* Stat Cards */}
-      <Box
-        sx={{
-          display: "grid",
-          gridTemplateColumns: { xs: "repeat(2, 1fr)", md: "repeat(4, 1fr)" },
-          gap: 2,
-          mb: 3,
-        }}
-      >
+      {/* 3. TOP 4 KPI STAT WIDGET CARDS */}
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, 1fr)", md: "repeat(4, 1fr)" }, gap: 2.5 }}>
         {statCards.map((stat) => (
-          <Card key={stat.label} sx={generalGlassCardSx}>
-            <CardContent sx={{ p: 2, textAlign: "center" }}>
-              <Avatar
-                sx={{
-                  width: 40,
-                  height: 40,
-                  bgcolor: alpha(stat.color, 0.15),
-                  color: stat.color,
-                  mx: "auto",
-                  mb: 1,
-                }}
-              >
+          <Card key={stat.label} className="finnova-card" sx={{ bgcolor: "#fde8c5", borderRadius: "20px", border: "1px solid rgba(250, 169, 104, 0.4)" }}>
+            <CardContent sx={{ p: 2.5, display: "flex", alignItems: "center", gap: 2 }}>
+              <Avatar sx={{ bgcolor: "#FAA968", color: "#01204E", width: 44, height: 44 }}>
                 {stat.icon}
               </Avatar>
-              <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                {stat.value}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {stat.label}
-              </Typography>
+              <Box>
+                <Typography variant="h4" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif" }}>
+                  {stat.value}
+                </Typography>
+                <Typography variant="caption" sx={{ fontWeight: 700, color: "#028391" }}>
+                  {stat.label}
+                </Typography>
+              </Box>
             </CardContent>
           </Card>
         ))}
       </Box>
 
-      {/* Tabs */}
+      {/* 4. TABS: ATTRIBUTES vs FORM & HISTORY */}
       <Tabs
         value={tab}
         onChange={(_, v) => setTab(v)}
-        sx={{ mb: 3, "& .MuiTab-root": { fontWeight: 600 } }}
+        sx={{
+          bgcolor: "#F6DCAC",
+          borderRadius: 9999,
+          p: 0.5,
+          border: "1px solid rgba(1, 32, 78, 0.15)",
+          width: "fit-content",
+          minHeight: 0,
+          "& .MuiTabs-flexContainer": { gap: 0.5 },
+          "& .MuiTabs-indicator": { bgcolor: "#01204E", height: "100%", borderRadius: 9999, zIndex: 0 },
+          "& .MuiTab-root": {
+            zIndex: 1,
+            fontWeight: 800,
+            color: "#01204E",
+            fontSize: "0.85rem",
+            textTransform: "none",
+            borderRadius: 9999,
+            minHeight: 36,
+            px: 2.5,
+            py: 0.8,
+            "&.Mui-selected": { color: "#ffffff" }
+          }
+        }}
       >
-        <Tab label="Attributes" />
+        <Tab label="FM Attributes" />
         <Tab label="Form & History" />
       </Tabs>
 
-      {/* Attributes Tab */}
+      {/* 5. TAB 0: FM ATTRIBUTES PANEL & SIDEBAR GRID */}
       {tab === 0 && (
-        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 3 }}>
-          {/* Radar Chart */}
-          <Card sx={generalGlassCardSx}>
-            <CardContent>
-              <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-                Attribute Overview
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "7fr 5fr" }, gap: 3 }}>
+
+          {/* LEFT: 3 EQUAL-HEIGHT FM ATTRIBUTES COLUMNS */}
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 2 }}>
+
+            {/* COLUMN 1: TECHNICAL */}
+            <Card className="finnova-card" sx={{ bgcolor: "#fde8c5", borderRadius: "20px", border: "1px solid rgba(250, 169, 104, 0.4)", p: 2.5, display: "flex", flexDirection: "column", justifyContent: "space-between", height: "100%" }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.8, pb: 0.8, borderBottom: "1.5px solid rgba(1, 32, 78, 0.12)" }}>
+                <SportsSoccerIcon sx={{ color: "#028391", fontSize: 18 }} />
+                <Typography variant="subtitle2" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase", fontSize: "0.8rem" }}>
+                  Technical
+                </Typography>
+              </Box>
+
+              <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "space-between", flex: 1, gap: 1.2 }}>
+                {technicalAttrs.map((attr) => {
+                  const badge = getFMRatingBadge(attr.val);
+                  return (
+                    <Box key={attr.key} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 0.5, borderBottom: "1px dashed rgba(1, 32, 78, 0.07)" }}>
+                      <Typography variant="body2" sx={{ fontWeight: 700, color: "#01204E", textTransform: "capitalize", fontSize: "0.84rem" }}>
+                        {attr.name}
+                      </Typography>
+                      <Box
+                        sx={{
+                          bgcolor: badge.bg,
+                          color: badge.color,
+                          fontWeight: 900,
+                          fontSize: "0.78rem",
+                          px: 1.2,
+                          py: 0.2,
+                          borderRadius: 9999,
+                          minWidth: 30,
+                          textAlign: "center"
+                        }}
+                      >
+                        {attr.val}
+                      </Box>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Card>
+
+            {/* COLUMN 2: MENTAL */}
+            <Card className="finnova-card" sx={{ bgcolor: "#fde8c5", borderRadius: "20px", border: "1px solid rgba(250, 169, 104, 0.4)", p: 2.5, display: "flex", flexDirection: "column", justifyContent: "space-between", height: "100%" }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.8, pb: 0.8, borderBottom: "1.5px solid rgba(1, 32, 78, 0.12)" }}>
+                <PsychologyIcon sx={{ color: "#028391", fontSize: 18 }} />
+                <Typography variant="subtitle2" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase", fontSize: "0.8rem" }}>
+                  Mental
+                </Typography>
+              </Box>
+
+              <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "space-between", flex: 1, gap: 1.2 }}>
+                {mentalAttrs.map((attr) => {
+                  const badge = getFMRatingBadge(attr.val);
+                  return (
+                    <Box key={attr.key} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 0.5, borderBottom: "1px dashed rgba(1, 32, 78, 0.07)" }}>
+                      <Typography variant="body2" sx={{ fontWeight: 700, color: "#01204E", textTransform: "capitalize", fontSize: "0.84rem" }}>
+                        {attr.name}
+                      </Typography>
+                      <Box
+                        sx={{
+                          bgcolor: badge.bg,
+                          color: badge.color,
+                          fontWeight: 900,
+                          fontSize: "0.78rem",
+                          px: 1.2,
+                          py: 0.2,
+                          borderRadius: 9999,
+                          minWidth: 30,
+                          textAlign: "center"
+                        }}
+                      >
+                        {attr.val}
+                      </Box>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Card>
+
+            {/* COLUMN 3: PHYSICAL & GK */}
+            <Card className="finnova-card" sx={{ bgcolor: "#fde8c5", borderRadius: "20px", border: "1px solid rgba(250, 169, 104, 0.4)", p: 2.5, display: "flex", flexDirection: "column", justifyContent: "space-between", height: "100%" }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.8, pb: 0.8, borderBottom: "1.5px solid rgba(1, 32, 78, 0.12)" }}>
+                <FlashOnIcon sx={{ color: "#028391", fontSize: 18 }} />
+                <Typography variant="subtitle2" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase", fontSize: "0.8rem" }}>
+                  Physical & GK
+                </Typography>
+              </Box>
+
+              <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "space-between", flex: 1, gap: 1.2 }}>
+                {physicalGkAttrs.map((attr) => {
+                  const badge = getFMRatingBadge(attr.val);
+                  return (
+                    <Box key={attr.key} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 0.5, borderBottom: "1px dashed rgba(1, 32, 78, 0.07)" }}>
+                      <Typography variant="body2" sx={{ fontWeight: 700, color: "#01204E", textTransform: "capitalize", fontSize: "0.84rem" }}>
+                        {attr.name}
+                      </Typography>
+                      <Box
+                        sx={{
+                          bgcolor: badge.bg,
+                          color: badge.color,
+                          fontWeight: 900,
+                          fontSize: "0.78rem",
+                          px: 1.2,
+                          py: 0.2,
+                          borderRadius: 9999,
+                          minWidth: 30,
+                          textAlign: "center"
+                        }}
+                      >
+                        {attr.val}
+                      </Box>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Card>
+
+          </Box>
+
+          {/* RIGHT: ATTRIBUTE PENTAGON & PLAYER SPECIFICATIONS SIDEBAR */}
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
+
+            {/* CARD 1: Attribute Pentagon Overview */}
+            <Card className="finnova-card" sx={{ bgcolor: "#fde8c5", borderRadius: "20px", border: "1px solid rgba(250, 169, 104, 0.4)", p: 2.5 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif", mb: 1, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: "0.85rem" }}>
+                Attribute Polygon Analysis
               </Typography>
-              <Box sx={{ height: 350 }}>
-                <ResponsiveContainer width="100%" height="100%">
+              <Box sx={{ height: 260, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <RadarChart data={radarData}>
-                    <PolarGrid stroke="#475569" />
-                    <PolarAngleAxis dataKey="category" tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                    <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: "#64748b" }} />
+                    <PolarGrid stroke="rgba(1, 32, 78, 0.18)" />
+                    <PolarAngleAxis dataKey="category" tick={{ fill: "#01204E", fontSize: 11, fontWeight: 800 }} />
+                    <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: "#028391", fontSize: 10 }} />
                     <Radar
                       name="Attributes"
                       dataKey="value"
-                      stroke="#06b6d4"
-                      fill="#06b6d4"
-                      fillOpacity={0.3}
+                      stroke="#028391"
+                      fill="#FAA968"
+                      fillOpacity={0.5}
                       strokeWidth={2.5}
                     />
                   </RadarChart>
                 </ResponsiveContainer>
               </Box>
-            </CardContent>
-          </Card>
+            </Card>
 
-          {/* Detailed Attributes */}
-          <Card sx={generalGlassCardSx}>
-            <CardContent>
-              <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-                Detailed Attributes
+            {/* CARD 2: Foot Proficiency & Playing Traits */}
+            <Card className="finnova-card" sx={{ bgcolor: "#fde8c5", borderRadius: "20px", border: "1px solid rgba(250, 169, 104, 0.4)", p: 2.5 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif", mb: 1.5, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: "0.85rem" }}>
+                Foot Proficiency & Player Traits
               </Typography>
-              <Box sx={{ maxHeight: 400, overflow: "auto" }}>
-                {Object.entries(player.attributes).map(([category, attrs]) => (
-                  <Box key={category} sx={{ mb: 3 }}>
-                    <Typography
-                      variant="subtitle2"
-                      sx={{
-                        fontWeight: 700,
-                        textTransform: "uppercase",
-                        color: "primary.main",
-                        mb: 1,
-                      }}
-                    >
-                      {category}
-                    </Typography>
-                    {Object.entries(attrs as Record<string, number>).map(([name, value]) => (
-                      <Box key={name} sx={{ mb: 1 }}>
-                        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.5 }}>
-                          <Typography variant="body2" sx={{ textTransform: "capitalize" }}>
-                            {name.replace(/_/g, " ")}
-                          </Typography>
-                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            {value}
-                          </Typography>
-                        </Box>
-                        <LinearProgress
-                          variant="determinate"
-                          value={value}
-                          sx={{
-                            height: 6,
-                            borderRadius: 3,
-                            bgcolor: (theme) => alpha(theme.palette.primary.main, 0.1),
-                            "& .MuiLinearProgress-bar": {
-                              borderRadius: 3,
-                              bgcolor:
-                                value >= 80 ? "success.main" : value >= 60 ? "warning.main" : "error.main",
-                            },
-                          }}
-                        />
-                      </Box>
-                    ))}
-                  </Box>
-                ))}
+
+              <Box sx={{ display: "flex", gap: 1.5, mb: 2 }}>
+                <Box sx={{ flex: 1, bgcolor: "#F6DCAC", p: 1.2, borderRadius: "14px", border: "1px solid rgba(1, 32, 78, 0.12)" }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: "#028391" }}>Left Foot</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 800, color: "#01204E" }}>Reasonable</Typography>
+                </Box>
+                <Box sx={{ flex: 1, bgcolor: "#F6DCAC", p: 1.2, borderRadius: "14px", border: "1px solid rgba(1, 32, 78, 0.12)" }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: "#028391" }}>Right Foot</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 800, color: "#01204E" }}>Very Strong</Typography>
+                </Box>
               </Box>
-            </CardContent>
-          </Card>
+
+              <Typography variant="caption" sx={{ fontWeight: 800, color: "#028391", textTransform: "uppercase" }}>Player Traits</Typography>
+              <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mt: 0.8 }}>
+                <Chip label="Dictates Tempo" size="small" sx={{ bgcolor: "#FAA968", color: "#01204E", fontWeight: 800, borderRadius: 9999, fontSize: "0.72rem" }} />
+                <Chip label="Tries Killer Balls" size="small" sx={{ bgcolor: "#F6DCAC", color: "#01204E", fontWeight: 700, borderRadius: 9999, fontSize: "0.72rem" }} />
+                <Chip label="Shoots From Distance" size="small" sx={{ bgcolor: "#F6DCAC", color: "#01204E", fontWeight: 700, borderRadius: 9999, fontSize: "0.72rem" }} />
+              </Box>
+            </Card>
+
+          </Box>
+
         </Box>
       )}
 
-      {/* Form & History Tab */}
+      {/* 6. TAB 1: FORM & MATCH HISTORY */}
       {tab === 1 && (
-        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 3 }}>
-          {/* Recent Form */}
-          <Card sx={generalGlassCardSx}>
-            <CardContent>
-              <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-                Recent Form
-              </Typography>
-              {player.form && player.form.length > 0 ? (
-                <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
-                  {player.form.map((f, i) => {
-                    const rating = f ?? 0;
-                    const color = rating >= 7.5 ? "#10b981" : rating >= 6.5 ? "#fbbf24" : "#f43f5e";
-                    return (
-                      <Box
-                        key={i}
-                        sx={{
-                          width: 48,
-                          height: 48,
-                          borderRadius: "50%",
-                          border: `2px solid ${color}`,
-                          boxShadow: `0 0 10px ${alpha(color, 0.3)}`,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          bgcolor: alpha(color, 0.1),
-                          color: "#FFFFFF",
-                          fontWeight: 700,
-                          fontSize: "0.875rem",
-                          transition: "all 0.2s ease-in-out",
-                          "&:hover": {
-                            transform: "scale(1.1)",
-                            boxShadow: `0 0 15px ${alpha(color, 0.5)}`,
-                          }
-                        }}
-                      >
-                        {rating.toFixed(1)}
-                      </Box>
-                    );
-                  })}
-                </Box>
-              ) : (
-                <Typography color="text.secondary">No form data available</Typography>
-              )}
-            </CardContent>
-          </Card>
+        <Card className="finnova-card" sx={{ bgcolor: "#fde8c5", borderRadius: "20px", border: "1px solid rgba(250, 169, 104, 0.4)", p: 3 }}>
+          <Typography variant="h6" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif", mb: 2 }}>
+            Match Rating History & Form
+          </Typography>
 
-          {/* Injury History */}
-          <Card sx={generalGlassCardSx}>
-            <CardContent>
-              <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-                Injury History
-              </Typography>
-              {player.injury_history && player.injury_history.length > 0 ? (
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                  {player.injury_history.map((injury: any, idx: number) => (
-                    <Box
-                      key={idx}
-                      sx={{
-                        p: 1.5,
-                        borderRadius: 2,
-                        bgcolor: alpha("#ef4444", 0.1),
-                        border: "1px solid",
-                        borderColor: alpha("#ef4444", 0.3),
-                      }}
-                    >
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {injury.type}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Recovery: {injury.recovery_time} days • {injury.date}
-                      </Typography>
-                    </Box>
-                  ))}
-                </Box>
-              ) : (
-                <Typography color="text.secondary">No injury history</Typography>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Development History */}
-          {player.stats?.development && player.stats.development.length > 0 && (
-            <Card sx={{ ...generalGlassCardSx, gridColumn: { lg: "1 / -1" } }}>
-              <CardContent>
-                <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-                  Development History
-                </Typography>
-                <Box sx={{ height: 250 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={player.stats.development.slice(-10)}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis dataKey="attribute" tick={{ fill: "#9ca3af", fontSize: 10 }} />
-                      <YAxis tick={{ fill: "#9ca3af" }} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: "#1e293b",
-                          border: "none",
-                          borderRadius: 8,
-                        }}
-                      />
-                      <Bar dataKey="from" fill="#ef4444" name="From" />
-                      <Bar dataKey="to" fill="#10b981" name="To" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Box>
-              </CardContent>
-            </Card>
+          {player.form && player.form.length > 0 ? (
+            <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap", my: 2 }}>
+              {player.form.map((f, i) => {
+                const rating = f ?? 7.0;
+                const badgeColor = rating >= 7.5 ? "#10b981" : rating >= 6.5 ? "#FAA968" : "#f43f5e";
+                return (
+                  <Box
+                    key={i}
+                    sx={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: "50%",
+                      bgcolor: badgeColor,
+                      color: "#01204E",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 900,
+                      fontSize: "0.9rem",
+                      boxShadow: "0 4px 12px rgba(1, 32, 78, 0.15)"
+                    }}
+                  >
+                    {rating.toFixed(1)}
+                  </Box>
+                );
+              })}
+            </Box>
+          ) : (
+            <Typography variant="body2" sx={{ fontWeight: 600, color: "#028391" }}>
+              No recent match form records available for this season.
+            </Typography>
           )}
-        </Box>
+        </Card>
       )}
     </Box>
   );

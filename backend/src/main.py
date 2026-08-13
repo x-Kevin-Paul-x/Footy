@@ -1,6 +1,16 @@
+import sys
+import os
+from pathlib import Path
+
+# Ensure project root and backend/src are in sys.path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+BACKEND_SRC = Path(__file__).resolve().parent
+for p in [str(PROJECT_ROOT), str(BACKEND_SRC)]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
 from models.league import League
 import json
-import os
 import random
 import shutil
 import logging
@@ -66,10 +76,90 @@ def create_premier_league():
     logger.info("Creating Premier League teams with enhanced financial system...")
     
     from database.team_db import get_all_teams
-    existing_team_names = set(t[1] for t in get_all_teams())
+    from database.player_db import get_all_players
+    
+    existing_teams = get_all_teams()
+    existing_teams_map = {t[1]: t for t in existing_teams}
+    all_db_players = get_all_players() if existing_teams else []
+
     for team_name in teams:
-        if team_name in existing_team_names:
-            logger.info(f"Team '{team_name}' already exists in database, skipping creation.")
+        if team_name in existing_teams_map:
+            logger.info(f"Team '{team_name}' already exists in database, loading state...")
+            team_info = existing_teams_map[team_name]
+            team_id = team_info[0]
+            team = Team.load_from_database(team_id)
+            if team is None:
+                team = Team(team_name, budgets.get(team_name, 100000000))
+                team.save_to_database()
+
+            # Load manager if exists
+            manager_id = team_info[6]
+            if manager_id:
+                manager = Manager.load_from_database(manager_id)
+                if manager:
+                    team.set_manager(manager)
+
+            if not team.manager:
+                ml_model_name = os.environ.get("FOOTY_ACTIVE_ML_MODEL", "dqn_best.pt")
+                ml_models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "ml", "models")
+                model_path = os.path.join(ml_models_dir, ml_model_name)
+                has_dqn = os.path.exists(model_path)
+
+                manager = Manager(profile=None, use_dqn=has_dqn)
+                if has_dqn:
+                    manager.brain.load_model(model_path)
+                    logger.info(f"Loaded ML model: {ml_model_name} for {team_name}")
+
+                manager.save_to_database()
+                team.set_manager(manager)
+
+            # Load players from DB for this team
+            team_players_data = [p for p in all_db_players if p.get("team_id") == team_id]
+            if team_players_data:
+                team.players = []
+                team.youth_academy = []
+                for p_data in team_players_data:
+                    player = FootballPlayer.load_from_database(p_data["player_id"])
+                    if player:
+                        if player.squad_role == "YOUTH":
+                            team.youth_academy.append(player)
+                        else:
+                            team.add_player(player)
+
+            # If squad is empty, generate squad
+            if not team.players:
+                for i in range(2):
+                    gk = FootballPlayer.create_player(position="GK")
+                    gk.squad_role = "STARTER" if i == 0 else "BENCH"
+                    gk.save_to_database(team.team_id)
+                    team.add_player(gk)
+
+                positions_needed = {
+                    "CB": 4, "LB": 2, "RB": 2,
+                    "CDM": 2, "CM": 4, "CAM": 2,
+                    "LW": 2, "RW": 2, "ST": 3
+                }
+                players_created = 0
+                for position, count in positions_needed.items():
+                    for i in range(count):
+                        player = FootballPlayer.create_player(position=position)
+                        if players_created < 11:
+                            player.squad_role = "STARTER"
+                        elif players_created < 18:
+                            player.squad_role = "BENCH"
+                        else:
+                            player.squad_role = "RESERVE"
+                        player.save_to_database(team.team_id)
+                        team.add_player(player)
+                        players_created += 1
+
+                youth_count = random.randint(3, 6)
+                for _ in range(youth_count):
+                    youth_player = team.generate_youth_player()
+                    youth_player.save_to_database(team.team_id)
+
+            team.process_weekly_finances()
+            premier_league.teams.append(team)
             continue
         team = Team(team_name, budgets[team_name])
         
@@ -91,12 +181,6 @@ def create_premier_league():
             
         manager.save_to_database()
         team.set_manager(manager)
-        
-        #logger.info(f"\nCreating {team_name} squad:")
-        #logger.info(f"  Budget: £{team.budget:,.0f}")
-        #logger.info(f"  Stadium: {team.stadium_name} (Capacity: {team.stadium_capacity:,})")
-        #logger.info(f"  TV Revenue: £{team.tv_revenue:,.0f}")
-        #logger.info(f"  Sponsorship Deals: {len(team.sponsorship_deals)}")
         
         # Create goalkeeper squad
         goalkeepers = []
@@ -138,14 +222,8 @@ def create_premier_league():
             youth_player = team.generate_youth_player()
             youth_player.save_to_database(team.team_id)
         
-        #logger.info(f"  Squad: {len(team.players)} senior players, {len(team.youth_academy)} youth")
-        #logger.info(f"  Average Squad Rating: {team.get_squad_strength():.1f}")
-        
         # Process initial weekly finances
         financial_summary = team.process_weekly_finances()
-        #logger.info(f"  Weekly Finances: Revenue £{financial_summary['revenue']:,.0f}, "
-        #      f"Expenses £{financial_summary['expenses']:,.0f}, "
-        #      f"Net £{financial_summary['net']:,.0f}")
     
     return premier_league   
 

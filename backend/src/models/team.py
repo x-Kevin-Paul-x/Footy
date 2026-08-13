@@ -152,14 +152,24 @@ class Team:
         if not data:
             return None
             
-        team = cls(
-            name=data["name"],
-            budget=data["budget"]
-        )
-        team.team_id = data["team_id"]
-        team.weekly_budget = data["weekly_budget"]
-        team.transfer_budget = data["transfer_budget"]
-        team.wage_budget = data["wage_budget"]
+        if isinstance(data, (tuple, list)):
+            team = cls(
+                name=data[1],
+                budget=data[2]
+            )
+            team.team_id = data[0]
+            team.weekly_budget = data[3]
+            team.transfer_budget = data[4]
+            team.wage_budget = data[5]
+        else:
+            team = cls(
+                name=data["name"],
+                budget=data["budget"]
+            )
+            team.team_id = data["team_id"]
+            team.weekly_budget = data["weekly_budget"]
+            team.transfer_budget = data["transfer_budget"]
+            team.wage_budget = data["wage_budget"]
         return team
 
     def generate_youth_player(self):

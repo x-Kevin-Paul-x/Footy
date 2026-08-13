@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"cd .. && .venv\\Scripts\\python.exe -m uvicorn api_fastapi:app --app-dir backend/src --reload --port 5001\" \"vite\"",
+    "dev:frontend": "vite",
     "test": "jest --watchAll=false",
     "build": "tsc -b && vite build",
     "lint": "eslint .",

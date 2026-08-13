@@ -263,7 +263,7 @@ const StatisticsAnalytics: React.FC = () => {
               </ToggleButtonGroup>
             </Box>
             <Box sx={{ height: 400 }}>
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <BarChart
                   data={getFilteredData().map((p) => ({
                     name: p.name.split(" ").pop(),
@@ -312,7 +312,7 @@ const StatisticsAnalytics: React.FC = () => {
                 Position Distribution
               </Typography>
               <Box sx={{ height: 200 }}>
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <PieChart>
                     <Pie
                       data={positionData}
@@ -342,7 +342,7 @@ const StatisticsAnalytics: React.FC = () => {
                 Age Distribution
               </Typography>
               <Box sx={{ height: 200 }}>
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <BarChart data={ageData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                     <XAxis dataKey="name" tick={{ fill: "#9ca3af", fontSize: 12 }} />
@@ -370,7 +370,7 @@ const StatisticsAnalytics: React.FC = () => {
             Team Goals Comparison
           </Typography>
           <Box sx={{ height: 350, overflow: "auto" }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <BarChart data={teamStats.sort((a, b) => b.goals - a.goals)}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                 <XAxis

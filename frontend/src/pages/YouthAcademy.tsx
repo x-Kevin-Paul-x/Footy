@@ -103,7 +103,7 @@ const YouthAcademy: React.FC = () => {
       setError(null);
       try {
         const report = await getSeasonReportData(_selectedSeason);
-        const youthPlayers: Player[] = report.all_teams_details
+        const youthPlayers: Player[] = (report?.all_teams_details || [])
           .flatMap((team: TeamDetail) =>
             (team.players || []).map((p) => ({ ...p, team: team.name }))
           )

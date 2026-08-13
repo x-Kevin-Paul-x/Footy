@@ -11,15 +11,33 @@ export default {
         heading: ['Outfit', 'Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
       },
       colors: {
+        palette: {
+          navy: '#01204E',      // Dark Navy Blue (Main Button)
+          teal: '#028391',      // Teal Blue (Button Accent)
+          cream: '#F6DCAC',     // Cream Orange (Background Base)
+          peach: '#FAA968',     // Soft Orange (Card/Paper Background)
+          orange: '#F85525',    // Vibrant Orange (Spotlight/Accent Background)
+        },
+        retro: {
+          navy: '#01204E',
+          deepNavy: '#01204E',
+          red: '#F85525',
+          orange: '#FAA968',
+          peach: '#FAA968',
+          cream: '#F6DCAC',
+          sand: '#F6DCAC',
+          teal: '#028391',
+          darkTeal: '#01204E',
+        },
         indigo: {
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
+          500: '#01204E',
+          600: '#028391',
+          700: '#01204E',
         },
         navy: {
-          800: '#1b1d2e',
-          900: '#121420',
-          950: '#0b0d14',
+          800: '#01204E',
+          900: '#01204E',
+          950: '#01204E',
         },
       },
     },

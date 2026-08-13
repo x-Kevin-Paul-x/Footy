@@ -199,6 +199,12 @@ def create_tables(db_file=DB_FILE):
             away_corners INTEGER NOT NULL DEFAULT 0,
             home_offsides INTEGER NOT NULL DEFAULT 0,
             away_offsides INTEGER NOT NULL DEFAULT 0,
+            home_yellow_cards INTEGER NOT NULL DEFAULT 0,
+            away_yellow_cards INTEGER NOT NULL DEFAULT 0,
+            home_red_cards INTEGER NOT NULL DEFAULT 0,
+            away_red_cards INTEGER NOT NULL DEFAULT 0,
+            home_injuries INTEGER NOT NULL DEFAULT 0,
+            away_injuries INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY (home_team_id) REFERENCES Team(team_id),
             FOREIGN KEY (away_team_id) REFERENCES Team(team_id)
         )

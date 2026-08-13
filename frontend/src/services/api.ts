@@ -158,13 +158,13 @@ export interface Player {
 
 
 export const getTeams = async (): Promise<Team[]> => {
-  const response = await apiClient.get<{ teams: Team[] }>('/teams');
-  return response.data.teams;
+  const response = await apiClient.get<any>('/teams');
+  return Array.isArray(response.data) ? response.data : (response.data?.teams ?? []);
 };
 
 export const getPlayers = async (): Promise<Player[]> => {
-  const response = await apiClient.get<{ players: Player[] }>('/players');
-  return response.data.players;
+  const response = await apiClient.get<any>('/players');
+  return Array.isArray(response.data) ? response.data : (response.data?.players ?? []);
 };
 
 export const runSimulation = async () => {
@@ -177,9 +177,13 @@ export const getAvailableSeasons = async (): Promise<number[]> => {
   return response.data.seasons;
 };
 
-export const getSeasonReportData = async (year: number): Promise<SeasonReport> => {
-  const response = await apiClient.get<SeasonReport>(`/get-season-report/${year}`);
-  return response.data;
+export const getSeasonReportData = async (year: number): Promise<SeasonReport | null> => {
+  try {
+    const response = await apiClient.get<SeasonReport>(`/get-season-report/${year}`);
+    return response.data;
+  } catch (error) {
+    return null;
+  }
 };
 
 export const getMatchesBySeason = async (seasonYear: number): Promise<any[]> => {
@@ -317,10 +321,15 @@ export const getYouthProspects = async (): Promise<YouthProspectsResponse> => {
 };
 
 export interface TransferActivityResponse {
-  top_transfers: any[];
-  total_completed: number;
-  total_value: number;
-  loans_completed: number;
+  transfers?: any[];
+  top_transfers?: any[];
+  total_completed?: number;
+  total_value?: number;
+  loans_completed?: number;
+  summary?: {
+    total_transfers: number;
+    total_volume: number;
+  };
 }
 
 export const getTransferActivity = async (): Promise<TransferActivityResponse> => {

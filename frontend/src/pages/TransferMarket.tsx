@@ -87,9 +87,9 @@ const TransferMarket: React.FC = () => {
     const loadTransfers = async () => {
       setLoadingTransfers(true);
       try {
-        const report: SeasonReport = await getSeasonReportData(selectedSeason);
+        const report: SeasonReport | null = await getSeasonReportData(selectedSeason);
         if (cancelled) return;
-        const data = report.transfers?.all_completed_transfers ?? [];
+        const data = report?.transfers?.all_completed_transfers ?? [];
         setTransfers(data);
       } catch (err) {
         if (!cancelled) setError("Failed to load transfer data for season.");
@@ -175,7 +175,7 @@ const TransferMarket: React.FC = () => {
               value={selectedSeason ?? ""}
               label="Season"
               onChange={(e) => handleSeasonChange(Number(e.target.value))}
-              sx={{ borderRadius: 9999, bgcolor: '#ffffff', border: '1px solid #e2e8f0', fontWeight: 700 }}
+              sx={{ borderRadius: 9999, bgcolor: '#F6DCAC', color: '#01204E', border: '1px solid rgba(1, 32, 78, 0.15)', fontWeight: 800 }}
             >
               {seasons.map((y) => (
                 <MenuItem key={y} value={y} sx={{ fontWeight: 600 }}>
@@ -313,7 +313,7 @@ const TransferMarket: React.FC = () => {
                       Top 5 Transfer Fees (GBP Millions)
                     </Typography>
                     <Box sx={{ height: 260 }}>
-                      <ResponsiveContainer width="100%" height="100%">
+                      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                         <BarChart data={topTransfersChartData}>
                           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                           <XAxis dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} />

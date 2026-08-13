@@ -7,7 +7,6 @@ import {
   Alert,
   Chip,
   Avatar,
-  IconButton,
   Button,
   useTheme,
   Card,
@@ -19,6 +18,9 @@ import {
   TableHead,
   TableRow,
   Paper,
+  FormControl,
+  Select,
+  MenuItem,
 } from "@mui/material";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSimulationSocket } from "../hooks/useSimulationSocket";
@@ -45,9 +47,7 @@ import SportsSoccerIcon from "@mui/icons-material/SportsSoccer";
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import AddIcon from "@mui/icons-material/Add";
-import TuneIcon from "@mui/icons-material/Tune";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
-import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import StarIcon from "@mui/icons-material/Star";
 import LeaderboardIcon from "@mui/icons-material/Leaderboard";
 import EventNoteIcon from "@mui/icons-material/EventNote";
@@ -86,21 +86,20 @@ function getClubMeta(teamName: string) {
   return { code, bg };
 }
 
-const barWidgetData = [
-  { val: 65 }, { val: 80 }, { val: 75 }, { val: 95 }, { val: 85 }, { val: 110 }
-];
-
 const Dashboard: React.FC = () => {
   const theme = useTheme();
   const { availableSeasons, fetchAvailableSeasons } = useSimulationStore();
   const queryClient = useQueryClient();
   useSimulationSocket();
 
+  const [selectedDashboardSeason, setSelectedDashboardSeason] = React.useState<number | null>(null);
+
   useEffect(() => {
     fetchAvailableSeasons();
   }, [fetchAvailableSeasons]);
 
-  const latestSeasonYear = availableSeasons.length > 0 ? Math.max(...availableSeasons) : 2025;
+  const sortedSeasons = React.useMemo(() => [...availableSeasons].sort((a, b) => b - a), [availableSeasons]);
+  const activeSeasonYear = selectedDashboardSeason ?? (sortedSeasons.length > 0 ? sortedSeasons[0] : 2026);
 
   // 1. All Seasons Overview
   const { data: allSeasonsData, error: seasonsErr } = useQuery({
@@ -108,18 +107,18 @@ const Dashboard: React.FC = () => {
     queryFn: getAllSeasonsOverview,
   });
 
-  // 2. Latest Season Detailed Report (for Standings Table)
+  // 2. Selected Season Detailed Report (for Standings Table)
   const { data: seasonReport } = useQuery({
-    queryKey: ['seasonReport', latestSeasonYear],
-    queryFn: () => getSeasonReportData(latestSeasonYear),
-    enabled: !!latestSeasonYear,
+    queryKey: ['seasonReport', activeSeasonYear],
+    queryFn: () => getSeasonReportData(activeSeasonYear),
+    enabled: !!activeSeasonYear,
   });
 
   // 3. Recent Matches (for Match Center)
   const { data: matchesData } = useQuery({
-    queryKey: ['matchesBySeason', latestSeasonYear],
-    queryFn: () => getMatchesBySeason(latestSeasonYear),
-    enabled: !!latestSeasonYear,
+    queryKey: ['matchesBySeason', activeSeasonYear],
+    queryFn: () => getMatchesBySeason(activeSeasonYear),
+    enabled: !!activeSeasonYear,
   });
 
   const runSimMutation = useMutation({
@@ -152,18 +151,29 @@ const Dashboard: React.FC = () => {
 
   // Parse League Standings Table
   const rawTable = seasonReport?.table || [];
-  const standings = rawTable.map(([teamName, stats]: any, idx: number) => ({
-    rank: idx + 1,
-    name: teamName,
-    mp: stats.p || stats.mp || 38,
-    w: stats.w || 0,
-    d: stats.d || 0,
-    l: stats.l || 0,
-    gf: stats.gf || 0,
-    ga: stats.ga || 0,
-    gd: stats.gd || (Number(stats.gf || 0) - Number(stats.ga || 0)),
-    pts: stats.pts || 0,
-  })).sort((a, b) => b.pts - a.pts || b.gd - a.gd);
+  const standings = rawTable.map(([teamName, stats]: any, idx: number) => {
+    const w = Number(stats.won ?? stats.w ?? 0);
+    const d = Number(stats.drawn ?? stats.d ?? 0);
+    const l = Number(stats.lost ?? stats.l ?? 0);
+    const gf = Number(stats.gf ?? 0);
+    const ga = Number(stats.ga ?? 0);
+    const gd = Number(stats.gd ?? (gf - ga));
+    const pts = Number(stats.points ?? stats.pts ?? 0);
+    const mp = Number(stats.played ?? stats.p ?? stats.mp ?? (w + d + l));
+
+    return {
+      rank: idx + 1,
+      name: String(teamName),
+      mp,
+      w,
+      d,
+      l,
+      gf,
+      ga,
+      gd,
+      pts,
+    };
+  }).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
 
   // Multi-Season Chart Data
   const seasonTrendData = [...(allSeasonsData?.seasons || [])]
@@ -181,168 +191,194 @@ const Dashboard: React.FC = () => {
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3.5, pb: 6 }}>
 
       {/* 1. HERO TITLE & SIMULATION COMMAND HUB */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, p: { xs: 2.5, md: 3 }, borderRadius: '24px', bgcolor: '#F6DCAC', border: '1.5px solid rgba(250, 169, 104, 0.45)', boxShadow: '0 12px 32px rgba(1, 32, 78, 0.08), 0 2px 8px rgba(250, 169, 104, 0.3), inset 0 1px 2px rgba(255, 245, 225, 0.6)' }}>
         <Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 0.5 }}>
-            <Typography variant="h4" sx={{ fontWeight: 900, fontFamily: 'Outfit, sans-serif', color: 'text.primary', letterSpacing: '-0.03em' }}>
-              Premier League Command Center
-            </Typography>
-            <Chip
-              label={`Season ${latestSeasonYear}`}
-              size="small"
-              sx={{ bgcolor: 'rgba(79, 70, 229, 0.12)', color: '#4f46e5', fontWeight: 800, borderRadius: 9999 }}
-            />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+            <FormControl size="small">
+              <Select
+                value={activeSeasonYear}
+                onChange={(e) => setSelectedDashboardSeason(Number(e.target.value))}
+                displayEmpty
+                renderValue={(selected) => (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#01204E' }} />
+                    <Typography variant="caption" sx={{ fontWeight: 800, color: '#01204E', letterSpacing: '0.06em', textTransform: 'uppercase', fontSize: '0.72rem' }}>
+                      SEASON {selected} COMMAND CENTER
+                    </Typography>
+                  </Box>
+                )}
+                sx={{
+                  borderRadius: 9999,
+                  bgcolor: '#FAA968',
+                  border: '1px solid rgba(1, 32, 78, 0.15)',
+                  boxShadow: '0 4px 12px rgba(1, 32, 78, 0.06)',
+                  height: 32,
+                  '& .MuiSelect-select': {
+                    display: 'flex',
+                    alignItems: 'center',
+                    py: '4px !important',
+                    pl: '14px !important',
+                    pr: '28px !important'
+                  },
+                  '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                  '&:hover': { bgcolor: '#f79a52' },
+                  '& .MuiSvgIcon-root': { color: '#01204E' }
+                }}
+              >
+                {sortedSeasons.map((s) => (
+                  <MenuItem key={s} value={s} sx={{ fontWeight: 700, fontSize: '0.82rem' }}>
+                    Season {s} Command Center
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Box>
-          <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-            Real-time league standings, match results, top goalscorers, and AI season simulation. ({totalSeasons} seasons simulated • Champion: {championTeam} {championPoints} PTS)
+          <Typography variant="h3" sx={{ fontWeight: 900, fontFamily: 'Outfit, sans-serif', color: '#01204E', letterSpacing: '-0.03em', fontSize: { xs: '1.8rem', md: '2.4rem' } }}>
+            Premier League Command Center
+          </Typography>
+          <Typography variant="body2" sx={{ fontWeight: 600, color: '#028391', mt: 0.5 }}>
+            Real-time league standings, match results, top goalscorers, and AI season simulation.
           </Typography>
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <IconButton
-            sx={{
-              bgcolor: 'background.paper',
-              border: 1,
-              borderColor: 'divider',
-              borderRadius: 9999,
-              p: 1.2,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
-            }}
-          >
-            <TuneIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-          </IconButton>
-
           <Button
             variant="contained"
             onClick={() => runSimMutation.mutate()}
             disabled={runSimMutation.isPending}
             startIcon={runSimMutation.isPending ? <CircularProgress size={18} color="inherit" /> : <AddIcon />}
-            sx={{
-              background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
-              color: '#ffffff',
-              px: 3,
-              py: 1.2,
-              borderRadius: 9999,
-              fontWeight: 800,
-              fontSize: '0.88rem',
-              boxShadow: '0 8px 20px rgba(79, 70, 229, 0.35)',
-              '&:hover': {
-                background: 'linear-gradient(135deg, #4338ca 0%, #4f46e5 100%)',
-                boxShadow: '0 12px 28px rgba(79, 70, 229, 0.5)',
-              }
-            }}
+            className="finnova-tactile-btn"
           >
             Run Season Simulation
           </Button>
         </Box>
       </Box>
 
-      {/* 2. TOP FOOTBALL KPI METRIC CARDS (4 ESSENTIAL WIDGETS) */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(4, 1fr)' }, gap: 2.5 }}>
+      {/* 2. STATS OVERVIEW SUMMARY CARDS */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr 1fr' }, gap: 2.5 }}>
 
-        {/* CARD 1: League Champions */}
-        <Card sx={{ bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: '20px', boxShadow: theme.palette.mode === 'dark' ? '0 10px 30px rgba(0,0,0,0.3)' : '0 10px 30px -5px rgba(0,0,0,0.04)' }}>
-          <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%' }}>
+        {/* CARD 1: Reigning Champions */}
+        <Card className="finnova-card">
+          <CardContent sx={{ p: 2.5, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%', gap: 1.5 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.secondary' }}>League Champion</Typography>
-              <Avatar sx={{ bgcolor: 'rgba(251, 191, 36, 0.15)', color: '#d97706', width: 36, height: 36 }}>
+              <Typography variant="caption" sx={{ fontWeight: 800, color: '#028391', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                Reigning Champions
+              </Typography>
+              <Avatar sx={{ bgcolor: 'rgba(250, 169, 104, 0.25)', color: '#01204E', width: 32, height: 32 }}>
                 <EmojiEventsIcon fontSize="small" />
               </Avatar>
             </Box>
-            <Box sx={{ my: 1.5, display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Avatar sx={{ width: 44, height: 44, background: getClubMeta(championTeam).bg, color: '#fff', fontWeight: 900, fontSize: '0.9rem' }}>
-                {getClubMeta(championTeam).code}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Avatar sx={{ width: 44, height: 44, bgcolor: '#FAA968', color: '#01204E', fontWeight: 900, fontSize: '0.9rem', border: '1px solid rgba(1, 32, 78, 0.2)' }}>
+                {championTeam.substring(0, 3).toUpperCase()}
               </Avatar>
               <Box>
-                <Typography variant="h5" sx={{ fontWeight: 900, color: 'text.primary', fontFamily: 'Outfit, sans-serif' }}>
+                <Typography variant="h5" sx={{ fontWeight: 900, color: '#01204E', fontFamily: 'Outfit, sans-serif' }}>
                   {championTeam}
                 </Typography>
-                <Chip label={`${championPoints} PTS`} size="small" sx={{ height: 18, fontSize: '0.65rem', fontWeight: 800, bgcolor: 'rgba(16, 185, 129, 0.15)', color: '#10b981', mt: 0.3 }} />
+                <Typography variant="caption" sx={{ fontWeight: 700, color: '#028391' }}>
+                  {championPoints} Points Accumulated
+                </Typography>
               </Box>
             </Box>
-            <Box sx={{ pt: 1, borderTop: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Title Winner</Typography>
-              <Typography variant="caption" sx={{ fontWeight: 800, color: '#4f46e5' }}>Season {latestSeasonYear}</Typography>
+            <Box sx={{ pt: 1, borderTop: '1px solid rgba(1, 32, 78, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: '#028391' }}>Title Winner</Typography>
+              <Typography variant="caption" sx={{ fontWeight: 800, color: '#01204E' }}>Season {activeSeasonYear}</Typography>
             </Box>
           </CardContent>
         </Card>
 
         {/* CARD 2: Top Scorer / Golden Boot */}
-        <Card sx={{ bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: '20px', boxShadow: theme.palette.mode === 'dark' ? '0 10px 30px rgba(0,0,0,0.3)' : '0 10px 30px -5px rgba(0,0,0,0.04)' }}>
-          <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%' }}>
+        <Card className="finnova-card">
+          <CardContent sx={{ p: 2.5, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%', gap: 1.5 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.secondary' }}>Golden Boot Leader</Typography>
-              <Avatar sx={{ bgcolor: 'rgba(79, 70, 229, 0.1)', color: '#4f46e5', width: 36, height: 36 }}>
+              <Typography variant="caption" sx={{ fontWeight: 800, color: '#028391', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                Golden Boot Leader
+              </Typography>
+              <Avatar sx={{ bgcolor: 'rgba(2, 131, 145, 0.15)', color: '#028391', width: 32, height: 32 }}>
                 <SportsSoccerIcon fontSize="small" />
               </Avatar>
             </Box>
-            <Box sx={{ my: 1.5, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              <Avatar sx={{ width: 44, height: 44, bgcolor: '#4f46e5', color: '#fff', fontWeight: 900, fontSize: '0.9rem' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Avatar sx={{ width: 44, height: 44, bgcolor: '#028391', color: '#ffffff', fontWeight: 800, fontSize: '0.9rem' }}>
                 {topScorer.name ? topScorer.name.substring(0, 2).toUpperCase() : "MA"}
               </Avatar>
               <Box>
-                <Typography variant="subtitle1" sx={{ fontWeight: 900, color: 'text.primary', lineHeight: 1.1 }}>
+                <Typography variant="h6" sx={{ fontWeight: 800, color: '#01204E', fontFamily: 'Outfit, sans-serif', lineHeight: 1.2 }}>
                   {topScorer.name}
                 </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                  {topScorer.team} • <strong style={{ color: '#4f46e5' }}>{topScorer.goals} Goals</strong>
+                <Typography variant="caption" sx={{ fontWeight: 600, color: '#028391' }}>
+                  {topScorer.team} • <strong style={{ color: '#01204E' }}>{topScorer.goals} Goals</strong>
                 </Typography>
               </Box>
             </Box>
-            <Box sx={{ pt: 1, borderTop: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Top Scorer</Typography>
-              <Chip label={`${topScorer.goals} Goals`} size="small" sx={{ height: 18, fontSize: '0.65rem', fontWeight: 800, bgcolor: 'rgba(79, 70, 229, 0.12)', color: '#4f46e5' }} />
+            <Box sx={{ pt: 1, borderTop: '1px solid rgba(1, 32, 78, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: '#028391' }}>Golden Boot</Typography>
+              <Chip label={`${topScorer.goals} Goals`} size="small" sx={{ height: 18, fontSize: '0.65rem', fontWeight: 800, bgcolor: '#01204E', color: '#ffffff' }} />
             </Box>
           </CardContent>
         </Card>
 
-        {/* CARD 3: Season Total Goals */}
-        <Card sx={{ bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: '20px', boxShadow: theme.palette.mode === 'dark' ? '0 10px 30px rgba(0,0,0,0.3)' : '0 10px 30px -5px rgba(0,0,0,0.04)' }}>
-          <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%' }}>
+        {/* CARD 3: Simulated Seasons Metric */}
+        <Card className="finnova-card">
+          <CardContent sx={{ p: 2.5, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%', gap: 1.5 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.secondary' }}>Season Goals Scored</Typography>
-              <Avatar sx={{ bgcolor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', width: 36, height: 36 }}>
+              <Typography variant="caption" sx={{ fontWeight: 800, color: '#028391', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                Simulated History
+              </Typography>
+              <Avatar sx={{ bgcolor: 'rgba(1, 32, 78, 0.1)', color: '#01204E', width: 32, height: 32 }}>
                 <TrendingUpIcon fontSize="small" />
               </Avatar>
             </Box>
-            <Box sx={{ my: 1.5 }}>
-              <Typography variant="h4" sx={{ fontWeight: 900, color: 'text.primary', fontFamily: 'Outfit, sans-serif' }}>
-                {latestSummary?.total_goals ?? 1048}
+            <Box>
+              <Typography variant="h3" sx={{ fontWeight: 900, color: '#01204E', fontFamily: 'Outfit, sans-serif' }}>
+                {totalSeasons}
               </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                {latestSummary?.avg_goals_per_match ?? 2.76} goals / match average
+              <Typography variant="caption" sx={{ fontWeight: 700, color: '#028391' }}>
+                Complete Seasons Simulated
               </Typography>
             </Box>
-            <Box sx={{ height: 30, width: '100%', pt: 0.5 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={barWidgetData}>
-                  <Bar dataKey="val" fill="#10b981" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+            <Box sx={{ pt: 1, borderTop: '1px solid rgba(1, 32, 78, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: '#028391' }}>Active Model</Typography>
+              <Typography variant="caption" sx={{ fontWeight: 800, color: '#01204E' }}>DQN & Heuristics</Typography>
             </Box>
           </CardContent>
         </Card>
 
-        {/* CARD 4: Total League Completed Deals */}
-        <Card sx={{ bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: '20px', boxShadow: theme.palette.mode === 'dark' ? '0 10px 30px rgba(0,0,0,0.3)' : '0 10px 30px -5px rgba(0,0,0,0.04)' }}>
-          <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%' }}>
+        {/* CARD 4: Quick Action Hub */}
+        <Card className="finnova-card" sx={{ bgcolor: '#01204E !important', color: '#ffffff !important' }}>
+          <CardContent sx={{ p: 2.5, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%', gap: 1.5 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.secondary' }}>Transfer Market Volume</Typography>
-              <Avatar sx={{ bgcolor: 'rgba(6, 182, 212, 0.1)', color: '#0891b2', width: 36, height: 36 }}>
-                <SwapHorizIcon fontSize="small" />
+              <Typography variant="caption" sx={{ fontWeight: 800, color: '#FAA968', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                Quick Navigation
+              </Typography>
+              <Avatar sx={{ bgcolor: 'rgba(250, 169, 104, 0.2)', color: '#FAA968', width: 32, height: 32 }}>
+                <ArrowForwardIcon fontSize="small" />
               </Avatar>
             </Box>
-            <Box sx={{ my: 1.5 }}>
-              <Typography variant="h4" sx={{ fontWeight: 900, color: 'text.primary', fontFamily: 'Outfit, sans-serif' }}>
-                {latestSummary?.transfers_completed ?? 48} Deals
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                £ 1.86B total squad market value
-              </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Button
+                component={Link}
+                to="/transfer-market"
+                variant="outlined"
+                size="small"
+                sx={{ color: '#F6DCAC', borderColor: 'rgba(246, 220, 172, 0.4)', borderRadius: '10px', textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: 'rgba(250, 169, 104, 0.15)', borderColor: '#FAA968' } }}
+              >
+                Explore Transfer Market
+              </Button>
+              <Button
+                component={Link}
+                to="/match-reports"
+                variant="outlined"
+                size="small"
+                sx={{ color: '#F6DCAC', borderColor: 'rgba(246, 220, 172, 0.4)', borderRadius: '10px', textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: 'rgba(250, 169, 104, 0.15)', borderColor: '#FAA968' } }}
+              >
+                View Match Reports
+              </Button>
             </Box>
-            <Box sx={{ pt: 1, borderTop: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Market Status</Typography>
-              <Chip label="Window Active" size="small" sx={{ height: 20, fontSize: '0.68rem', fontWeight: 800, bgcolor: 'rgba(6, 182, 212, 0.12)', color: '#0891b2' }} />
+            <Box sx={{ pt: 1, borderTop: '1px solid rgba(255, 255, 255, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)', fontWeight: 600 }}>System Status</Typography>
+              <Typography variant="caption" sx={{ color: '#4ade80', fontWeight: 800 }}>Online</Typography>
             </Box>
           </CardContent>
         </Card>
@@ -353,19 +389,16 @@ const Dashboard: React.FC = () => {
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '7fr 5fr' }, gap: 3.5 }}>
 
         {/* LEFT COLUMN: Official Premier League Standings Table */}
-        <Card sx={{ bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: '24px', boxShadow: theme.palette.mode === 'dark' ? '0 10px 30px rgba(0,0,0,0.3)' : '0 10px 30px -5px rgba(0,0,0,0.04)' }}>
+        <Card className="finnova-card">
           <CardContent sx={{ p: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5, flexWrap: 'wrap', gap: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Avatar sx={{ bgcolor: 'rgba(79, 70, 229, 0.1)', color: '#4f46e5', width: 38, height: 38 }}>
+                <Avatar sx={{ bgcolor: 'rgba(1, 32, 78, 0.1)', color: '#01204E', width: 38, height: 38 }}>
                   <LeaderboardIcon />
                 </Avatar>
                 <Box>
                   <Typography variant="h6" sx={{ fontWeight: 800, fontFamily: 'Outfit, sans-serif' }}>
-                    Premier League Standings
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                    Official League Table • Season {latestSeasonYear}
+                    League Standings
                   </Typography>
                 </Box>
               </Box>
@@ -373,9 +406,8 @@ const Dashboard: React.FC = () => {
               <Button
                 component={Link}
                 to="/league-overview"
-                size="small"
+                className="finnova-indented-btn"
                 endIcon={<ArrowForwardIcon fontSize="small" />}
-                sx={{ fontWeight: 700, color: '#4f46e5' }}
               >
                 Full Standings
               </Button>
@@ -462,7 +494,7 @@ const Dashboard: React.FC = () => {
                             sx={{
                               fontWeight: 900,
                               fontSize: '0.8rem',
-                              bgcolor: isTop4 ? '#4f46e5' : theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.08)' : '#e2e8f0',
+                              bgcolor: isTop4 ? '#E63946' : theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.08)' : '#e2e8f0',
                               color: isTop4 ? '#ffffff' : 'text.primary',
                               height: 22,
                               minWidth: 32
@@ -479,11 +511,11 @@ const Dashboard: React.FC = () => {
         </Card>
 
         {/* RIGHT COLUMN: Live Match Fixtures & Recent Match Results */}
-        <Card sx={{ bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: '24px', boxShadow: theme.palette.mode === 'dark' ? '0 10px 30px rgba(0,0,0,0.3)' : '0 10px 30px -5px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column' }}>
+        <Card className="finnova-card" sx={{ display: 'flex', flexDirection: 'column' }}>
           <CardContent sx={{ p: 3, flex: 1, display: 'flex', flexDirection: 'column' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5, flexWrap: 'wrap', gap: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Avatar sx={{ bgcolor: 'rgba(79, 70, 229, 0.1)', color: '#4f46e5', width: 38, height: 38 }}>
+                <Avatar sx={{ bgcolor: 'rgba(1, 32, 78, 0.1)', color: '#01204E', width: 38, height: 38 }}>
                   <EventNoteIcon />
                 </Avatar>
                 <Box>
@@ -499,9 +531,8 @@ const Dashboard: React.FC = () => {
               <Button
                 component={Link}
                 to="/match-reports"
-                size="small"
+                className="finnova-indented-btn"
                 endIcon={<ArrowForwardIcon fontSize="small" />}
-                sx={{ fontWeight: 700, color: '#4f46e5' }}
               >
                 All Matches
               </Button>
@@ -525,7 +556,7 @@ const Dashboard: React.FC = () => {
                     sx={{
                       p: 2,
                       borderRadius: '16px',
-                      bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : '#f8fafc',
+                      bgcolor: '#F6DCAC',
                       border: 1,
                       borderColor: 'divider',
                       textDecoration: 'none',
@@ -536,8 +567,8 @@ const Dashboard: React.FC = () => {
                       transition: 'all 0.2s',
                       '&:hover': {
                         transform: 'translateY(-2px)',
-                        bgcolor: theme.palette.mode === 'dark' ? 'rgba(79, 70, 229, 0.12)' : '#eef2ff',
-                        borderColor: 'rgba(79, 70, 229, 0.3)'
+                        bgcolor: 'rgba(1, 32, 78, 0.08)',
+                        borderColor: '#01204E'
                       }
                     }}
                   >
@@ -552,12 +583,12 @@ const Dashboard: React.FC = () => {
                     </Box>
 
                     {/* Score Center Pill */}
-                    <Box sx={{ px: 2, py: 0.5, borderRadius: 9999, bgcolor: 'background.paper', border: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 900, color: homeWon ? '#4f46e5' : 'text.primary' }}>
+                    <Box sx={{ px: 2, py: 0.5, borderRadius: 9999, bgcolor: '#01204E', color: '#ffffff', display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 900, color: '#ffffff' }}>
                         {hScore}
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">:</Typography>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 900, color: awayWon ? '#4f46e5' : 'text.primary' }}>
+                      <Typography variant="caption" color="inherit">:</Typography>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 900, color: '#ffffff' }}>
                         {aScore}
                       </Typography>
                     </Box>
@@ -590,35 +621,35 @@ const Dashboard: React.FC = () => {
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '7fr 5fr' }, gap: 3.5, mt: 1 }}>
         
         {/* Multi-Season Trend Chart */}
-        <Card sx={{ bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: '24px', boxShadow: theme.palette.mode === 'dark' ? '0 10px 30px rgba(0,0,0,0.3)' : '0 10px 30px -5px rgba(0,0,0,0.04)' }}>
+        <Card className="finnova-card">
           <CardContent sx={{ p: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-              <Avatar sx={{ bgcolor: 'rgba(79, 70, 229, 0.1)', color: '#4f46e5', width: 36, height: 36, mr: 1.5 }}>
+              <Avatar sx={{ bgcolor: 'rgba(1, 32, 78, 0.1)', color: '#01204E', width: 36, height: 36, mr: 1.5 }}>
                 <TrendingUpIcon fontSize="small" />
               </Avatar>
-              <Typography variant="h6" sx={{ fontWeight: 800, fontFamily: 'Outfit, sans-serif', color: 'text.primary' }}>
+              <Typography variant="h6" sx={{ fontWeight: 800, fontFamily: 'Outfit, sans-serif', color: '#01204E' }}>
                 Multi-Season Goals & Transfers Overview
               </Typography>
             </Box>
             {seasonTrendData.length > 0 ? (
-              <Box sx={{ height: 260 }}>
-                <ResponsiveContainer width="100%" height="100%">
+              <Box sx={{ height: 260, width: '100%', minWidth: 0 }}>
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <BarChart data={seasonTrendData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : '#f1f5f9'} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(1, 32, 78, 0.1)" />
                     <XAxis dataKey="season" tick={{ fill: theme.palette.text.secondary, fontSize: 11 }} />
                     <YAxis tick={{ fill: theme.palette.text.secondary, fontSize: 11 }} />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: theme.palette.mode === 'dark' ? '#1e2235' : '#0f172a',
-                        border: 'none',
+                        backgroundColor: '#01204E',
+                        border: '1px solid rgba(255,255,255,0.1)',
                         borderRadius: 12,
-                        color: '#ffffff',
+                        color: '#FFF8ED',
                         boxShadow: '0 10px 25px rgba(0,0,0,0.3)'
                       }}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="goals" name="Goals Scored" fill="#4f46e5" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="transfers" name="Transfers Completed" fill="#818cf8" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="goals" name="Goals Scored" fill="#01204E" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="transfers" name="Transfers Completed" fill="#028391" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </Box>
@@ -629,11 +660,11 @@ const Dashboard: React.FC = () => {
         </Card>
 
         {/* Top Players Leaderboard */}
-        <Card sx={{ bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: '24px', boxShadow: theme.palette.mode === 'dark' ? '0 10px 30px rgba(0,0,0,0.3)' : '0 10px 30px -5px rgba(0,0,0,0.04)' }}>
+        <Card className="finnova-card">
           <CardContent sx={{ p: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Avatar sx={{ bgcolor: 'rgba(251, 191, 36, 0.12)', color: '#fbbf24', width: 36, height: 36 }}>
+                <Avatar sx={{ bgcolor: 'rgba(1, 32, 78, 0.12)', color: '#01204E', width: 36, height: 36 }}>
                   <StarIcon fontSize="small" />
                 </Avatar>
                 <Typography variant="h6" sx={{ fontWeight: 800, fontFamily: 'Outfit, sans-serif', color: 'text.primary' }}>
@@ -643,9 +674,8 @@ const Dashboard: React.FC = () => {
               <Button
                 component={Link}
                 to="/player-profiles"
-                size="small"
+                className="finnova-indented-btn"
                 endIcon={<ArrowForwardIcon fontSize="small" />}
-                sx={{ fontWeight: 700, color: '#4f46e5' }}
               >
                 All Players
               </Button>
@@ -667,13 +697,13 @@ const Dashboard: React.FC = () => {
                         p: 1.5,
                         px: 2,
                         borderRadius: '16px',
-                        bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.03)' : '#f8fafc',
+                        bgcolor: '#F6DCAC',
                         border: 1,
                         borderColor: 'divider',
                         textDecoration: 'none',
                         color: 'inherit',
                         transition: 'all 0.2s',
-                        '&:hover': { transform: 'translateX(4px)', bgcolor: 'rgba(79, 70, 229, 0.12)' }
+                        '&:hover': { transform: 'translateX(4px)', bgcolor: 'rgba(1, 32, 78, 0.08)' }
                       }}
                     >
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -694,8 +724,8 @@ const Dashboard: React.FC = () => {
                         label={`${player.stats?.goals ?? 12} Goals`}
                         size="small"
                         sx={{
-                          bgcolor: 'rgba(79, 70, 229, 0.12)',
-                          color: '#4f46e5',
+                          bgcolor: '#01204E',
+                          color: '#ffffff',
                           fontWeight: 800,
                           fontSize: '0.72rem'
                         }}

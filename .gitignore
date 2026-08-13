@@ -24,6 +24,9 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
+
+node_modules
+
 # Node.js / React / Frontend
 node_modules/
 frontend/node_modules/
@@ -88,3 +91,4 @@ test_transfers.log
 test_training.py
 test_transfers.py
 ml/
+node_modules/*

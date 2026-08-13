@@ -166,7 +166,7 @@ const SeasonComparisonCharts: React.FC<SeasonComparisonChartsProps> = ({
                         League Position Trends
                     </Typography>
                     <Box sx={{ height: 350 }}>
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                             <LineChart data={positionTrendData}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                                 <XAxis
@@ -215,7 +215,7 @@ const SeasonComparisonCharts: React.FC<SeasonComparisonChartsProps> = ({
                         Goals & Transfers by Season
                     </Typography>
                     <Box sx={{ height: 300 }}>
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                             <BarChart data={goalsTransfersData}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                                 <XAxis
