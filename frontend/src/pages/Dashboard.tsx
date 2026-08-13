@@ -7,7 +7,6 @@ import {
   Alert,
   Chip,
   Avatar,
-  IconButton,
   Button,
   useTheme,
   Card,
@@ -48,9 +47,7 @@ import SportsSoccerIcon from "@mui/icons-material/SportsSoccer";
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import AddIcon from "@mui/icons-material/Add";
-import TuneIcon from "@mui/icons-material/Tune";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
-import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import StarIcon from "@mui/icons-material/Star";
 import LeaderboardIcon from "@mui/icons-material/Leaderboard";
 import EventNoteIcon from "@mui/icons-material/EventNote";
@@ -88,10 +85,6 @@ function getClubMeta(teamName: string) {
   const bg = "linear-gradient(135deg, #6366f1 0%, #3730a3 100%)";
   return { code, bg };
 }
-
-const barWidgetData = [
-  { val: 65 }, { val: 80 }, { val: 75 }, { val: 95 }, { val: 85 }, { val: 110 }
-];
 
 const Dashboard: React.FC = () => {
   const theme = useTheme();

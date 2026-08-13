@@ -13,14 +13,11 @@ import {
   Chip,
   LinearProgress,
   IconButton,
-  Tooltip,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import GridViewIcon from "@mui/icons-material/GridView";
 import ViewListIcon from "@mui/icons-material/ViewList";
 import LocalHospitalIcon from "@mui/icons-material/LocalHospital";
-import FilterListIcon from "@mui/icons-material/FilterList";
-import SportsSoccerIcon from "@mui/icons-material/SportsSoccer";
 import { useSimulationStore } from "../store/simulationStore";
 import type { Player } from "../services/api";
 

@@ -420,7 +420,7 @@ const ManagerDetail: React.FC = () => {
             <CardContent sx={{ p: 3 }}>
               <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>Tactical Profile</Typography>
               <Box sx={{ height: 300 }}>
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <RadarChart data={tacticalData}>
                     <PolarGrid stroke="#374151" />
                     <PolarAngleAxis dataKey="aspect" tick={{ fill: "#9ca3af", fontSize: 12 }} />
@@ -483,7 +483,7 @@ const ManagerDetail: React.FC = () => {
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>Season Performance</Typography>
             {seasonPerformanceData.length > 0 ? (
               <Box sx={{ height: 300, mb: 4 }}>
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <BarChart data={seasonPerformanceData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                     <XAxis dataKey="season" tick={{ fill: "#9ca3af", fontSize: 12 }} />

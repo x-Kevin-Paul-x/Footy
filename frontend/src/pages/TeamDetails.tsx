@@ -424,7 +424,7 @@ const TeamDetails: React.FC = () => {
                   <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>
                     League Position Over Time (lower is better)
                   </Typography>
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <AreaChart data={historyData}>
                       <defs>
                         <linearGradient id="positionGradient" x1="0" y1="0" x2="0" y2="1">

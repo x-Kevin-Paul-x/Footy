@@ -323,7 +323,7 @@ const MlBenchmarks: React.FC = () => {
                         Policy Ranking Snapshot
                       </Typography>
                       <Box sx={{ height: 320 }}>
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                           <BarChart data={rewardChartData} margin={{ top: 16, right: 16, left: 0, bottom: 16 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#475569" opacity={0.2} />
                             <XAxis dataKey="policy" tick={{ fill: "#94a3b8" }} />
@@ -344,7 +344,7 @@ const MlBenchmarks: React.FC = () => {
                         Action Mix
                       </Typography>
                       <Box sx={{ height: 320 }}>
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                           <BarChart data={actionMixChartData} layout="vertical" margin={{ top: 16, right: 16, left: 8, bottom: 16 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#475569" opacity={0.2} />
                             <XAxis type="number" tick={{ fill: "#94a3b8" }} unit="%" />

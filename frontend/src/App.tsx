@@ -116,13 +116,13 @@ function AppBreadcrumbs() {
               size="small"
               clickable={!isLast && isValidRoute}
               sx={{
-                bgcolor: isLast ? 'rgba(79, 70, 229, 0.12)' : 'transparent',
-                color: isLast ? '#4f46e5' : 'text.primary',
-                fontWeight: isLast ? 700 : 500,
+                bgcolor: isLast ? 'rgba(2, 131, 145, 0.18)' : 'transparent',
+                color: isLast ? '#01204E' : 'text.primary',
+                fontWeight: isLast ? 800 : 500,
                 height: 24,
                 fontSize: '0.75rem',
                 textTransform: 'capitalize',
-                border: isLast ? '1px solid rgba(79, 70, 229, 0.25)' : 'none',
+                border: isLast ? '1px solid rgba(1, 32, 78, 0.3)' : 'none',
               }}
             />
           );
@@ -141,9 +141,10 @@ function MainLayout({ mode, setMode, toast, setToast }: {
   const location = useLocation();
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: mode === 'dark' ? '#0b0d14' : '#f3f4f8', color: mode === 'dark' ? '#f1f5f9' : '#1e293b' }}>
-      {/* Top FINNOVA Header Bar - Single Row Alignment */}
+    <Box sx={{ minHeight: '100vh', bgcolor: '#FAA968', color: '#028391', p: { xs: 1.5, md: 2.5 } }}>
+      {/* Top Header Bar - Floating Soft Tactile Capsule (Screenshot Style) */}
       <Box
+        className="finnova-header-bar"
         sx={{
           px: { xs: 2, md: 3, lg: 4 },
           height: 64,
@@ -151,12 +152,10 @@ function MainLayout({ mode, setMode, toast, setToast }: {
           alignItems: 'center',
           justifyContent: 'space-between',
           flexWrap: 'nowrap',
-          borderBottom: mode === 'dark' ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(0, 0, 0, 0.06)',
-          background: mode === 'dark' ? '#0f111a' : '#ffffff',
+          mb: 3,
           position: 'sticky',
-          top: 0,
+          top: 16,
           zIndex: 1100,
-          boxShadow: mode === 'dark' ? '0 4px 20px rgba(0,0,0,0.4)' : '0 4px 20px rgba(0,0,0,0.03)',
           overflowX: 'auto',
           '&::-webkit-scrollbar': { display: 'none' }
         }}
@@ -165,19 +164,19 @@ function MainLayout({ mode, setMode, toast, setToast }: {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, whiteSpace: 'nowrap', flexShrink: 0 }}>
           <Avatar
             sx={{
-              bgcolor: '#4f46e5',
+              bgcolor: '#01204E',
               width: 36,
               height: 36,
-              boxShadow: '0 4px 14px rgba(79, 70, 229, 0.4)',
+              boxShadow: '0 4px 14px rgba(1, 32, 78, 0.4)',
             }}
           >
-            <SportsSoccerIcon sx={{ color: '#ffffff', fontSize: 20 }} />
+            <SportsSoccerIcon sx={{ color: '#028391', fontSize: 20 }} />
           </Avatar>
           <Box sx={{ display: { xs: 'none', sm: 'block' } }}>
-            <Typography variant="h6" sx={{ fontWeight: 900, lineHeight: 1.1, fontFamily: 'Outfit, sans-serif', letterSpacing: '-0.02em', color: mode === 'dark' ? '#ffffff' : '#0f172a', fontSize: '1rem' }}>
+            <Typography variant="h6" sx={{ fontWeight: 900, lineHeight: 1.1, fontFamily: 'Outfit, sans-serif', letterSpacing: '-0.02em', color: '#01204E', fontSize: '1rem' }}>
               FOOTY
             </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, fontSize: '0.65rem', display: 'block' }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, fontSize: '0.65rem', display: 'block', color: '#01204E' }}>
               Smart Analytics, Better Football
             </Typography>
           </Box>
@@ -185,8 +184,8 @@ function MainLayout({ mode, setMode, toast, setToast }: {
             label="80"
             size="small"
             sx={{
-              bgcolor: mode === 'dark' ? 'rgba(255,255,255,0.1)' : '#f1f5f9',
-              color: mode === 'dark' ? '#cbd5e1' : '#64748b',
+              bgcolor: '#F6DCAC',
+              color: '#01204E',
               fontWeight: 800,
               height: 20,
               fontSize: '0.7rem',
@@ -224,24 +223,24 @@ function MainLayout({ mode, setMode, toast, setToast }: {
 
         {/* Right: Actions & User Avatar */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexShrink: 0, justifyContent: 'flex-end' }}>
-          <IconButton size="small" sx={{ color: mode === 'dark' ? '#94a3b8' : '#64748b' }}>
+          <IconButton size="small" sx={{ color: '#01204E' }}>
             <BookmarkIcon fontSize="small" />
           </IconButton>
-          <IconButton size="small" sx={{ color: mode === 'dark' ? '#94a3b8' : '#64748b' }}>
+          <IconButton size="small" sx={{ color: '#01204E' }}>
             <ViewModuleIcon fontSize="small" />
           </IconButton>
-          <IconButton size="small" sx={{ color: mode === 'dark' ? '#94a3b8' : '#64748b' }}>
-            <Badge variant="dot" color="error">
+          <IconButton size="small" sx={{ color: '#01204E' }}>
+            <Badge variant="dot" sx={{ '& .MuiBadge-badge': { bgcolor: '#01204E' } }}>
               <NotificationsIcon fontSize="small" />
             </Badge>
           </IconButton>
-          <IconButton size="small" sx={{ color: mode === 'dark' ? '#94a3b8' : '#64748b' }}>
+          <IconButton size="small" sx={{ color: '#01204E' }}>
             <SettingsIcon fontSize="small" />
           </IconButton>
           <IconButton
             size="small"
             onClick={() => setMode(mode === 'light' ? 'dark' : 'light')}
-            sx={{ color: mode === 'dark' ? '#fbbf24' : '#64748b' }}
+            sx={{ color: '#01204E' }}
           >
             {mode === 'light' ? <DarkModeIcon fontSize="small" /> : <LightModeIcon fontSize="small" />}
           </IconButton>
@@ -250,12 +249,12 @@ function MainLayout({ mode, setMode, toast, setToast }: {
               width: 36,
               height: 36,
               ml: 1,
-              bgcolor: '#4f46e5',
+              bgcolor: '#01204E',
               color: '#ffffff',
               fontWeight: 800,
               fontSize: '0.85rem',
-              border: '2px solid #818cf8',
-              boxShadow: '0 4px 12px rgba(79, 70, 229, 0.4)',
+              border: '2px solid #028391',
+              boxShadow: '0 4px 12px rgba(1, 32, 78, 0.4)',
               cursor: 'pointer'
             }}
           >
@@ -264,8 +263,8 @@ function MainLayout({ mode, setMode, toast, setToast }: {
         </Box>
       </Box>
 
-      {/* Main Page Area */}
-      <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1600, mx: 'auto' }}>
+      {/* Main Page Area - Framed Inset Container (Screenshot Style) */}
+      <Box className="finnova-main-frame" sx={{ p: { xs: 2.5, md: 4 }, maxWidth: 1600, mx: 'auto' }}>
         <AppBreadcrumbs />
         <Routes>
           <Route path="/" element={<Dashboard />} />
@@ -315,49 +314,134 @@ function App() {
         palette: {
           mode,
           primary: {
-            main: '#4f46e5',
-            light: '#6366f1',
-            dark: '#3730a3',
+            main: '#01204E',      // Every Button Background: #01204E
+            light: '#028391',     // Teal Blue Accent
+            dark: '#001330',
             contrastText: '#ffffff',
           },
           secondary: {
-            main: '#fbbf24',
-            contrastText: '#0f172a',
+            main: '#01204E',      // Every Button Background: #01204E
+            light: '#028391',
+            dark: '#001330',
+            contrastText: '#ffffff',
           },
           background: {
-            default: mode === 'dark' ? '#0b0d14' : '#f3f4f8',
-            paper: mode === 'dark' ? '#161826' : '#ffffff',
+            default: '#FAA968',   // Down part background: #FAA968
+            paper: '#F6DCAC',     // Cards background: #F6DCAC
           },
           text: {
-            primary: mode === 'dark' ? '#f1f5f9' : '#0f172a',
-            secondary: mode === 'dark' ? '#94a3b8' : '#64748b',
+            primary: '#028391',   // Text color: #028391
+            secondary: '#028391', // Text color: #028391
           },
-          divider: mode === 'dark' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+          divider: 'rgba(1, 32, 78, 0.12)',
         },
         typography: {
           fontFamily: "'Inter', sans-serif",
-          h1: { fontFamily: "'Outfit', sans-serif", fontWeight: 800 },
-          h2: { fontFamily: "'Outfit', sans-serif", fontWeight: 800 },
-          h3: { fontFamily: "'Outfit', sans-serif", fontWeight: 800 },
-          h4: { fontFamily: "'Outfit', sans-serif", fontWeight: 800 },
-          h5: { fontFamily: "'Outfit', sans-serif", fontWeight: 700 },
-          h6: { fontFamily: "'Outfit', sans-serif", fontWeight: 700 },
+          h1: { fontFamily: "'Outfit', sans-serif", fontWeight: 900, color: '#01204E' },
+          h2: { fontFamily: "'Outfit', sans-serif", fontWeight: 900, color: '#01204E' },
+          h3: { fontFamily: "'Outfit', sans-serif", fontWeight: 900, color: '#01204E' },
+          h4: { fontFamily: "'Outfit', sans-serif", fontWeight: 900, color: '#01204E' },
+          h5: { fontFamily: "'Outfit', sans-serif", fontWeight: 800, color: '#01204E' },
+          h6: { fontFamily: "'Outfit', sans-serif", fontWeight: 800, color: '#01204E' },
+          subtitle1: { color: '#028391', fontWeight: 700 },
+          subtitle2: { color: '#028391', fontWeight: 700 },
+          body1: { color: '#028391' },
+          body2: { color: '#028391' },
+          caption: { color: '#028391' },
         },
         components: {
           MuiCard: {
             styleOverrides: {
               root: {
                 backgroundImage: 'none',
-                borderRadius: '16px',
+                borderRadius: '24px',
+                backgroundColor: '#F6DCAC',
+                border: '1.5px solid rgba(250, 169, 104, 0.45)',
+                boxShadow: '0 12px 32px rgba(1, 32, 78, 0.08), 0 2px 8px rgba(250, 169, 104, 0.3), inset 0 1px 2px rgba(255, 245, 225, 0.6)',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                '&:hover': {
+                  transform: 'translateY(-3px)',
+                  boxShadow: '0 16px 40px rgba(1, 32, 78, 0.12), 0 4px 14px rgba(250, 169, 104, 0.4)',
+                  borderColor: 'rgba(1, 32, 78, 0.25)',
+                },
+              },
+            },
+          },
+          MuiPaper: {
+            styleOverrides: {
+              root: {
+                backgroundColor: '#F6DCAC',
+                color: '#028391',
+                borderRadius: '20px',
               },
             },
           },
           MuiButton: {
             styleOverrides: {
               root: {
-                borderRadius: '10px',
+                borderRadius: '9999px',
                 textTransform: 'none',
-                fontWeight: 600,
+                fontWeight: 800,
+                fontSize: '0.85rem',
+                letterSpacing: '0.03em',
+                backgroundColor: '#01204E',
+                color: '#ffffff',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                boxShadow: '0 8px 20px rgba(1, 32, 78, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.3)',
+                transition: 'all 0.25s ease',
+                '&:hover': {
+                  backgroundColor: '#028391',
+                  boxShadow: '0 12px 28px rgba(2, 131, 145, 0.45)',
+                  transform: 'translateY(-2px)',
+                },
+              },
+              containedPrimary: {
+                backgroundColor: '#01204E',
+                color: '#ffffff',
+                '&:hover': {
+                  backgroundColor: '#028391',
+                },
+              },
+              containedSecondary: {
+                backgroundColor: '#01204E',
+                color: '#ffffff',
+                '&:hover': {
+                  backgroundColor: '#028391',
+                },
+              },
+              outlinedPrimary: {
+                borderColor: '#01204E',
+                color: '#01204E',
+                backgroundColor: 'transparent',
+                '&:hover': {
+                  backgroundColor: 'rgba(1, 32, 78, 0.08)',
+                  borderColor: '#028391',
+                },
+              },
+            },
+          },
+          MuiTableCell: {
+            styleOverrides: {
+              head: {
+                color: '#01204E',
+                fontWeight: 800,
+                borderBottom: '1px solid rgba(1, 32, 78, 0.15)',
+              },
+              body: {
+                color: '#028391',
+                borderBottom: '1px solid rgba(1, 32, 78, 0.08)',
+              },
+            },
+          },
+          MuiChip: {
+            styleOverrides: {
+              root: {
+                fontWeight: 800,
+                borderRadius: '9999px',
+              },
+              filled: {
+                backgroundColor: '#01204E',
+                color: '#ffffff',
               },
             },
           },
