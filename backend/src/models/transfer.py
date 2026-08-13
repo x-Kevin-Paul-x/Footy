@@ -5,25 +5,30 @@ import random
 from datetime import datetime
 import sqlite3
 from database.db_setup import DB_FILE
-from ml.runtime import get_model_artifact_path
 from models.player import FootballPlayer
 from models.team import Team
 
 # Market Valuator for realistic pricing
 _market_valuator = None
+_market_valuator_attempted = False
 
 def get_market_valuator():
     """Get or initialize the market valuator for transfer pricing."""
-    global _market_valuator
-    if _market_valuator is None:
+    global _market_valuator, _market_valuator_attempted
+    if not _market_valuator_attempted:
+        _market_valuator_attempted = True
         try:
+            from ml.runtime import get_model_artifact_path
             from ml.market_valuator import MarketValuator
             model_path = get_model_artifact_path("market_valuator")
             if model_path.exists():
-                _market_valuator = MarketValuator()
-                _market_valuator.load(str(model_path))
-                if _market_valuator.compatibility_warning:
-                    print(f"Warning: {_market_valuator.compatibility_warning}")
+                valuator = MarketValuator()
+                valuator.load(str(model_path))
+                if valuator.compatibility_warning:
+                    print(f"Warning: {valuator.compatibility_warning}")
+                _market_valuator = valuator
+        except (ImportError, ModuleNotFoundError):
+            pass
         except Exception as e:
             print(f"Warning: Could not load market valuator: {e}")
     return _market_valuator
@@ -407,6 +412,8 @@ class TransferMarket:
         if not self.is_transfer_window_open():
             return False, "Transfer window is closed"
 
+        player = listing.player
+
         if buying_team.budget < offer_amount:
             return False, "Insufficient funds"
 
@@ -429,7 +436,6 @@ class TransferMarket:
             return False, "Offer too low"
 
         # Enhanced contract negotiation
-        player = listing.player
         
         # Player wage demands based on new club and performance
         base_wage_demand = player.desired_wage

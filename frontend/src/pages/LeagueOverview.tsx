@@ -113,9 +113,9 @@ const LeagueOverview: React.FC = () => {
     .map(([teamKey, stats], idx) => {
       const teamName = String(teamKey);
       const teamDetail = teamDetailsByName.get(teamName);
-      const w = getNum(stats, "w", "W", "wins");
-      const d = getNum(stats, "d", "D", "draws");
-      const l = getNum(stats, "l", "L", "losses");
+      const w = getNum(stats, "won", "w", "W", "wins");
+      const d = getNum(stats, "drawn", "d", "D", "draws");
+      const l = getNum(stats, "lost", "l", "L", "losses");
       const pld = getNum(stats, "played", "p", "pld") || (w + d + l);
       const gf = getNum(stats, "gf", "goals_for", "for");
       const ga = getNum(stats, "ga", "goals_against", "against");
@@ -175,7 +175,7 @@ const LeagueOverview: React.FC = () => {
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 2 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 800, fontFamily: 'Outfit, sans-serif', color: '#0f172a', letterSpacing: '-0.03em' }}>
-            League Standings & Overview
+            League Overview & Standings
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
             Comprehensive table, team stats, and financial health for Season {selectedSeason}
@@ -187,10 +187,11 @@ const LeagueOverview: React.FC = () => {
             onChange={(e) => setSelectedSeason(e.target.value as number)}
             sx={{
               borderRadius: 9999,
-              bgcolor: '#ffffff',
-              fontWeight: 700,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-              border: '1px solid #e2e8f0',
+              bgcolor: '#F6DCAC',
+              color: '#01204E',
+              fontWeight: 800,
+              boxShadow: '0 4px 12px rgba(1, 32, 78, 0.05)',
+              border: '1px solid rgba(1, 32, 78, 0.15)',
               '& .MuiSelect-select': { py: 1, px: 2 }
             }}
           >
@@ -236,10 +237,10 @@ const LeagueOverview: React.FC = () => {
                   key={m.key} 
                   sx={{ 
                     p: 2.5,
-                    bgcolor: '#ffffff',
-                    border: '1px solid #e2e8f0',
+                    bgcolor: '#F6DCAC',
+                    border: '1px solid rgba(255, 255, 255, 0.5)',
                     borderRadius: 4,
-                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.03)'
+                    boxShadow: '12px 18px 36px rgba(1, 32, 78, 0.08), inset 0 1px 2px rgba(255, 255, 255, 0.9)'
                   }}
                 >
                   <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#475569', mb: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>

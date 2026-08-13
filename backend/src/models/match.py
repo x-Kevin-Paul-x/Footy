@@ -4,7 +4,6 @@ import os
 from dataclasses import dataclass
 from typing import Any, List, Dict, Tuple
 from database.match_db import save_match_to_db
-from ml.runtime import get_model_artifact_path
 
 # FAST_MODE: Set to True during RL training to use match predictor proxy
 # This speeds up training by ~100x by skipping minute-by-minute simulation
@@ -12,19 +11,25 @@ FAST_MODE = False
 
 # Lazy-loaded match predictor for fast mode
 _match_predictor = None
+_match_predictor_attempted = False
 
 def get_match_predictor():
     """Get or initialize the match predictor for fast mode."""
-    global _match_predictor
-    if _match_predictor is None:
+    global _match_predictor, _match_predictor_attempted
+    if not _match_predictor_attempted:
+        _match_predictor_attempted = True
         try:
+            from ml.runtime import get_model_artifact_path
             from ml.match_predictor import MatchPredictor
             model_path = get_model_artifact_path("match_predictor")
             if model_path.exists():
-                _match_predictor = MatchPredictor()
-                _match_predictor.load(str(model_path))
-                if _match_predictor.compatibility_warning:
-                    print(f"Warning: {_match_predictor.compatibility_warning}")
+                predictor = MatchPredictor()
+                predictor.load(str(model_path))
+                if predictor.compatibility_warning:
+                    print(f"Warning: {predictor.compatibility_warning}")
+                _match_predictor = predictor
+        except (ImportError, ModuleNotFoundError):
+            pass
         except Exception as e:
             print(f"Warning: Could not load match predictor: {e}")
     return _match_predictor

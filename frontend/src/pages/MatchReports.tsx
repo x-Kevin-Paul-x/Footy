@@ -177,27 +177,36 @@ const MatchReports: React.FC = () => {
             </Typography>
           </Box>
 
-          {/* Season Selector Chips */}
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, overflowX: "auto", py: 0.5 }}>
-            <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary", textTransform: "uppercase", letterSpacing: 0.5 }}>
+          {/* Season Selector Pills */}
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.2, overflowX: "auto", py: 0.5 }}>
+            <Typography variant="caption" sx={{ fontWeight: 800, color: "#01204E", textTransform: "uppercase", letterSpacing: 0.8 }}>
               Season:
             </Typography>
-            {availableSeasons.slice(0, 5).map((seasonYr) => (
-              <Chip
-                key={seasonYr}
-                label={`Season ${seasonYr}`}
-                onClick={() => selectSeason(seasonYr)}
-                clickable
-                sx={{
-                  bgcolor: selectedSeason === seasonYr ? "#4f46e5" : theme.palette.mode === "dark" ? "#1e2235" : "#e2e8f0",
-                  color: selectedSeason === seasonYr ? "#ffffff" : "text.primary",
-                  fontWeight: selectedSeason === seasonYr ? 700 : 500,
-                  fontSize: "0.8rem",
-                  borderRadius: 9999,
-                  "&:hover": { bgcolor: selectedSeason === seasonYr ? "#4338ca" : undefined }
-                }}
-              />
-            ))}
+            {availableSeasons.slice(0, 8).map((seasonYr) => {
+              const isSelected = selectedSeason === seasonYr;
+              return (
+                <Chip
+                  key={seasonYr}
+                  label={`Season ${seasonYr}`}
+                  onClick={() => selectSeason(seasonYr)}
+                  clickable
+                  sx={{
+                    bgcolor: isSelected ? "#FAA968" : "#F6DCAC",
+                    color: "#01204E",
+                    fontWeight: isSelected ? 800 : 700,
+                    fontSize: "0.8rem",
+                    borderRadius: 9999,
+                    border: "1px solid rgba(1, 32, 78, 0.18)",
+                    boxShadow: isSelected ? "0 4px 12px rgba(1, 32, 78, 0.1)" : "0 2px 6px rgba(1, 32, 78, 0.04)",
+                    transition: "all 0.2s ease-in-out",
+                    "&:hover": {
+                      bgcolor: isSelected ? "#f79a52" : "#f5d399",
+                      transform: "scale(1.04)"
+                    }
+                  }}
+                />
+              );
+            })}
           </Box>
         </Box>
 
@@ -326,31 +335,36 @@ const MatchReports: React.FC = () => {
         </Box>
 
         {/* Outcome Filter Pills */}
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <Chip
-            label="All Results"
-            onClick={() => setOutcomeFilter("all")}
-            clickable
-            color={outcomeFilter === "all" ? "primary" : "default"}
-            variant={outcomeFilter === "all" ? "filled" : "outlined"}
-            sx={{ fontWeight: 600, borderRadius: 9999 }}
-          />
-          <Chip
-            label="High Scoring (5+)"
-            onClick={() => setOutcomeFilter("high")}
-            clickable
-            color={outcomeFilter === "high" ? "primary" : "default"}
-            variant={outcomeFilter === "high" ? "filled" : "outlined"}
-            sx={{ fontWeight: 600, borderRadius: 9999 }}
-          />
-          <Chip
-            label="Draws"
-            onClick={() => setOutcomeFilter("draw")}
-            clickable
-            color={outcomeFilter === "draw" ? "primary" : "default"}
-            variant={outcomeFilter === "draw" ? "filled" : "outlined"}
-            sx={{ fontWeight: 600, borderRadius: 9999 }}
-          />
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
+          {[
+            { id: "all", label: "All Results" },
+            { id: "high", label: "High Scoring (5+)" },
+            { id: "draw", label: "Draws" },
+          ].map((item) => {
+            const isSelected = outcomeFilter === item.id;
+            return (
+              <Chip
+                key={item.id}
+                label={item.label}
+                onClick={() => setOutcomeFilter(item.id as any)}
+                clickable
+                sx={{
+                  bgcolor: isSelected ? "#FAA968" : "#F6DCAC",
+                  color: "#01204E",
+                  fontWeight: isSelected ? 800 : 700,
+                  fontSize: "0.8rem",
+                  borderRadius: 9999,
+                  border: "1px solid rgba(1, 32, 78, 0.18)",
+                  boxShadow: isSelected ? "0 4px 12px rgba(1, 32, 78, 0.1)" : "0 2px 6px rgba(1, 32, 78, 0.04)",
+                  transition: "all 0.2s ease-in-out",
+                  "&:hover": {
+                    bgcolor: isSelected ? "#f79a52" : "#f5d399",
+                    transform: "scale(1.04)"
+                  }
+                }}
+              />
+            );
+          })}
           {(searchTerm || outcomeFilter !== "all") && (
             <IconButton
               size="small"
@@ -505,58 +519,32 @@ const MatchReports: React.FC = () => {
                         </Avatar>
                       </Box>
 
-                      {/* Score Badge Center */}
+                      {/* Score Badge Center Pill */}
                       <Box
                         sx={{
                           display: "flex",
-                          flexDirection: "column",
                           alignItems: "center",
-                          gap: 0.5,
-                          px: 3,
-                          py: 1,
-                          borderRadius: "16px",
-                          background: theme.palette.mode === "dark" ? "rgba(255,255,255,0.04)" : "#f8fafc",
-                          border: 1,
-                          borderColor: "divider",
-                          minWidth: 120
+                          justifyContent: "center",
+                          px: 2.8,
+                          py: 0.8,
+                          borderRadius: 9999,
+                          bgcolor: "#01204E",
+                          border: "1px solid rgba(255, 255, 255, 0.15)",
+                          boxShadow: "0 4px 14px rgba(1, 32, 78, 0.3)",
+                          minWidth: 95
                         }}
                       >
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                          <Typography
-                            variant="h5"
-                            sx={{
-                              fontWeight: 900,
-                              fontFamily: "Outfit, sans-serif",
-                              color: homeWon ? "#4f46e5" : "text.primary"
-                            }}
-                          >
-                            {hGoals}
-                          </Typography>
-                          <Typography variant="body2" sx={{ fontWeight: 700, color: "text.secondary" }}>
-                            -
-                          </Typography>
-                          <Typography
-                            variant="h5"
-                            sx={{
-                              fontWeight: 900,
-                              fontFamily: "Outfit, sans-serif",
-                              color: awayWon ? "#4f46e5" : "text.primary"
-                            }}
-                          >
-                            {aGoals}
-                          </Typography>
-                        </Box>
-                        <Chip
-                          label="FT"
-                          size="small"
+                        <Typography
+                          variant="h6"
                           sx={{
-                            height: 18,
-                            fontSize: "0.65rem",
-                            fontWeight: 800,
-                            bgcolor: theme.palette.mode === "dark" ? "rgba(255,255,255,0.1)" : "#e2e8f0",
-                            color: "text.secondary"
+                            fontWeight: 900,
+                            fontFamily: "Outfit, sans-serif",
+                            color: "#ffffff",
+                            letterSpacing: "0.1em"
                           }}
-                        />
+                        >
+                          {hGoals} : {aGoals}
+                        </Typography>
                       </Box>
 
                       {/* Away Team */}

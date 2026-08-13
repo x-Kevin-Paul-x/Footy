@@ -1,4 +1,4 @@
-﻿# Footy: A Football League Simulation with Reinforcement Learning
+# Footy: A Football League Simulation with Reinforcement Learning
 
 **Tagline:** Combining realistic football management with AI-driven decision-making.
 
@@ -6,7 +6,18 @@
 
 Footy is a Python-based simulation of a football (soccer) league. It models various aspects of football management, including team management, player development, match simulation, and a transfer market. The simulation incorporates elements of reinforcement learning for manager decision-making and player training. This project serves as a portfolio piece, showcasing skills in simulation, AI, and software development.
 
-![alt text](image.png)
+![Premier League Command Center](docs/images/dashboard_overview.png)
+
+### Application Screenshots
+
+#### Premier League Command Center
+![Premier League Command Center](docs/images/dashboard_overview.png)
+
+#### Manager Profiles & Tactical Formations
+![Manager Profiles & Tactical Formations](docs/images/manager_profiles.png)
+
+#### Football Manager (FM) Style Player Attributes & Pentagon Analysis
+![Player Attributes & Pentagon Analysis](docs/images/player_detail.png)
 
 ## II. Features
 
