@@ -606,11 +606,33 @@ class Manager:
                     chosen_sell = random.choice(sell_actions)
                     final_actions.append(("list", chosen_sell[1], chosen_sell[2]))
 
-        # --- 2. DQN BUYING INTEGRATION ---
+        # --- 2. ACTION-MASKED DQN BUYING INTEGRATION ---
         dqn_result_actions = []
         if self.brain.use_dqn:
-            # DQN uses 5 high-level actions: 0:Nothing, 1:Scout, 2:Cheap, 3:Value, 4:Star
-            dqn_action = self.brain.select_action(state, [0, 1, 2, 3, 4], "transfer", raw_state=raw_state)
+            is_window_open = getattr(transfer_market, "is_window_open", True)
+            if hasattr(transfer_market, "is_transfer_window_open"):
+                is_window_open = transfer_market.is_transfer_window_open()
+            
+            avail_budget = self.team.transfer_budget if self.team else 0.0
+            squad_sz = len(self.team.players) if self.team else 25
+
+            # Dynamic Action Mask [0: Nothing, 1: Scout, 2: Cheap/Youth, 3: Value/Prime, 4: Star]
+            action_mask = [
+                1.0,  # 0: Do Nothing
+                1.0,  # 1: Scout / Academy
+                1.0 if (is_window_open and avail_budget >= 2_000_000 and squad_sz < 32) else 0.0,
+                1.0 if (is_window_open and avail_budget >= 12_000_000 and squad_sz < 30) else 0.0,
+                1.0 if (is_window_open and avail_budget >= 35_000_000 and squad_sz < 30) else 0.0,
+            ]
+
+            # Select action with Action-Masked DQN
+            dqn_action = self.brain.select_action(
+                state,
+                [0, 1, 2, 3, 4],
+                "transfer",
+                raw_state=raw_state,
+                action_mask=action_mask,
+            )
             
             if dqn_action == 0:  # Do Nothing
                 pass
@@ -632,7 +654,7 @@ class Manager:
                         # Look up listing object to get rating
                         listing_obj = next((l for l in transfer_market.transfer_list if l.listing_id == listing_id), None)
                         
-                        if listing_obj:
+                        if listing_obj and listing_obj.price <= avail_budget:
                             rating = listing_obj.player.get_overall_rating()
                             if target_range[0] <= rating <= target_range[1]:
                                 eligible_buys.append((a, listing_obj))

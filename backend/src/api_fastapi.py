@@ -7,6 +7,13 @@ import io
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pathlib import Path
+
+if sys.platform == "win32":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Request, WebSocket, WebSocketDisconnect
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +32,7 @@ from config import (
     MATCH_REPORTS_DIR,
     ML_REPORTS_DIR,
     PROJECT_ROOT,
+    REPORTS_DIR,
     SEASON_REPORTS_DIR,
     SIMULATION_SCRIPT,
     SIMULATION_TIMEOUT_SECONDS,
@@ -423,9 +431,23 @@ async def get_season_report(year: int):
 
 
 def _get_ml_report_paths() -> list[Path]:
-    if not ML_REPORTS_DIR.exists():
-        return []
-    return sorted(list(ML_REPORTS_DIR.glob("*.json")), key=lambda p: p.stat().st_mtime, reverse=True)
+    paths = []
+    seen = set()
+    search_dirs = [ML_REPORTS_DIR]
+    if ML_REPORTS_DIR.exists():
+        direct_files = list(ML_REPORTS_DIR.glob("*.json"))
+        if not direct_files and REPORTS_DIR.exists():
+            search_dirs.append(REPORTS_DIR / "ml_reports")
+    elif REPORTS_DIR.exists():
+        search_dirs.append(REPORTS_DIR / "ml_reports")
+
+    for directory in search_dirs:
+        if directory.exists():
+            for p in sorted(list(directory.glob("*.json")), key=lambda p: p.stat().st_mtime, reverse=True):
+                if p.name not in seen:
+                    seen.add(p.name)
+                    paths.append(p)
+    return sorted(paths, key=lambda p: p.stat().st_mtime, reverse=True)
 
 
 def _build_ml_report_summary(report_path: Path, payload: dict) -> dict:
@@ -449,6 +471,9 @@ def _resolve_ml_report_path(report_name: str) -> Path | None:
     target_path = ML_REPORTS_DIR / safe_name
     if target_path.exists():
         return target_path
+    fallback_path = REPORTS_DIR / "ml_reports" / safe_name
+    if fallback_path.exists():
+        return fallback_path
     return None
 
 
@@ -473,7 +498,7 @@ async def get_ml_reports():
 async def get_ml_report(report_name):
     try:
         report_path = _resolve_ml_report_path(report_name)
-        if report_path is None or not report_path.exists() or report_path.parent != ML_REPORTS_DIR:
+        if report_path is None or not report_path.exists():
             return JSONResponse(status_code=404, content={"status": "error", "message": "ML report not found."})
 
         payload = _load_json_file(report_path)
@@ -485,6 +510,125 @@ async def get_ml_report(report_name):
         return JSONResponse(status_code=500, content={"status": "error", "message": "ML report is invalid JSON."})
     except Exception as e:
         logger.exception("Error getting ML report %s", report_name)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@app.get("/ml-models")
+async def get_ml_models():
+    """List all available ML model checkpoints in the system."""
+    try:
+        models = []
+        search_dirs = [
+            PROJECT_ROOT / "ml" / "models",
+            BASE_DIR / "ml" / "models",
+            BASE_DIR / "models",
+        ]
+        seen = set()
+        for d in search_dirs:
+            if d.exists():
+                for f in d.glob("*.pt"):
+                    if f.name not in seen:
+                        seen.add(f.name)
+                        stat = f.stat()
+                        models.append({
+                            "name": f.name,
+                            "path": str(f),
+                            "size_bytes": stat.st_size,
+                            "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                        })
+        return JSONResponse(status_code=200, content={"models": models})
+    except Exception as e:
+        logger.exception("Error getting ML models")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@app.post("/run-ml-eval")
+async def trigger_ml_evaluation(request: Request):
+    """Trigger a benchmark evaluation or multi-model comparison run."""
+    try:
+        body = await request.json() if request.headers.get("content-type") == "application/json" else {}
+        models = body.get("models", ["backend/src/ml/models/dqn_best.pt"])
+        episodes = int(body.get("episodes", 10))
+        teams = int(body.get("teams", 6))
+        season_length = int(body.get("season_length", 20))
+        fast_mode = bool(body.get("fast_mode", True))
+
+        # Import evaluation pipeline
+        from ml.train_rl import run_episode
+        from ml.footy_env import FootyEnv
+        from ml.dqn_agent import DQNAgent
+        from ml.evaluation import (
+            build_evaluation_report,
+            save_evaluation_report,
+            summarize_episode_results,
+        )
+        import time
+
+        env = FootyEnv(num_teams=teams, season_length=season_length, fast_mode=fast_mode)
+        start_time = time.time()
+        summaries = {}
+        policy_models = {}
+
+        if len(models) == 1:
+            model_path = models[0]
+            agent = DQNAgent(obs_dim=env.obs_dim, action_dim=env.action_dim)
+            if Path(model_path).exists():
+                agent.load(model_path)
+            
+            policies_to_test = ["trained", "random", "do_nothing", "youth_focus"]
+            for pol in policies_to_test:
+                episodes_data = [
+                    run_episode(env, agent=agent, policy=pol, training=False, epsilon=0.0)
+                    for _ in range(episodes)
+                ]
+                summaries[pol] = summarize_episode_results(pol, episodes_data)
+            
+            policy_models["trained"] = model_path
+            primary_name = "trained"
+        else:
+            for m_path in models:
+                p_name = f"model_{Path(m_path).stem}"
+                agent = DQNAgent(obs_dim=env.obs_dim, action_dim=env.action_dim)
+                if Path(m_path).exists():
+                    agent.load(m_path)
+                policy_models[p_name] = m_path
+                episodes_data = [
+                    run_episode(env, agent=agent, policy="trained", training=False, epsilon=0.0)
+                    for _ in range(episodes)
+                ]
+                summaries[p_name] = summarize_episode_results(p_name, episodes_data)
+
+            # Baseline
+            base_data = [run_episode(env, policy="random") for _ in range(episodes)]
+            summaries["baseline_random"] = summarize_episode_results("baseline_random", base_data)
+            primary_name = list(summaries.keys())[0]
+
+        runtime = {
+            "elapsed_seconds": round(time.time() - start_time, 2),
+            "episodes_per_policy": episodes,
+        }
+        config = {
+            "num_teams": teams,
+            "season_length": season_length,
+            "fast_mode": fast_mode,
+        }
+
+        report = build_evaluation_report(
+            model_path=";".join(models),
+            config=config,
+            runtime=runtime,
+            policy_summaries=summaries,
+            primary_policy_name=primary_name,
+            policy_models=policy_models,
+        )
+
+        out_dir = str(REPORTS_DIR / "ml_reports")
+        report_file = save_evaluation_report(report, out_dir)
+        report["report_name"] = Path(report_file).name
+
+        return JSONResponse(status_code=200, content={"status": "success", "report": report})
+    except Exception as e:
+        logger.exception("Error running ML evaluation")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 

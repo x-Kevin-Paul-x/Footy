@@ -13,6 +13,7 @@ import {
   Chip,
   LinearProgress,
   IconButton,
+  useTheme,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import GridViewIcon from "@mui/icons-material/GridView";
@@ -71,6 +72,8 @@ const getOverallRating = (attributes: Player["attributes"]): number => {
 };
 
 const PlayerProfiles: React.FC = () => {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
   const { selectedSeason, currentReport, isLoading, error, fetchAvailableSeasons } = useSimulationStore();
   const [allPlayers, setAllPlayers] = useState<Player[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -165,23 +168,23 @@ const PlayerProfiles: React.FC = () => {
               </Typography>
             </Box>
           </Box>
-          <Typography variant="h3" sx={{ fontWeight: 900, fontFamily: "Outfit, sans-serif", color: "#01204E", letterSpacing: "-0.03em" }}>
+          <Typography variant="h3" sx={{ fontWeight: 900, fontFamily: "Outfit, sans-serif", color: "text.primary", letterSpacing: "-0.03em" }}>
             Player Profiles
           </Typography>
-          <Typography variant="body2" sx={{ fontWeight: 600, color: "#028391", mt: 0.5 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, color: "text.secondary", mt: 0.5 }}>
             {allPlayers.length} registered players across Premier League teams
           </Typography>
         </Box>
 
         {/* View Mode Toggle Buttons */}
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1, bgcolor: "#F6DCAC", p: 0.6, borderRadius: 9999, border: "1px solid rgba(1, 32, 78, 0.15)" }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, bgcolor: "var(--bg-pill)", p: 0.6, borderRadius: 9999, border: "1px solid", borderColor: "divider" }}>
           <IconButton
             size="small"
             onClick={() => setViewMode("grid")}
             sx={{
-              bgcolor: viewMode === "grid" ? "#01204E" : "transparent",
-              color: viewMode === "grid" ? "#ffffff" : "#01204E",
-              "&:hover": { bgcolor: viewMode === "grid" ? "#01204E" : "rgba(1, 32, 78, 0.1)" }
+              bgcolor: viewMode === "grid" ? "var(--btn-main)" : "transparent",
+              color: viewMode === "grid" ? "#ffffff" : "text.primary",
+              "&:hover": { bgcolor: viewMode === "grid" ? "var(--btn-main)" : "action.hover" }
             }}
           >
             <GridViewIcon fontSize="small" />
@@ -190,9 +193,9 @@ const PlayerProfiles: React.FC = () => {
             size="small"
             onClick={() => setViewMode("list")}
             sx={{
-              bgcolor: viewMode === "list" ? "#01204E" : "transparent",
-              color: viewMode === "list" ? "#ffffff" : "#01204E",
-              "&:hover": { bgcolor: viewMode === "list" ? "#01204E" : "rgba(1, 32, 78, 0.1)" }
+              bgcolor: viewMode === "list" ? "var(--btn-main)" : "transparent",
+              color: viewMode === "list" ? "#ffffff" : "text.primary",
+              "&:hover": { bgcolor: viewMode === "list" ? "var(--btn-main)" : "action.hover" }
             }}
           >
             <ViewListIcon fontSize="small" />
@@ -202,17 +205,14 @@ const PlayerProfiles: React.FC = () => {
 
       {/* 2. SEARCH & POSITION FILTER TOOLBAR */}
       <Box
+        className="finnova-card"
         sx={{
-          bgcolor: "#F6DCAC",
           p: 2,
-          borderRadius: "24px",
-          border: "1.5px solid rgba(250, 169, 104, 0.45)",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           flexWrap: "wrap",
           gap: 2,
-          boxShadow: "0 8px 24px rgba(1, 32, 78, 0.06)"
         }}
       >
         {/* Search Field */}
@@ -226,17 +226,17 @@ const PlayerProfiles: React.FC = () => {
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon sx={{ color: "#028391" }} />
+                  <SearchIcon sx={{ color: "text.secondary" }} />
                 </InputAdornment>
               ),
               sx: {
                 borderRadius: 9999,
-                bgcolor: "#ffffff",
+                bgcolor: "var(--bg-input)",
                 fontSize: "0.875rem",
                 fontWeight: 600,
-                color: "#01204E",
-                "& fieldset": { borderColor: "rgba(1, 32, 78, 0.15)" },
-                "&:hover fieldset": { borderColor: "#028391" }
+                color: "text.primary",
+                "& fieldset": { borderColor: "divider" },
+                "&:hover fieldset": { borderColor: "primary.main" }
               }
             }}
           />
@@ -259,16 +259,23 @@ const PlayerProfiles: React.FC = () => {
                 onClick={() => setPosFilter(item.id)}
                 clickable
                 sx={{
-                  bgcolor: isSelected ? "#FAA968" : "#ffffff",
-                  color: "#01204E",
+                  bgcolor: isSelected
+                    ? (theme.palette.mode === 'dark' ? '#F85525' : '#FAA968')
+                    : 'var(--bg-pill)',
+                  color: isSelected
+                    ? '#ffffff'
+                    : 'text.primary',
                   fontWeight: isSelected ? 800 : 700,
                   fontSize: "0.78rem",
                   borderRadius: 9999,
-                  border: "1px solid rgba(1, 32, 78, 0.15)",
-                  boxShadow: isSelected ? "0 4px 12px rgba(1, 32, 78, 0.1)" : "none",
+                  border: "1px solid",
+                  borderColor: isSelected
+                    ? (theme.palette.mode === 'dark' ? '#F85525' : 'rgba(1, 32, 78, 0.25)')
+                    : "divider",
+                  boxShadow: isSelected ? "0 4px 12px rgba(0,0,0,0.15)" : "none",
                   transition: "all 0.2s ease-in-out",
                   "&:hover": {
-                    bgcolor: isSelected ? "#f79a52" : "rgba(255,255,255,0.85)",
+                    bgcolor: isSelected ? (theme.palette.mode === 'dark' ? '#ff6f43' : '#f79a52') : "action.hover",
                     transform: "scale(1.04)"
                   }
                 }}
@@ -303,13 +310,9 @@ const PlayerProfiles: React.FC = () => {
                 className="finnova-card"
                 sx={{
                   borderRadius: "20px",
-                  border: "1px solid rgba(250, 169, 104, 0.4)",
-                  bgcolor: "#fde8c5",
                   transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
                   "&:hover": {
                     transform: "translateY(-4px)",
-                    boxShadow: "0 12px 28px rgba(1, 32, 78, 0.12)",
-                    borderColor: "#FAA968"
                   }
                 }}
               >
@@ -325,8 +328,8 @@ const PlayerProfiles: React.FC = () => {
                           color: "#ffffff",
                           fontWeight: 900,
                           fontSize: "0.85rem",
-                          boxShadow: "0 4px 12px rgba(1, 32, 78, 0.18)",
-                          border: "1.5px solid rgba(255, 255, 255, 0.4)"
+                          boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2)",
+                          border: "1.5px solid rgba(255, 255, 255, 0.3)"
                         }}
                       >
                         {clubMeta.code}
@@ -340,10 +343,10 @@ const PlayerProfiles: React.FC = () => {
                             fontFamily: "Outfit, sans-serif",
                             fontSize: "1rem",
                             textDecoration: "none",
-                            color: "#01204E",
+                            color: "text.primary",
                             display: "block",
                             lineHeight: 1.2,
-                            "&:hover": { color: "#028391" },
+                            "&:hover": { color: "primary.main" },
                           }}
                           noWrap
                         >
@@ -374,14 +377,16 @@ const PlayerProfiles: React.FC = () => {
                         width: 32,
                         height: 32,
                         borderRadius: "50%",
-                        bgcolor: "#01204E",
-                        color: "#F6DCAC",
+                        bgcolor: "var(--bg-pill)",
+                        color: "text.primary",
+                        border: "1px solid",
+                        borderColor: "divider",
                         fontWeight: 900,
                         fontSize: "0.8rem",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        boxShadow: "0 3px 8px rgba(1, 32, 78, 0.25)",
+                        boxShadow: "0 3px 8px rgba(0, 0, 0, 0.15)",
                         flexShrink: 0
                       }}
                     >
@@ -395,26 +400,26 @@ const PlayerProfiles: React.FC = () => {
                       label={player.position}
                       size="small"
                       sx={{
-                        bgcolor: "#FAA968",
-                        color: "#01204E",
+                        bgcolor: isDark ? "#F85525" : "#FAA968",
+                        color: "#ffffff",
                         fontWeight: 800,
                         fontSize: "0.72rem",
                         borderRadius: 9999,
                         height: 22,
-                        border: "1px solid rgba(1, 32, 78, 0.12)"
                       }}
                     />
                     <Chip
                       label={`${player.age}y`}
                       size="small"
                       sx={{
-                        bgcolor: "#F6DCAC",
-                        color: "#01204E",
+                        bgcolor: "var(--bg-pill)",
+                        color: "text.primary",
                         fontWeight: 700,
                         fontSize: "0.72rem",
                         borderRadius: 9999,
                         height: 22,
-                        border: "1px solid rgba(1, 32, 78, 0.12)"
+                        border: "1px solid",
+                        borderColor: "divider"
                       }}
                     />
                     {player.is_injured && (
@@ -435,30 +440,30 @@ const PlayerProfiles: React.FC = () => {
                   </Box>
 
                   {/* Key Stats Row */}
-                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2, pt: 1.5, borderTop: "1px solid rgba(1, 32, 78, 0.1)" }}>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2, pt: 1.5, borderTop: "1px solid", borderColor: "divider" }}>
                     <Box sx={{ textAlign: "center" }}>
-                      <Typography variant="h6" sx={{ fontWeight: 900, color: "#01204E", lineHeight: 1.1 }}>
+                      <Typography variant="h6" sx={{ fontWeight: 900, color: "text.primary", lineHeight: 1.1 }}>
                         {player.stats?.goals ?? 0}
                       </Typography>
-                      <Typography variant="caption" sx={{ fontWeight: 700, color: "#028391", fontSize: "0.7rem" }}>
+                      <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary", fontSize: "0.7rem" }}>
                         Goals
                       </Typography>
                     </Box>
 
                     <Box sx={{ textAlign: "center" }}>
-                      <Typography variant="h6" sx={{ fontWeight: 900, color: "#01204E", lineHeight: 1.1 }}>
+                      <Typography variant="h6" sx={{ fontWeight: 900, color: "text.primary", lineHeight: 1.1 }}>
                         {player.stats?.assists ?? 0}
                       </Typography>
-                      <Typography variant="caption" sx={{ fontWeight: 700, color: "#028391", fontSize: "0.7rem" }}>
+                      <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary", fontSize: "0.7rem" }}>
                         Assists
                       </Typography>
                     </Box>
 
                     <Box sx={{ textAlign: "center" }}>
-                      <Typography variant="h6" sx={{ fontWeight: 900, color: "#01204E", lineHeight: 1.1 }}>
+                      <Typography variant="h6" sx={{ fontWeight: 900, color: "text.primary", lineHeight: 1.1 }}>
                         £{valMillions}M
                       </Typography>
-                      <Typography variant="caption" sx={{ fontWeight: 700, color: "#028391", fontSize: "0.7rem" }}>
+                      <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary", fontSize: "0.7rem" }}>
                         Value
                       </Typography>
                     </Box>
@@ -467,10 +472,10 @@ const PlayerProfiles: React.FC = () => {
                   {/* Potential Progress Bar */}
                   <Box>
                     <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.5 }}>
-                      <Typography variant="caption" sx={{ fontWeight: 700, color: "#028391", fontSize: "0.72rem" }}>
+                      <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary", fontSize: "0.72rem" }}>
                         Potential
                       </Typography>
-                      <Typography variant="caption" sx={{ fontWeight: 800, color: "#01204E", fontSize: "0.72rem" }}>
+                      <Typography variant="caption" sx={{ fontWeight: 800, color: "text.primary", fontSize: "0.72rem" }}>
                         {Math.round(player.potential)}
                       </Typography>
                     </Box>
@@ -480,10 +485,10 @@ const PlayerProfiles: React.FC = () => {
                       sx={{
                         height: 6,
                         borderRadius: 9999,
-                        bgcolor: "rgba(1, 32, 78, 0.12)",
+                        bgcolor: "action.hover",
                         "& .MuiLinearProgress-bar": {
                           borderRadius: 9999,
-                          background: "linear-gradient(90deg, #028391, #FAA968)",
+                          background: "linear-gradient(90deg, #028391, #F85525)",
                         },
                       }}
                     />
@@ -498,12 +503,10 @@ const PlayerProfiles: React.FC = () => {
       {/* 4. LIST VIEW */}
       {viewMode === "list" && (
         <Card
+          className="finnova-card"
           sx={{
             borderRadius: "20px",
-            border: "1px solid rgba(250, 169, 104, 0.45)",
-            bgcolor: "#fde8c5",
             overflow: "hidden",
-            boxShadow: "0 8px 24px rgba(1, 32, 78, 0.06)"
           }}
         >
           <Box sx={{ overflowX: "auto" }}>
@@ -524,9 +527,10 @@ const PlayerProfiles: React.FC = () => {
                     p: 2,
                     textDecoration: "none",
                     color: "inherit",
-                    borderBottom: "1px solid rgba(1, 32, 78, 0.1)",
+                    borderBottom: "1px solid",
+                    borderColor: "divider",
                     transition: "all 0.2s ease-in-out",
-                    "&:hover": { bgcolor: "#F6DCAC" },
+                    "&:hover": { bgcolor: "action.hover" },
                     "&:last-child": { borderBottom: "none" },
                   }}
                 >
@@ -538,51 +542,51 @@ const PlayerProfiles: React.FC = () => {
                       color: "#ffffff",
                       fontWeight: 900,
                       fontSize: "0.8rem",
-                      boxShadow: "0 2px 8px rgba(1, 32, 78, 0.15)"
+                      boxShadow: "0 2px 8px rgba(0, 0, 0, 0.2)"
                     }}
                   >
                     {clubMeta.code}
                   </Avatar>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ fontWeight: 800, color: "#01204E", fontFamily: "Outfit, sans-serif" }} noWrap>
+                    <Typography sx={{ fontWeight: 800, color: "text.primary", fontFamily: "Outfit, sans-serif" }} noWrap>
                       {player.name}
                     </Typography>
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: "#028391" }}>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary" }}>
                       {player.team}
                     </Typography>
                   </Box>
                   <Chip
                     label={player.position}
                     size="small"
-                    sx={{ bgcolor: "#FAA968", color: "#01204E", fontWeight: 800, borderRadius: 9999, fontSize: "0.72rem" }}
+                    sx={{ bgcolor: isDark ? "#F85525" : "#FAA968", color: "#ffffff", fontWeight: 800, borderRadius: 9999, fontSize: "0.72rem" }}
                   />
                   <Chip
                     label={`${player.age}y`}
                     size="small"
-                    sx={{ bgcolor: "#F6DCAC", color: "#01204E", fontWeight: 700, borderRadius: 9999, fontSize: "0.72rem" }}
+                    sx={{ bgcolor: "var(--bg-pill)", color: "text.primary", fontWeight: 700, borderRadius: 9999, fontSize: "0.72rem", border: "1px solid", borderColor: "divider" }}
                   />
                   <Box sx={{ display: "flex", gap: 3, alignItems: "center" }}>
                     <Box sx={{ textAlign: "center", minWidth: 45 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 800, color: "#01204E" }}>
+                      <Typography variant="body2" sx={{ fontWeight: 800, color: "text.primary" }}>
                         {player.stats?.goals ?? 0}
                       </Typography>
-                      <Typography variant="caption" sx={{ fontWeight: 600, color: "#028391", fontSize: "0.65rem" }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", fontSize: "0.65rem" }}>
                         Goals
                       </Typography>
                     </Box>
                     <Box sx={{ textAlign: "center", minWidth: 45 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 800, color: "#01204E" }}>
+                      <Typography variant="body2" sx={{ fontWeight: 800, color: "text.primary" }}>
                         {player.stats?.assists ?? 0}
                       </Typography>
-                      <Typography variant="caption" sx={{ fontWeight: 600, color: "#028391", fontSize: "0.65rem" }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", fontSize: "0.65rem" }}>
                         Assists
                       </Typography>
                     </Box>
                     <Box sx={{ textAlign: "center", minWidth: 65 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 800, color: "#01204E" }}>
+                      <Typography variant="body2" sx={{ fontWeight: 800, color: "text.primary" }}>
                         £{valMillions}M
                       </Typography>
-                      <Typography variant="caption" sx={{ fontWeight: 600, color: "#028391", fontSize: "0.65rem" }}>
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", fontSize: "0.65rem" }}>
                         Value
                       </Typography>
                     </Box>
@@ -591,8 +595,10 @@ const PlayerProfiles: React.FC = () => {
                         width: 30,
                         height: 30,
                         borderRadius: "50%",
-                        bgcolor: "#01204E",
-                        color: "#F6DCAC",
+                        bgcolor: "var(--bg-pill)",
+                        color: "text.primary",
+                        border: "1px solid",
+                        borderColor: "divider",
                         fontWeight: 900,
                         fontSize: "0.75rem",
                         display: "flex",

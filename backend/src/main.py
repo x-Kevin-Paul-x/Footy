@@ -9,6 +9,12 @@ for p in [str(PROJECT_ROOT), str(BACKEND_SRC)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
+if sys.platform == "win32":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 from models.league import League
 import json
 import random
@@ -124,7 +130,7 @@ def create_premier_league():
                         if player.squad_role == "YOUTH":
                             team.youth_academy.append(player)
                         else:
-                            team.add_player(player)
+                            team.add_player(player, force=True)
 
             # If squad is empty, generate squad
             if not team.players:
@@ -132,7 +138,7 @@ def create_premier_league():
                     gk = FootballPlayer.create_player(position="GK")
                     gk.squad_role = "STARTER" if i == 0 else "BENCH"
                     gk.save_to_database(team.team_id)
-                    team.add_player(gk)
+                    team.add_player(gk, force=True)
 
                 positions_needed = {
                     "CB": 4, "LB": 2, "RB": 2,
@@ -150,7 +156,7 @@ def create_premier_league():
                         else:
                             player.squad_role = "RESERVE"
                         player.save_to_database(team.team_id)
-                        team.add_player(player)
+                        team.add_player(player, force=True)
                         players_created += 1
 
                 youth_count = random.randint(3, 6)
@@ -188,7 +194,7 @@ def create_premier_league():
             gk = FootballPlayer.create_player(position="GK")
             gk.squad_role = "STARTER" if i == 0 else "BENCH"
             gk.save_to_database(team.team_id)
-            team.add_player(gk)
+            team.add_player(gk, force=True)
             goalkeepers.append(gk)
         
         # Create balanced outfield squad with realistic roles
@@ -213,7 +219,7 @@ def create_premier_league():
                 
                 # Save player to database
                 player.save_to_database(team.team_id)
-                team.add_player(player)
+                team.add_player(player, force=True)
                 players_created += 1
         
         # Generate initial youth academy players
@@ -327,22 +333,145 @@ def print_youth_prospects(teams):
         logger.info(f"{prospect['name']:<20} {prospect['team']:<15} {prospect['age']:<4} "
               f"{prospect['position']:<5} {prospect['current_rating']:<8.1f} {prospect['potential']:<9}")
 
+from database.session import get_db_session
+from database.models import Team as DBTeam, Manager as DBManager, Player as DBPlayer
+
 def sync_simulation_state_to_db(premier_league, transfer_market):
-    """Sync all teams, managers, players, youth academy players, and free agents to the SQLite database."""
+    """Fast batched sync of teams, managers, players, youth academy, and free agents to the database in a single transaction."""
     logger.info("Syncing simulation state to database...")
-    for team in premier_league.teams:
-        team.save_to_database()
-        if team.manager:
-            team.manager.save_to_database()
-        for player in team.players:
-            player.save_to_database(team.team_id)
-        for player in team.youth_academy:
-            player.save_to_database(team.team_id)
-    
-    # Save free agents with team_id = -1
-    for player in transfer_market.free_agents:
-        player.save_to_database(-1)
-    logger.info("Database sync complete.")
+    try:
+        with get_db_session() as db:
+            existing_teams = {t.name: t for t in db.query(DBTeam).all()}
+            existing_managers = {m.name: m for m in db.query(DBManager).all()}
+            existing_players = {p.name: p for p in db.query(DBPlayer).all()}
+
+            for team in premier_league.teams:
+                # 1. Team sync
+                db_team = existing_teams.get(team.name)
+                if db_team:
+                    db_team.budget = team.budget
+                    db_team.wage_budget = team.wage_budget
+                    db_team.transfer_budget = team.transfer_budget
+                    db_team.weekly_budget = team.weekly_budget
+                    team.team_id = db_team.team_id
+                else:
+                    db_team = DBTeam(
+                        name=team.name,
+                        budget=team.budget,
+                        weekly_budget=team.weekly_budget,
+                        transfer_budget=team.transfer_budget,
+                        wage_budget=team.wage_budget,
+                    )
+                    db.add(db_team)
+                    db.flush()
+                    team.team_id = db_team.team_id
+                    existing_teams[team.name] = db_team
+
+                # 2. Manager sync
+                if team.manager:
+                    db_mgr = existing_managers.get(team.manager.name)
+                    if db_mgr:
+                        db_mgr.team_id = team.team_id
+                        db_mgr.formation = team.manager.formation
+                        db_mgr.matches_played = getattr(team.manager, "matches_played", 0)
+                        db_mgr.wins = getattr(team.manager, "wins", 0)
+                        db_mgr.draws = getattr(team.manager, "draws", 0)
+                        db_mgr.losses = getattr(team.manager, "losses", 0)
+                        db_mgr.total_rewards = getattr(team.manager, "total_rewards", 0.0)
+                        team.manager.manager_id = db_mgr.manager_id
+                    else:
+                        db_mgr = DBManager(
+                            name=team.manager.name,
+                            experience_level=getattr(team.manager, "experience_level", 5),
+                            team_id=team.team_id,
+                            formation=team.manager.formation,
+                            matches_played=getattr(team.manager, "matches_played", 0),
+                            wins=getattr(team.manager, "wins", 0),
+                            draws=getattr(team.manager, "draws", 0),
+                            losses=getattr(team.manager, "losses", 0),
+                            total_rewards=getattr(team.manager, "total_rewards", 0.0),
+                        )
+                        db.add(db_mgr)
+                        db.flush()
+                        team.manager.manager_id = db_mgr.manager_id
+                        existing_managers[team.manager.name] = db_mgr
+                    db_team.manager_id = db_mgr.manager_id
+
+                # 3. Squad Players sync
+                for player in team.players:
+                    db_p = existing_players.get(player.name)
+                    if db_p:
+                        db_p.team_id = team.team_id
+                        db_p.age = player.age
+                        db_p.position = player.position
+                        db_p.potential = player.potential
+                        db_p.wage = player.wage
+                        db_p.contract_length = player.contract_length
+                        db_p.squad_role = player.squad_role
+                        player.player_id = db_p.player_id
+                    else:
+                        db_p = DBPlayer(
+                            name=player.name,
+                            age=player.age,
+                            position=player.position,
+                            team_id=team.team_id,
+                            potential=player.potential,
+                            wage=player.wage,
+                            contract_length=player.contract_length,
+                            squad_role=player.squad_role,
+                        )
+                        db.add(db_p)
+                        db.flush()
+                        player.player_id = db_p.player_id
+                        existing_players[player.name] = db_p
+
+                # 4. Youth Academy sync
+                for player in team.youth_academy:
+                    db_p = existing_players.get(player.name)
+                    if db_p:
+                        db_p.team_id = team.team_id
+                        db_p.squad_role = "YOUTH"
+                        player.player_id = db_p.player_id
+                    else:
+                        db_p = DBPlayer(
+                            name=player.name,
+                            age=player.age,
+                            position=player.position,
+                            team_id=team.team_id,
+                            potential=player.potential,
+                            wage=player.wage,
+                            contract_length=player.contract_length,
+                            squad_role="YOUTH",
+                        )
+                        db.add(db_p)
+                        db.flush()
+                        player.player_id = db_p.player_id
+                        existing_players[player.name] = db_p
+
+            # 5. Free Agents sync
+            for player in transfer_market.free_agents:
+                db_p = existing_players.get(player.name)
+                if db_p:
+                    db_p.team_id = None
+                    player.player_id = db_p.player_id
+                else:
+                    db_p = DBPlayer(
+                        name=player.name,
+                        age=player.age,
+                        position=player.position,
+                        team_id=None,
+                        potential=player.potential,
+                        wage=player.wage,
+                        contract_length=player.contract_length,
+                        squad_role="RESERVE",
+                    )
+                    db.add(db_p)
+                    db.flush()
+                    player.player_id = db_p.player_id
+                    existing_players[player.name] = db_p
+        logger.info("Database sync complete.")
+    except Exception as e:
+        logger.warning(f"Error during batched database sync: {e}")
 
 def simulate_season_with_transfers(premier_league, transfer_market):
     """Simulate a season with active transfer market"""

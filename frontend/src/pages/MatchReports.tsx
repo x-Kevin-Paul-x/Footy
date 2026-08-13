@@ -179,7 +179,7 @@ const MatchReports: React.FC = () => {
 
           {/* Season Selector Pills */}
           <Box sx={{ display: "flex", alignItems: "center", gap: 1.2, overflowX: "auto", py: 0.5 }}>
-            <Typography variant="caption" sx={{ fontWeight: 800, color: "#01204E", textTransform: "uppercase", letterSpacing: 0.8 }}>
+            <Typography variant="caption" sx={{ fontWeight: 800, color: "text.primary", textTransform: "uppercase", letterSpacing: 0.8 }}>
               Season:
             </Typography>
             {availableSeasons.slice(0, 8).map((seasonYr) => {
@@ -191,16 +191,23 @@ const MatchReports: React.FC = () => {
                   onClick={() => selectSeason(seasonYr)}
                   clickable
                   sx={{
-                    bgcolor: isSelected ? "#FAA968" : "#F6DCAC",
-                    color: "#01204E",
+                    bgcolor: isSelected
+                      ? (theme.palette.mode === 'dark' ? '#F85525' : '#FAA968')
+                      : (theme.palette.mode === 'dark' ? '#132B4F' : '#F6DCAC'),
+                    color: isSelected
+                      ? '#ffffff'
+                      : (theme.palette.mode === 'dark' ? '#8FE3EC' : '#01204E'),
                     fontWeight: isSelected ? 800 : 700,
                     fontSize: "0.8rem",
                     borderRadius: 9999,
-                    border: "1px solid rgba(1, 32, 78, 0.18)",
-                    boxShadow: isSelected ? "0 4px 12px rgba(1, 32, 78, 0.1)" : "0 2px 6px rgba(1, 32, 78, 0.04)",
+                    border: "1px solid",
+                    borderColor: isSelected
+                      ? (theme.palette.mode === 'dark' ? '#F85525' : 'rgba(1, 32, 78, 0.25)')
+                      : "divider",
+                    boxShadow: isSelected ? "0 4px 12px rgba(0, 0, 0, 0.2)" : "0 2px 6px rgba(0, 0, 0, 0.04)",
                     transition: "all 0.2s ease-in-out",
                     "&:hover": {
-                      bgcolor: isSelected ? "#f79a52" : "#f5d399",
+                      bgcolor: isSelected ? (theme.palette.mode === 'dark' ? '#ff6f43' : '#f79a52') : 'action.hover',
                       transform: "scale(1.04)"
                     }
                   }}
@@ -349,16 +356,23 @@ const MatchReports: React.FC = () => {
                 onClick={() => setOutcomeFilter(item.id as any)}
                 clickable
                 sx={{
-                  bgcolor: isSelected ? "#FAA968" : "#F6DCAC",
-                  color: "#01204E",
+                  bgcolor: isSelected
+                    ? (theme.palette.mode === 'dark' ? '#F85525' : '#FAA968')
+                    : (theme.palette.mode === 'dark' ? '#132B4F' : '#F6DCAC'),
+                  color: isSelected
+                    ? '#ffffff'
+                    : (theme.palette.mode === 'dark' ? '#8FE3EC' : '#01204E'),
                   fontWeight: isSelected ? 800 : 700,
                   fontSize: "0.8rem",
                   borderRadius: 9999,
-                  border: "1px solid rgba(1, 32, 78, 0.18)",
-                  boxShadow: isSelected ? "0 4px 12px rgba(1, 32, 78, 0.1)" : "0 2px 6px rgba(1, 32, 78, 0.04)",
+                  border: "1px solid",
+                  borderColor: isSelected
+                    ? (theme.palette.mode === 'dark' ? '#F85525' : 'rgba(1, 32, 78, 0.25)')
+                    : "divider",
+                  boxShadow: isSelected ? "0 4px 12px rgba(0, 0, 0, 0.2)" : "0 2px 6px rgba(0, 0, 0, 0.04)",
                   transition: "all 0.2s ease-in-out",
                   "&:hover": {
-                    bgcolor: isSelected ? "#f79a52" : "#f5d399",
+                    bgcolor: isSelected ? (theme.palette.mode === 'dark' ? '#ff6f43' : '#f79a52') : 'action.hover',
                     transform: "scale(1.04)"
                   }
                 }}
@@ -528,9 +542,10 @@ const MatchReports: React.FC = () => {
                           px: 2.8,
                           py: 0.8,
                           borderRadius: 9999,
-                          bgcolor: "#01204E",
-                          border: "1px solid rgba(255, 255, 255, 0.15)",
-                          boxShadow: "0 4px 14px rgba(1, 32, 78, 0.3)",
+                          bgcolor: theme.palette.mode === "dark" ? "#132B4F" : "#01204E",
+                          border: "1px solid",
+                          borderColor: theme.palette.mode === "dark" ? "rgba(2, 131, 145, 0.3)" : "rgba(255, 255, 255, 0.15)",
+                          boxShadow: theme.palette.mode === "dark" ? "0 4px 14px rgba(0, 0, 0, 0.5)" : "0 4px 14px rgba(1, 32, 78, 0.3)",
                           minWidth: 95
                         }}
                       >

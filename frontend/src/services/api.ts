@@ -444,6 +444,8 @@ export interface MlReport {
   report_type: string;
   config: Record<string, unknown>;
   runtime?: {
+    elapsed_seconds?: number;
+    episodes_per_policy?: number;
     warnings?: Record<string, string>;
     packages?: Record<string, string>;
   };
@@ -458,6 +460,13 @@ export interface MlReportsResponse {
   reports: MlReportListItem[];
 }
 
+export interface MlModelItem {
+  name: string;
+  path: string;
+  size_bytes: number;
+  modified_at: string;
+}
+
 export const getMlReports = async (): Promise<MlReportListItem[]> => {
   const response = await apiClient.get<MlReportsResponse>('/ml-reports');
   return response.data.reports;
@@ -465,6 +474,32 @@ export const getMlReports = async (): Promise<MlReportListItem[]> => {
 
 export const getMlReport = async (reportName: string): Promise<MlReport> => {
   const response = await apiClient.get<MlReport>(`/ml-reports/${encodeURIComponent(reportName)}`);
+  return response.data;
+};
+
+export const getMlModels = async (): Promise<MlModelItem[]> => {
+  const response = await apiClient.get<{ models: MlModelItem[] }>('/ml-models');
+  return response.data.models;
+};
+
+export const runMlEvaluation = async (params: {
+  models: string[];
+  episodes?: number;
+  teams?: number;
+  season_length?: number;
+  fast_mode?: boolean;
+}): Promise<MlReport> => {
+  const response = await apiClient.post<{ status: string; report: MlReport }>('/run-ml-eval', params);
+  return response.data.report;
+};
+
+export const createSaveState = async (): Promise<{ status: string; save_id: string; message: string }> => {
+  const response = await apiClient.post<{ status: string; save_id: string; message: string }>('/saves');
+  return response.data;
+};
+
+export const listSaveStates = async (): Promise<Array<{ save_id: string; timestamp: string; size_bytes: number }>> => {
+  const response = await apiClient.get('/saves');
   return response.data;
 };
 

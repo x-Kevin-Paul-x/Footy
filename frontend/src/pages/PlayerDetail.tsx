@@ -11,6 +11,7 @@ import {
   Chip,
   Tabs,
   Tab,
+  useTheme,
 } from "@mui/material";
 import { useSimulationStore } from "../store/simulationStore";
 import type { Player } from "../services/api";
@@ -25,12 +26,13 @@ import {
 
 // Icons
 import SportsSoccerIcon from "@mui/icons-material/SportsSoccer";
-import AssistIcon from "@mui/icons-material/Moving";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PersonIcon from "@mui/icons-material/Person";
 import LocalHospitalIcon from "@mui/icons-material/LocalHospital";
-import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import PsychologyIcon from "@mui/icons-material/Psychology";
 import FlashOnIcon from "@mui/icons-material/FlashOn";
+import ShieldIcon from "@mui/icons-material/Shield";
+import WorkspacePremiumIcon from "@mui/icons-material/WorkspacePremium";
 
 // Club Palette Map for realistic team avatars
 const CLUB_PALETTES: { [key: string]: { code: string; bg: string } } = {
@@ -67,12 +69,12 @@ function getClubMeta(teamName: string) {
 }
 
 // FM Rating Badge Style Helper
-const getFMRatingBadge = (value: number) => {
+const getFMRatingBadge = (value: number, isDark = false) => {
   const val = Math.round(value);
   if (val >= 75) return { bg: "#10b981", color: "#ffffff" }; // Excellent (Green)
-  if (val >= 60) return { bg: "#FAA968", color: "#01204E" }; // Good (Warm Gold)
+  if (val >= 60) return { bg: isDark ? "#F85525" : "#FAA968", color: isDark ? "#ffffff" : "#01204E" }; // Good
   if (val >= 45) return { bg: "#028391", color: "#ffffff" }; // Average (Teal)
-  return { bg: "rgba(1, 32, 78, 0.12)", color: "#01204E" }; // Low (Slate)
+  return { bg: isDark ? "rgba(143, 227, 236, 0.15)" : "rgba(1, 32, 78, 0.12)", color: isDark ? "#8FE3EC" : "#01204E" }; // Low
 };
 
 // Deterministic generator for full FM attribute profiles
@@ -110,13 +112,27 @@ function getFMAttrValue(player: Player, attrKey: string, rawAttrs: { [key: strin
   return Math.min(99, Math.max(18, Math.round(base + variance)));
 }
 
+const getOverallRating = (attributes: Player["attributes"]): number => {
+  if (!attributes) return 0;
+  let total = 0;
+  let count = 0;
+  for (const attrType in attributes) {
+    if (attributes[attrType]) {
+      for (const subAttr in attributes[attrType]) {
+        total += attributes[attrType][subAttr] || 0;
+        count += 1;
+      }
+    }
+  }
+  return count > 0 ? Math.round(total / count) : 0;
+};
+
 const PlayerDetail: React.FC = () => {
   const { playerName } = useParams<{ playerName: string }>();
-  const { selectedSeason, currentReport, isLoading, error, fetchAvailableSeasons } = useSimulationStore();
-
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+  const { currentReport, isLoading, error, selectedSeason, fetchAvailableSeasons } = useSimulationStore();
   const [player, setPlayer] = useState<Player | null>(null);
-  const [localLoading, setLocalLoading] = useState(true);
-  const [localError, setLocalError] = useState<string | null>(null);
   const [tab, setTab] = useState(0);
 
   useEffect(() => {
@@ -127,42 +143,31 @@ const PlayerDetail: React.FC = () => {
 
   useEffect(() => {
     if (currentReport && playerName) {
-      setLocalLoading(true);
-      setLocalError(null);
-      let foundPlayer: Player | null = null;
-      for (const teamDetail of currentReport.all_teams_details) {
-        foundPlayer = teamDetail.players.find((p) => p.name === playerName) || null;
-        if (foundPlayer) break;
+      const decodedName = decodeURIComponent(playerName).toLowerCase();
+      let found: Player | null = null;
+      for (const team of currentReport.all_teams_details) {
+        const p = team.players.find((pl) => pl.name.toLowerCase() === decodedName);
+        if (p) {
+          found = p;
+          break;
+        }
       }
-
-      if (foundPlayer) {
-        setPlayer(foundPlayer);
-      } else {
-        setLocalError(`Player "${playerName}" not found for season ${selectedSeason}.`);
-      }
-      setLocalLoading(false);
-    } else if (!currentReport && !isLoading && !error && selectedSeason) {
-      setLocalLoading(true);
+      setPlayer(found);
     }
-  }, [currentReport, playerName, selectedSeason, isLoading, error]);
+  }, [currentReport, playerName]);
 
-  if (isLoading || localLoading) {
+  if (isLoading) {
     return (
-      <Box sx={{ p: 4, textAlign: "center" }}>
-        <CircularProgress size={44} sx={{ color: "#01204E" }} />
-        <Typography sx={{ mt: 2, fontWeight: 600, color: "#028391" }}>
-          Loading player details...
-        </Typography>
+      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "50vh" }}>
+        <CircularProgress size={44} color="primary" />
       </Box>
     );
   }
 
-  if (error || localError) {
+  if (error) {
     return (
       <Box sx={{ p: 3 }}>
-        <Alert severity="error" sx={{ bgcolor: "rgba(244, 63, 94, 0.1)", color: "#f43f5e", border: "1px solid rgba(244, 63, 94, 0.2)" }}>
-          {error || localError}
-        </Alert>
+        <Alert severity="error">{error}</Alert>
       </Box>
     );
   }
@@ -170,96 +175,130 @@ const PlayerDetail: React.FC = () => {
   if (!player) {
     return (
       <Box sx={{ p: 4, textAlign: "center" }}>
-        <Typography variant="h6" sx={{ fontWeight: 800, color: "#01204E" }}>
-          No player data available.
+        <Typography variant="h6" sx={{ fontWeight: 800, color: "text.primary" }}>
+          Player Not Found
         </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 3 }}>
+          Could not find player details for "{playerName}".
+        </Typography>
+        <Chip
+          component={Link}
+          to="/player-profiles"
+          icon={<ArrowBackIcon sx={{ color: "inherit !important", fontSize: 14 }} />}
+          label="Back to Player Database"
+          clickable
+          sx={{ bgcolor: "var(--btn-main)", color: "#ffffff", fontWeight: 800 }}
+        />
       </Box>
     );
   }
-
-  const getOverallRating = (attributes: Player["attributes"]) => {
-    if (!attributes) return 70;
-    const totalSum = Object.values(attributes).reduce(
-      (sum, category: Record<string, number>) =>
-        sum + Object.values(category || {}).reduce((catSum, val) => catSum + val, 0),
-      0
-    );
-    const totalCount = Object.values(attributes).reduce(
-      (count, category: Record<string, number>) => count + Object.keys(category || {}).length,
-      0
-    );
-    return totalCount > 0 ? Math.round(totalSum / totalCount) : 70;
-  };
 
   const overall = getOverallRating(player.attributes);
   const clubMeta = getClubMeta(player.team);
 
   // Flatten raw attributes
-  const rawFlattenedAttrs: { [key: string]: number } = {};
-  Object.values(player.attributes || {}).forEach((cat) => {
-    if (cat && typeof cat === "object") {
-      Object.entries(cat).forEach(([k, v]) => {
-        rawFlattenedAttrs[k] = Math.round(v);
-      });
+  const rawAttrs: { [key: string]: number } = {};
+  if (player.attributes) {
+    for (const cat in player.attributes) {
+      if (player.attributes[cat]) {
+        for (const k in player.attributes[cat]) {
+          rawAttrs[k.toLowerCase()] = player.attributes[cat][k];
+        }
+      }
     }
-  });
+  }
 
-  // FM Full 12-Item Attribute Collections
-  const technicalKeys = ["finishing", "passing", "dribbling", "crossing", "tackling", "heading", "first_touch", "long_shots", "ball_control", "technique", "free_kicks", "penalties"];
-  const mentalKeys = ["vision", "positioning", "work_rate", "composure", "decisions", "aggression", "anticipation", "bravery", "concentration", "determination", "flair", "leadership"];
-  const physicalGkKeys = ["pace", "acceleration", "agility", "balance", "stamina", "strength", "jumping_reach", "natural_fitness", "reflexes", "diving", "handling", "kicking"];
-
-  const buildAttrList = (keyList: string[]) => {
-    return keyList.map((k) => ({
-      key: k,
-      name: k.replace(/_/g, " "),
-      val: getFMAttrValue(player, k, rawFlattenedAttrs, overall)
-    }));
-  };
-
-  const technicalAttrs = buildAttrList(technicalKeys);
-  const mentalAttrs = buildAttrList(mentalKeys);
-  const physicalGkAttrs = buildAttrList(physicalGkKeys);
-
-  // Radar Chart Data (averaged categories)
-  const radarData = [
-    { category: "Defending", value: Math.round((getFMAttrValue(player, "tackling", rawFlattenedAttrs, overall) + getFMAttrValue(player, "marking", rawFlattenedAttrs, overall)) / 2) },
-    { category: "Dribbling", value: Math.round((getFMAttrValue(player, "dribbling", rawFlattenedAttrs, overall) + getFMAttrValue(player, "ball_control", rawFlattenedAttrs, overall)) / 2) },
-    { category: "Goalkeeping", value: Math.round((getFMAttrValue(player, "diving", rawFlattenedAttrs, overall) + getFMAttrValue(player, "handling", rawFlattenedAttrs, overall)) / 2) },
-    { category: "Pace", value: Math.round((getFMAttrValue(player, "pace", rawFlattenedAttrs, overall) + getFMAttrValue(player, "acceleration", rawFlattenedAttrs, overall)) / 2) },
-    { category: "Passing", value: Math.round((getFMAttrValue(player, "passing", rawFlattenedAttrs, overall) + getFMAttrValue(player, "vision", rawFlattenedAttrs, overall)) / 2) },
-    { category: "Physical", value: Math.round((getFMAttrValue(player, "stamina", rawFlattenedAttrs, overall) + getFMAttrValue(player, "strength", rawFlattenedAttrs, overall)) / 2) },
-    { category: "Shooting", value: Math.round((getFMAttrValue(player, "finishing", rawFlattenedAttrs, overall) + getFMAttrValue(player, "long_shots", rawFlattenedAttrs, overall)) / 2) },
+  // Define FM Attributes
+  const technicalAttrs = [
+    { key: "corners", name: "Corners", val: getFMAttrValue(player, "corners", rawAttrs, overall) },
+    { key: "crossing", name: "Crossing", val: getFMAttrValue(player, "crossing", rawAttrs, overall) },
+    { key: "dribbling", name: "Dribbling", val: getFMAttrValue(player, "dribbling", rawAttrs, overall) },
+    { key: "finishing", name: "Finishing", val: getFMAttrValue(player, "finishing", rawAttrs, overall) },
+    { key: "first_touch", name: "First Touch", val: getFMAttrValue(player, "first_touch", rawAttrs, overall) },
+    { key: "free_kicks", name: "Free Kicks", val: getFMAttrValue(player, "free_kicks", rawAttrs, overall) },
+    { key: "heading", name: "Heading", val: getFMAttrValue(player, "heading", rawAttrs, overall) },
+    { key: "long_shots", name: "Long Shots", val: getFMAttrValue(player, "long_shots", rawAttrs, overall) },
+    { key: "marking", name: "Marking", val: getFMAttrValue(player, "marking", rawAttrs, overall) },
+    { key: "passing", name: "Passing", val: getFMAttrValue(player, "passing", rawAttrs, overall) },
+    { key: "penalties", name: "Penalties", val: getFMAttrValue(player, "penalties", rawAttrs, overall) },
+    { key: "tackling", name: "Tackling", val: getFMAttrValue(player, "tackling", rawAttrs, overall) },
+    { key: "technique", name: "Technique", val: getFMAttrValue(player, "technique", rawAttrs, overall) },
   ];
 
+  const mentalAttrs = [
+    { key: "aggression", name: "Aggression", val: getFMAttrValue(player, "aggression", rawAttrs, overall) },
+    { key: "anticipation", name: "Anticipation", val: getFMAttrValue(player, "anticipation", rawAttrs, overall) },
+    { key: "bravery", name: "Bravery", val: getFMAttrValue(player, "bravery", rawAttrs, overall) },
+    { key: "composure", name: "Composure", val: getFMAttrValue(player, "composure", rawAttrs, overall) },
+    { key: "concentration", name: "Concentration", val: getFMAttrValue(player, "concentration", rawAttrs, overall) },
+    { key: "decisions", name: "Decisions", val: getFMAttrValue(player, "decisions", rawAttrs, overall) },
+    { key: "determination", name: "Determination", val: getFMAttrValue(player, "determination", rawAttrs, overall) },
+    { key: "flair", name: "Flair", val: getFMAttrValue(player, "flair", rawAttrs, overall) },
+    { key: "leadership", name: "Leadership", val: getFMAttrValue(player, "leadership", rawAttrs, overall) },
+    { key: "off_the_ball", name: "Off The Ball", val: getFMAttrValue(player, "off_the_ball", rawAttrs, overall) },
+    { key: "positioning", name: "Positioning", val: getFMAttrValue(player, "positioning", rawAttrs, overall) },
+    { key: "teamwork", name: "Teamwork", val: getFMAttrValue(player, "teamwork", rawAttrs, overall) },
+    { key: "vision", name: "Vision", val: getFMAttrValue(player, "vision", rawAttrs, overall) },
+    { key: "work_rate", name: "Work Rate", val: getFMAttrValue(player, "work_rate", rawAttrs, overall) },
+  ];
+
+  const physicalGkAttrs = [
+    { key: "acceleration", name: "Acceleration", val: getFMAttrValue(player, "acceleration", rawAttrs, overall) },
+    { key: "agility", name: "Agility", val: getFMAttrValue(player, "agility", rawAttrs, overall) },
+    { key: "balance", name: "Balance", val: getFMAttrValue(player, "balance", rawAttrs, overall) },
+    { key: "jumping_reach", name: "Jumping Reach", val: getFMAttrValue(player, "jumping_reach", rawAttrs, overall) },
+    { key: "natural_fitness", name: "Natural Fitness", val: getFMAttrValue(player, "natural_fitness", rawAttrs, overall) },
+    { key: "pace", name: "Pace", val: getFMAttrValue(player, "pace", rawAttrs, overall) },
+    { key: "stamina", name: "Stamina", val: getFMAttrValue(player, "stamina", rawAttrs, overall) },
+    { key: "strength", name: "Strength", val: getFMAttrValue(player, "strength", rawAttrs, overall) },
+    { key: "reflexes", name: "GK Reflexes", val: getFMAttrValue(player, "reflexes", rawAttrs, overall) },
+    { key: "handling", name: "GK Handling", val: getFMAttrValue(player, "handling", rawAttrs, overall) },
+    { key: "kicking", name: "GK Kicking", val: getFMAttrValue(player, "kicking", rawAttrs, overall) },
+    { key: "one_on_ones", name: "GK 1-on-1s", val: getFMAttrValue(player, "one_on_ones", rawAttrs, overall) },
+  ];
+
+  // Top Stat Cards
   const statCards = [
-    { label: "Goals", value: player.stats?.goals || 0, icon: <SportsSoccerIcon />, color: "#01204E" },
-    { label: "Assists", value: player.stats?.assists || 0, icon: <AssistIcon />, color: "#028391" },
-    { label: "Appearances", value: player.stats?.appearances || 0, icon: <PersonIcon />, color: "#01204E" },
-    { label: "Fitness", value: `${player.stats?.fitness || 100}%`, icon: <FitnessCenterIcon />, color: "#FAA968" },
+    { label: "Goals", value: player.stats?.goals || 0, icon: <SportsSoccerIcon />, color: "primary.main" },
+    { label: "Assists", value: player.stats?.assists || 0, icon: <WorkspacePremiumIcon />, color: "#028391" },
+    { label: "Appearances", value: player.stats?.appearances || 0, icon: <PersonIcon />, color: "primary.main" },
+    { label: "Clean Sheets", value: player.stats?.clean_sheets || 0, icon: <ShieldIcon />, color: "#10b981" },
+  ];
+
+  // Pentagon Radar Data
+  const radarData = [
+    { category: "Attacking", value: Math.round((technicalAttrs[3].val + technicalAttrs[2].val + technicalAttrs[7].val) / 3) },
+    { category: "Technical", value: Math.round((technicalAttrs[9].val + technicalAttrs[4].val + technicalAttrs[12].val) / 3) },
+    { category: "Tactical", value: Math.round((mentalAttrs[1].val + mentalAttrs[5].val + mentalAttrs[10].val) / 3) },
+    { category: "Physical", value: Math.round((physicalGkAttrs[0].val + physicalGkAttrs[5].val + physicalGkAttrs[6].val + physicalGkAttrs[7].val) / 4) },
+    { category: "Defending", value: Math.round((technicalAttrs[8].val + technicalAttrs[11].val + mentalAttrs[10].val) / 3) },
   ];
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 3.5, pb: 6 }}>
 
-      {/* 1. HERO TITLE HEADER & BACK BUTTON */}
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 2 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <Chip
-            component={Link}
-            to="/player-profiles"
-            label="← Back to Player Profiles"
-            clickable
-            sx={{
-              bgcolor: "#F6DCAC",
-              color: "#01204E",
-              fontWeight: 800,
-              borderRadius: 9999,
-              border: "1px solid rgba(1, 32, 78, 0.15)",
-              "&:hover": { bgcolor: "#FAA968" }
-            }}
-          />
-        </Box>
+      {/* 1. TOP BREADCRUMB NAVIGATION */}
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+        <Chip
+          component={Link}
+          to="/player-profiles"
+          icon={<ArrowBackIcon sx={{ color: "inherit !important", fontSize: 14 }} />}
+          label="All Players"
+          clickable
+          sx={{
+            bgcolor: "var(--bg-pill)",
+            color: "text.primary",
+            fontWeight: 800,
+            fontSize: "0.78rem",
+            borderRadius: 9999,
+            border: "1px solid",
+            borderColor: "divider",
+            "&:hover": { bgcolor: "action.hover" }
+          }}
+        />
+        <Typography variant="body2" sx={{ fontWeight: 700, color: "text.secondary" }}>
+          / {player.team} / <span style={{ color: isDark ? "#F8EBD5" : "#01204E" }}>{player.name}</span>
+        </Typography>
       </Box>
 
       {/* 2. MAIN HERO PLAYER BANNER CARD */}
@@ -267,9 +306,6 @@ const PlayerDetail: React.FC = () => {
         className="finnova-card"
         sx={{
           borderRadius: "24px",
-          bgcolor: "#F6DCAC",
-          border: "1.5px solid rgba(250, 169, 104, 0.45)",
-          boxShadow: "0 12px 32px rgba(1, 32, 78, 0.08), 0 2px 8px rgba(250, 169, 104, 0.3)",
           overflow: "hidden",
           p: { xs: 2.5, md: 3.5 }
         }}
@@ -285,22 +321,22 @@ const PlayerDetail: React.FC = () => {
                 color: "#ffffff",
                 fontWeight: 900,
                 fontSize: "1.8rem",
-                boxShadow: "0 8px 24px rgba(1, 32, 78, 0.2)",
-                border: "2.5px solid rgba(255, 255, 255, 0.6)"
+                boxShadow: "0 8px 24px rgba(0, 0, 0, 0.3)",
+                border: "2.5px solid rgba(255, 255, 255, 0.4)"
               }}
             >
               {clubMeta.code}
             </Avatar>
 
             <Box>
-              <Typography variant="h3" sx={{ fontWeight: 900, fontFamily: "Outfit, sans-serif", color: "#01204E", letterSpacing: "-0.03em" }}>
+              <Typography variant="h3" sx={{ fontWeight: 900, fontFamily: "Outfit, sans-serif", color: "text.primary", letterSpacing: "-0.03em" }}>
                 {player.name}
               </Typography>
 
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap", mt: 1, mb: 2 }}>
-                <Chip label={player.position} sx={{ bgcolor: "#FAA968", color: "#01204E", fontWeight: 800, borderRadius: 9999, height: 26 }} />
-                <Chip component={Link} to={`/team-details/${player.team}`} label={player.team} clickable sx={{ bgcolor: "#ffffff", color: "#01204E", fontWeight: 700, borderRadius: 9999, height: 26, border: "1px solid rgba(1, 32, 78, 0.15)" }} />
-                <Chip label={`${player.age} years`} sx={{ bgcolor: "#fde8c5", color: "#01204E", fontWeight: 700, borderRadius: 9999, height: 26 }} />
+                <Chip label={player.position} sx={{ bgcolor: isDark ? "#F85525" : "#FAA968", color: "#ffffff", fontWeight: 800, borderRadius: 9999, height: 26 }} />
+                <Chip component={Link} to={`/team-details/${player.team}`} label={player.team} clickable sx={{ bgcolor: "var(--bg-pill)", color: "text.primary", fontWeight: 700, borderRadius: 9999, height: 26, border: "1px solid", borderColor: "divider" }} />
+                <Chip label={`${player.age} years`} sx={{ bgcolor: "var(--bg-subcard)", color: "text.primary", fontWeight: 700, borderRadius: 9999, height: 26, border: "1px solid", borderColor: "divider" }} />
                 <Chip label={player.squad_role} sx={{ bgcolor: "#028391", color: "#ffffff", fontWeight: 700, borderRadius: 9999, height: 26 }} />
                 {player.is_injured && (
                   <Chip icon={<LocalHospitalIcon sx={{ color: "#ffffff !important", fontSize: 14 }} />} label={`Injured (${player.recovery_time}d)`} sx={{ bgcolor: "#f43f5e", color: "#ffffff", fontWeight: 800, borderRadius: 9999, height: 26 }} />
@@ -310,20 +346,20 @@ const PlayerDetail: React.FC = () => {
               {/* Value, Wage & Contract */}
               <Box sx={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                 <Box>
-                  <Typography variant="caption" sx={{ fontWeight: 700, color: "#028391", textTransform: "uppercase" }}>Market Value</Typography>
-                  <Typography variant="h5" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif" }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary", textTransform: "uppercase" }}>Market Value</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 900, color: "text.primary", fontFamily: "Outfit, sans-serif" }}>
                     £{((player?.market_value ?? 0) / 1e6).toFixed(1)}M
                   </Typography>
                 </Box>
                 <Box>
-                  <Typography variant="caption" sx={{ fontWeight: 700, color: "#028391", textTransform: "uppercase" }}>Weekly Wage</Typography>
-                  <Typography variant="h5" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif" }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary", textTransform: "uppercase" }}>Weekly Wage</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 900, color: "text.primary", fontFamily: "Outfit, sans-serif" }}>
                     £{player.wage ? player.wage.toLocaleString() : "45,000"}
                   </Typography>
                 </Box>
                 <Box>
-                  <Typography variant="caption" sx={{ fontWeight: 700, color: "#028391", textTransform: "uppercase" }}>Contract</Typography>
-                  <Typography variant="h5" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif" }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary", textTransform: "uppercase" }}>Contract</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 900, color: "text.primary", fontFamily: "Outfit, sans-serif" }}>
                     {player.contract_length ?? 3} years
                   </Typography>
                 </Box>
@@ -337,18 +373,18 @@ const PlayerDetail: React.FC = () => {
               width: 90,
               height: 90,
               borderRadius: "50%",
-              bgcolor: "#01204E",
+              bgcolor: isDark ? "#132B4F" : "#01204E",
               color: "#ffffff",
-              boxShadow: "0 8px 24px rgba(1, 32, 78, 0.35)",
+              boxShadow: "0 8px 24px rgba(0, 0, 0, 0.35)",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
-              border: "3px solid #FAA968",
+              border: isDark ? "3px solid #F85525" : "3px solid #FAA968",
               flexShrink: 0
             }}
           >
-            <Typography variant="h4" sx={{ fontWeight: 900, fontFamily: "Outfit, sans-serif", lineHeight: 1, color: "#FAA968" }}>
+            <Typography variant="h4" sx={{ fontWeight: 900, fontFamily: "Outfit, sans-serif", lineHeight: 1, color: isDark ? "#F85525" : "#FAA968" }}>
               {overall}
             </Typography>
             <Typography variant="caption" sx={{ fontWeight: 900, color: "#ffffff", fontSize: "0.7rem", letterSpacing: 1.2, mt: 0.2 }}>
@@ -361,16 +397,16 @@ const PlayerDetail: React.FC = () => {
       {/* 3. TOP 4 KPI STAT WIDGET CARDS */}
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, 1fr)", md: "repeat(4, 1fr)" }, gap: 2.5 }}>
         {statCards.map((stat) => (
-          <Card key={stat.label} className="finnova-card" sx={{ bgcolor: "#fde8c5", borderRadius: "20px", border: "1px solid rgba(250, 169, 104, 0.4)" }}>
+          <Card key={stat.label} className="finnova-card" sx={{ borderRadius: "20px" }}>
             <CardContent sx={{ p: 2.5, display: "flex", alignItems: "center", gap: 2 }}>
-              <Avatar sx={{ bgcolor: "#FAA968", color: "#01204E", width: 44, height: 44 }}>
+              <Avatar sx={{ bgcolor: isDark ? "rgba(248, 85, 37, 0.2)" : "#FAA968", color: isDark ? "#F85525" : "#01204E", width: 44, height: 44 }}>
                 {stat.icon}
               </Avatar>
               <Box>
-                <Typography variant="h4" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif" }}>
+                <Typography variant="h4" sx={{ fontWeight: 900, color: "text.primary", fontFamily: "Outfit, sans-serif" }}>
                   {stat.value}
                 </Typography>
-                <Typography variant="caption" sx={{ fontWeight: 700, color: "#028391" }}>
+                <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary" }}>
                   {stat.label}
                 </Typography>
               </Box>
@@ -384,18 +420,19 @@ const PlayerDetail: React.FC = () => {
         value={tab}
         onChange={(_, v) => setTab(v)}
         sx={{
-          bgcolor: "#F6DCAC",
+          bgcolor: "var(--bg-pill)",
           borderRadius: 9999,
           p: 0.5,
-          border: "1px solid rgba(1, 32, 78, 0.15)",
+          border: "1px solid",
+          borderColor: "divider",
           width: "fit-content",
           minHeight: 0,
           "& .MuiTabs-flexContainer": { gap: 0.5 },
-          "& .MuiTabs-indicator": { bgcolor: "#01204E", height: "100%", borderRadius: 9999, zIndex: 0 },
+          "& .MuiTabs-indicator": { bgcolor: "var(--btn-main)", height: "100%", borderRadius: 9999, zIndex: 0 },
           "& .MuiTab-root": {
             zIndex: 1,
             fontWeight: 800,
-            color: "#01204E",
+            color: "text.primary",
             fontSize: "0.85rem",
             textTransform: "none",
             borderRadius: 9999,
@@ -418,20 +455,20 @@ const PlayerDetail: React.FC = () => {
           <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 2 }}>
 
             {/* COLUMN 1: TECHNICAL */}
-            <Card className="finnova-card" sx={{ bgcolor: "#fde8c5", borderRadius: "20px", border: "1px solid rgba(250, 169, 104, 0.4)", p: 2.5, display: "flex", flexDirection: "column", justifyContent: "space-between", height: "100%" }}>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.8, pb: 0.8, borderBottom: "1.5px solid rgba(1, 32, 78, 0.12)" }}>
-                <SportsSoccerIcon sx={{ color: "#028391", fontSize: 18 }} />
-                <Typography variant="subtitle2" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase", fontSize: "0.8rem" }}>
+            <Card className="finnova-card" sx={{ borderRadius: "20px", p: 2.5, display: "flex", flexDirection: "column", justifyContent: "space-between", height: "100%" }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.8, pb: 0.8, borderBottom: "1.5px solid", borderColor: "divider" }}>
+                <SportsSoccerIcon sx={{ color: "secondary.main", fontSize: 18 }} />
+                <Typography variant="subtitle2" sx={{ fontWeight: 900, color: "text.primary", fontFamily: "Outfit, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase", fontSize: "0.8rem" }}>
                   Technical
                 </Typography>
               </Box>
 
               <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "space-between", flex: 1, gap: 1.2 }}>
                 {technicalAttrs.map((attr) => {
-                  const badge = getFMRatingBadge(attr.val);
+                  const badge = getFMRatingBadge(attr.val, isDark);
                   return (
-                    <Box key={attr.key} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 0.5, borderBottom: "1px dashed rgba(1, 32, 78, 0.07)" }}>
-                      <Typography variant="body2" sx={{ fontWeight: 700, color: "#01204E", textTransform: "capitalize", fontSize: "0.84rem" }}>
+                    <Box key={attr.key} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 0.5, borderBottom: "1px dashed", borderColor: "divider" }}>
+                      <Typography variant="body2" sx={{ fontWeight: 700, color: "text.primary", textTransform: "capitalize", fontSize: "0.84rem" }}>
                         {attr.name}
                       </Typography>
                       <Box
@@ -456,20 +493,20 @@ const PlayerDetail: React.FC = () => {
             </Card>
 
             {/* COLUMN 2: MENTAL */}
-            <Card className="finnova-card" sx={{ bgcolor: "#fde8c5", borderRadius: "20px", border: "1px solid rgba(250, 169, 104, 0.4)", p: 2.5, display: "flex", flexDirection: "column", justifyContent: "space-between", height: "100%" }}>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.8, pb: 0.8, borderBottom: "1.5px solid rgba(1, 32, 78, 0.12)" }}>
-                <PsychologyIcon sx={{ color: "#028391", fontSize: 18 }} />
-                <Typography variant="subtitle2" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase", fontSize: "0.8rem" }}>
+            <Card className="finnova-card" sx={{ borderRadius: "20px", p: 2.5, display: "flex", flexDirection: "column", justifyContent: "space-between", height: "100%" }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.8, pb: 0.8, borderBottom: "1.5px solid", borderColor: "divider" }}>
+                <PsychologyIcon sx={{ color: "secondary.main", fontSize: 18 }} />
+                <Typography variant="subtitle2" sx={{ fontWeight: 900, color: "text.primary", fontFamily: "Outfit, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase", fontSize: "0.8rem" }}>
                   Mental
                 </Typography>
               </Box>
 
               <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "space-between", flex: 1, gap: 1.2 }}>
                 {mentalAttrs.map((attr) => {
-                  const badge = getFMRatingBadge(attr.val);
+                  const badge = getFMRatingBadge(attr.val, isDark);
                   return (
-                    <Box key={attr.key} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 0.5, borderBottom: "1px dashed rgba(1, 32, 78, 0.07)" }}>
-                      <Typography variant="body2" sx={{ fontWeight: 700, color: "#01204E", textTransform: "capitalize", fontSize: "0.84rem" }}>
+                    <Box key={attr.key} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 0.5, borderBottom: "1px dashed", borderColor: "divider" }}>
+                      <Typography variant="body2" sx={{ fontWeight: 700, color: "text.primary", textTransform: "capitalize", fontSize: "0.84rem" }}>
                         {attr.name}
                       </Typography>
                       <Box
@@ -494,20 +531,20 @@ const PlayerDetail: React.FC = () => {
             </Card>
 
             {/* COLUMN 3: PHYSICAL & GK */}
-            <Card className="finnova-card" sx={{ bgcolor: "#fde8c5", borderRadius: "20px", border: "1px solid rgba(250, 169, 104, 0.4)", p: 2.5, display: "flex", flexDirection: "column", justifyContent: "space-between", height: "100%" }}>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.8, pb: 0.8, borderBottom: "1.5px solid rgba(1, 32, 78, 0.12)" }}>
-                <FlashOnIcon sx={{ color: "#028391", fontSize: 18 }} />
-                <Typography variant="subtitle2" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase", fontSize: "0.8rem" }}>
+            <Card className="finnova-card" sx={{ borderRadius: "20px", p: 2.5, display: "flex", flexDirection: "column", justifyContent: "space-between", height: "100%" }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.8, pb: 0.8, borderBottom: "1.5px solid", borderColor: "divider" }}>
+                <FlashOnIcon sx={{ color: "secondary.main", fontSize: 18 }} />
+                <Typography variant="subtitle2" sx={{ fontWeight: 900, color: "text.primary", fontFamily: "Outfit, sans-serif", letterSpacing: "0.06em", textTransform: "uppercase", fontSize: "0.8rem" }}>
                   Physical & GK
                 </Typography>
               </Box>
 
               <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "space-between", flex: 1, gap: 1.2 }}>
                 {physicalGkAttrs.map((attr) => {
-                  const badge = getFMRatingBadge(attr.val);
+                  const badge = getFMRatingBadge(attr.val, isDark);
                   return (
-                    <Box key={attr.key} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 0.5, borderBottom: "1px dashed rgba(1, 32, 78, 0.07)" }}>
-                      <Typography variant="body2" sx={{ fontWeight: 700, color: "#01204E", textTransform: "capitalize", fontSize: "0.84rem" }}>
+                    <Box key={attr.key} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 0.5, borderBottom: "1px dashed", borderColor: "divider" }}>
+                      <Typography variant="body2" sx={{ fontWeight: 700, color: "text.primary", textTransform: "capitalize", fontSize: "0.84rem" }}>
                         {attr.name}
                       </Typography>
                       <Box
@@ -537,22 +574,22 @@ const PlayerDetail: React.FC = () => {
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
 
             {/* CARD 1: Attribute Pentagon Overview */}
-            <Card className="finnova-card" sx={{ bgcolor: "#fde8c5", borderRadius: "20px", border: "1px solid rgba(250, 169, 104, 0.4)", p: 2.5 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif", mb: 1, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: "0.85rem" }}>
+            <Card className="finnova-card" sx={{ borderRadius: "20px", p: 2.5 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 900, color: "text.primary", fontFamily: "Outfit, sans-serif", mb: 1, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: "0.85rem" }}>
                 Attribute Polygon Analysis
               </Typography>
               <Box sx={{ height: 260, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <RadarChart data={radarData}>
-                    <PolarGrid stroke="rgba(1, 32, 78, 0.18)" />
-                    <PolarAngleAxis dataKey="category" tick={{ fill: "#01204E", fontSize: 11, fontWeight: 800 }} />
-                    <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: "#028391", fontSize: 10 }} />
+                    <PolarGrid stroke={isDark ? "rgba(2, 131, 145, 0.25)" : "rgba(1, 32, 78, 0.18)"} />
+                    <PolarAngleAxis dataKey="category" tick={{ fill: isDark ? "#F8EBD5" : "#01204E", fontSize: 11, fontWeight: 800 }} />
+                    <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: isDark ? "#8FE3EC" : "#028391", fontSize: 10 }} />
                     <Radar
                       name="Attributes"
                       dataKey="value"
-                      stroke="#028391"
-                      fill="#FAA968"
-                      fillOpacity={0.5}
+                      stroke={isDark ? "#F85525" : "#028391"}
+                      fill={isDark ? "#F85525" : "#FAA968"}
+                      fillOpacity={0.45}
                       strokeWidth={2.5}
                     />
                   </RadarChart>
@@ -561,27 +598,27 @@ const PlayerDetail: React.FC = () => {
             </Card>
 
             {/* CARD 2: Foot Proficiency & Playing Traits */}
-            <Card className="finnova-card" sx={{ bgcolor: "#fde8c5", borderRadius: "20px", border: "1px solid rgba(250, 169, 104, 0.4)", p: 2.5 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif", mb: 1.5, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: "0.85rem" }}>
+            <Card className="finnova-card" sx={{ borderRadius: "20px", p: 2.5 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 900, color: "text.primary", fontFamily: "Outfit, sans-serif", mb: 1.5, textTransform: "uppercase", letterSpacing: "0.05em", fontSize: "0.85rem" }}>
                 Foot Proficiency & Player Traits
               </Typography>
 
               <Box sx={{ display: "flex", gap: 1.5, mb: 2 }}>
-                <Box sx={{ flex: 1, bgcolor: "#F6DCAC", p: 1.2, borderRadius: "14px", border: "1px solid rgba(1, 32, 78, 0.12)" }}>
-                  <Typography variant="caption" sx={{ fontWeight: 700, color: "#028391" }}>Left Foot</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 800, color: "#01204E" }}>Reasonable</Typography>
+                <Box sx={{ flex: 1, bgcolor: "var(--bg-subcard)", p: 1.2, borderRadius: "14px", border: "1px solid", borderColor: "divider" }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary" }}>Left Foot</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 800, color: "text.primary" }}>Reasonable</Typography>
                 </Box>
-                <Box sx={{ flex: 1, bgcolor: "#F6DCAC", p: 1.2, borderRadius: "14px", border: "1px solid rgba(1, 32, 78, 0.12)" }}>
-                  <Typography variant="caption" sx={{ fontWeight: 700, color: "#028391" }}>Right Foot</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 800, color: "#01204E" }}>Very Strong</Typography>
+                <Box sx={{ flex: 1, bgcolor: "var(--bg-subcard)", p: 1.2, borderRadius: "14px", border: "1px solid", borderColor: "divider" }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary" }}>Right Foot</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 800, color: "text.primary" }}>Very Strong</Typography>
                 </Box>
               </Box>
 
-              <Typography variant="caption" sx={{ fontWeight: 800, color: "#028391", textTransform: "uppercase" }}>Player Traits</Typography>
+              <Typography variant="caption" sx={{ fontWeight: 800, color: "text.secondary", textTransform: "uppercase" }}>Player Traits</Typography>
               <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mt: 0.8 }}>
-                <Chip label="Dictates Tempo" size="small" sx={{ bgcolor: "#FAA968", color: "#01204E", fontWeight: 800, borderRadius: 9999, fontSize: "0.72rem" }} />
-                <Chip label="Tries Killer Balls" size="small" sx={{ bgcolor: "#F6DCAC", color: "#01204E", fontWeight: 700, borderRadius: 9999, fontSize: "0.72rem" }} />
-                <Chip label="Shoots From Distance" size="small" sx={{ bgcolor: "#F6DCAC", color: "#01204E", fontWeight: 700, borderRadius: 9999, fontSize: "0.72rem" }} />
+                <Chip label="Dictates Tempo" size="small" sx={{ bgcolor: isDark ? "rgba(248, 85, 37, 0.2)" : "#FAA968", color: isDark ? "#F8EBD5" : "#01204E", fontWeight: 800, borderRadius: 9999, fontSize: "0.72rem", border: "1px solid", borderColor: "divider" }} />
+                <Chip label="Tries Killer Balls" size="small" sx={{ bgcolor: "var(--bg-subcard)", color: "text.primary", fontWeight: 700, borderRadius: 9999, fontSize: "0.72rem", border: "1px solid", borderColor: "divider" }} />
+                <Chip label="Shoots From Distance" size="small" sx={{ bgcolor: "var(--bg-subcard)", color: "text.primary", fontWeight: 700, borderRadius: 9999, fontSize: "0.72rem", border: "1px solid", borderColor: "divider" }} />
               </Box>
             </Card>
 
@@ -592,8 +629,8 @@ const PlayerDetail: React.FC = () => {
 
       {/* 6. TAB 1: FORM & MATCH HISTORY */}
       {tab === 1 && (
-        <Card className="finnova-card" sx={{ bgcolor: "#fde8c5", borderRadius: "20px", border: "1px solid rgba(250, 169, 104, 0.4)", p: 3 }}>
-          <Typography variant="h6" sx={{ fontWeight: 900, color: "#01204E", fontFamily: "Outfit, sans-serif", mb: 2 }}>
+        <Card className="finnova-card" sx={{ borderRadius: "20px", p: 3 }}>
+          <Typography variant="h6" sx={{ fontWeight: 900, color: "text.primary", fontFamily: "Outfit, sans-serif", mb: 2 }}>
             Match Rating History & Form
           </Typography>
 

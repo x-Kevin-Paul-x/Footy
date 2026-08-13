@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -13,17 +11,42 @@
   --radius-lg: 28px;
   --radius-pill: 9999px;
 
-  /* Explicit User Color Rules */
-  --bg-navbar: #F85525;    /* Dark Orange Navbar */
-  --bg-downpart: #FAA968;  /* Down Part / Page Background */
-  --bg-cards: #F6DCAC;     /* Neumorphic Soft Card Background */
-  --text-main: #028391;    /* Main Text Color */
-  --text-heading: #01204E; /* Dark Navy Heading Color */
-  --btn-main: #01204E;     /* Tactile Button Background */
+  /* LIGHT MODE BRAND TOKENS (Tactile Warm-Retro) */
+  --bg-navbar: #F85525;
+  --bg-downpart: #FAA968;
+  --bg-cards: #F6DCAC;
+  --bg-subcard: rgba(255, 255, 255, 0.55);
+  --bg-pill: #F6DCAC;
+  --bg-input: #FFFFFF;
+  --text-heading: #01204E;
+  --text-main: #028391;
+  --text-muted: rgba(1, 32, 78, 0.7);
+  --btn-main: #01204E;
+  --btn-text: #ffffff;
+  --btn-hover: #028391;
+  --card-border: rgba(250, 169, 104, 0.45);
+  --card-border-hover: rgba(1, 32, 78, 0.25);
+  --card-shadow: 0 12px 32px rgba(1, 32, 78, 0.08), 0 2px 8px rgba(250, 169, 104, 0.3), inset 0 1px 2px rgba(255, 245, 225, 0.6);
+  --nav-shadow: 0 12px 36px rgba(248, 85, 37, 0.35), inset 0 1px 2px rgba(255, 255, 255, 0.4), inset 0 -2px 6px rgba(0, 0, 0, 0.15);
+  --nav-capsule-bg: rgba(255, 255, 255, 0.2);
+  --nav-capsule-border: rgba(255, 255, 255, 0.3);
+  --nav-item-color: #01204E;
+  --nav-item-hover-bg: rgba(1, 32, 78, 0.7);
+  --nav-item-hover-color: #ffffff;
+  --nav-item-active-bg: #01204E;
+  --nav-item-active-color: #ffffff;
+  --nav-icon-color: #01204E;
+  --main-frame-bg: #FAA968;
+  --main-frame-border: rgba(255, 255, 255, 0.35);
+  --main-frame-shadow: inset 0 3px 12px rgba(0, 0, 0, 0.06), 0 20px 50px rgba(0, 0, 0, 0.08);
+  --table-border: rgba(1, 32, 78, 0.1);
+  --table-head-color: #01204E;
+  --table-body-color: #028391;
+  --table-row-hover: rgba(1, 32, 78, 0.05);
 
-  color-scheme: light dark;
-  color: #028391;
-  background-color: #FAA968;
+  color-scheme: light;
+  color: var(--text-main);
+  background-color: var(--bg-downpart);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -31,39 +54,78 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+[data-theme="dark"], body.dark-mode {
+  /* DARK MODE BRAND TOKENS (Midnight Stadium - Option 1) */
+  --bg-navbar: #112746;
+  --bg-downpart: #06101E;
+  --bg-cards: #0C1D36;
+  --bg-subcard: rgba(255, 255, 255, 0.04);
+  --bg-pill: #132B4F;
+  --bg-input: #071529;
+  --text-heading: #F8EBD5;
+  --text-main: #8FE3EC;
+  --text-muted: #6497A4;
+  --btn-main: #F85525;
+  --btn-text: #ffffff;
+  --btn-hover: #ff6f43;
+  --card-border: rgba(2, 131, 145, 0.22);
+  --card-border-hover: rgba(248, 85, 37, 0.45);
+  --card-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), 0 2px 10px rgba(2, 131, 145, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.08);
+  --nav-shadow: 0 14px 40px rgba(0, 0, 0, 0.65), inset 0 1px 2px rgba(255, 255, 255, 0.12), inset 0 -2px 6px rgba(0, 0, 0, 0.4);
+  --nav-capsule-bg: rgba(6, 16, 30, 0.65);
+  --nav-capsule-border: rgba(2, 131, 145, 0.35);
+  --nav-item-color: #8FE3EC;
+  --nav-item-hover-bg: rgba(2, 131, 145, 0.35);
+  --nav-item-hover-color: #ffffff;
+  --nav-item-active-bg: #F85525;
+  --nav-item-active-color: #ffffff;
+  --nav-icon-color: #F8EBD5;
+  --main-frame-bg: #06101E;
+  --main-frame-border: rgba(2, 131, 145, 0.2);
+  --main-frame-shadow: inset 0 3px 16px rgba(0, 0, 0, 0.4), 0 20px 50px rgba(0, 0, 0, 0.5);
+  --table-border: rgba(2, 131, 145, 0.18);
+  --table-head-color: #F8EBD5;
+  --table-body-color: #8FE3EC;
+  --table-row-hover: rgba(2, 131, 145, 0.08);
+
+  color-scheme: dark;
+  color: var(--text-main);
+  background-color: var(--bg-downpart);
+}
+
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background-color: #FAA968;
-  color: #028391;
+  background-color: var(--bg-downpart);
+  color: var(--text-main);
   font-family: var(--font-sans);
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Floating Neumorphic / Soft-Tactile Navbar Capsule (Screenshot Style) */
+/* Floating Neumorphic / Soft-Tactile Navbar Capsule */
 .finnova-header-bar {
-  background: #F85525;
+  background: var(--bg-navbar);
   border-radius: var(--radius-lg);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  box-shadow: 0 12px 36px rgba(248, 85, 37, 0.35), inset 0 1px 2px rgba(255, 255, 255, 0.4), inset 0 -2px 6px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--nav-capsule-border);
+  box-shadow: var(--nav-shadow);
   transition: all 0.3s ease;
 }
 
 /* Embedded Floating Inset Nav Pill Capsule */
 .finnova-nav-capsule {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--nav-capsule-bg);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid var(--nav-capsule-border);
   border-radius: var(--radius-pill);
   padding: 5px;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.05);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08);
   transition: all 0.3s ease;
 }
 
 .finnova-nav-item {
-  color: #01204E;
+  color: var(--nav-item-color);
   padding: 7px 16px;
   border-radius: var(--radius-pill);
   font-size: 0.82rem;
@@ -78,25 +140,25 @@ body {
 }
 
 .finnova-nav-item:hover {
-  color: #ffffff;
-  background: rgba(1, 32, 78, 0.7);
-  box-shadow: 0 4px 12px rgba(1, 32, 78, 0.2);
+  color: var(--nav-item-hover-color);
+  background: var(--nav-item-hover-bg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .finnova-nav-item.active {
-  background: #01204E;
-  color: #ffffff;
-  box-shadow: 0 6px 18px rgba(1, 32, 78, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  background: var(--nav-item-active-bg);
+  color: var(--nav-item-active-color);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.3);
 }
 
-/* Soft-Tactile Cards (Warm Background-Matched Highlight) */
+/* Soft-Tactile Cards */
 .finnova-card {
-  background: #F6DCAC;
+  background: var(--bg-cards);
   border-radius: var(--radius-lg);
-  border: 1.5px solid rgba(250, 169, 104, 0.45);
-  box-shadow: 0 12px 32px rgba(1, 32, 78, 0.08), 0 2px 8px rgba(250, 169, 104, 0.3), inset 0 1px 2px rgba(255, 245, 225, 0.6);
+  border: 1.5px solid var(--card-border);
+  box-shadow: var(--card-shadow);
   padding: 24px;
-  color: #028391;
+  color: var(--text-main);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
@@ -104,17 +166,17 @@ body {
 
 .finnova-card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 16px 40px rgba(1, 32, 78, 0.12), 0 4px 14px rgba(250, 169, 104, 0.4);
-  border-color: rgba(1, 32, 78, 0.25);
+  box-shadow: var(--card-shadow);
+  border-color: var(--card-border-hover);
 }
 
 /* Indented / Sunken Neumorphic Action Button */
 .finnova-indented-btn {
-  background: #FAA968 !important;
-  color: #01204E !important;
+  background: var(--bg-pill) !important;
+  color: var(--text-heading) !important;
   border-radius: 9999px !important;
-  border: 1px solid rgba(1, 32, 78, 0.18) !important;
-  box-shadow: inset 2px 3px 6px rgba(1, 32, 78, 0.22), inset -2px -2px 4px rgba(255, 255, 255, 0.6) !important;
+  border: 1px solid var(--card-border) !important;
+  box-shadow: inset 2px 3px 6px rgba(0, 0, 0, 0.2), inset -2px -2px 4px rgba(255, 255, 255, 0.2) !important;
   padding: 6px 16px !important;
   font-weight: 800 !important;
   font-size: 0.8rem !important;
@@ -127,105 +189,107 @@ body {
 }
 
 .finnova-indented-btn:hover {
-  background: #f59a50 !important;
-  box-shadow: inset 3px 4px 8px rgba(1, 32, 78, 0.32), inset -1px -1px 3px rgba(255, 255, 255, 0.4) !important;
+  background: var(--btn-hover) !important;
+  color: #ffffff !important;
   transform: translateY(0px) !important;
 }
 
-/* Inset Container Framed Main Base (Screenshot Style) */
+/* Inset Container Framed Main Base */
 .finnova-main-frame {
-  background: #FAA968;
+  background: var(--main-frame-bg);
   border-radius: 32px;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  box-shadow: inset 0 3px 12px rgba(0, 0, 0, 0.06), 0 20px 50px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--main-frame-border);
+  box-shadow: var(--main-frame-shadow);
   padding: 28px;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .finnova-dark-container {
-  background: #F6DCAC;
+  background: var(--bg-cards);
   border-radius: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  box-shadow: 12px 20px 40px rgba(1, 32, 78, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--card-shadow);
   padding: 28px;
-  color: #028391;
+  color: var(--text-main);
 }
 
 .finnova-spotlight-card {
-  background: #F6DCAC;
+  background: var(--bg-cards);
   border-radius: var(--radius-lg);
   padding: 26px;
-  color: #028391;
-  box-shadow: 12px 20px 40px rgba(1, 32, 78, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  color: var(--text-main);
+  box-shadow: var(--card-shadow);
+  border: 1px solid var(--card-border);
 }
 
 .finnova-spotlight-subcard {
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--bg-subcard);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--card-border);
   padding: 16px;
-  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.8), 0 4px 12px rgba(1, 32, 78, 0.04);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.1), 0 4px 12px rgba(0, 0, 0, 0.1);
   transition: all 0.2s ease;
-  color: #028391;
+  color: var(--text-main);
 }
 
 .finnova-spotlight-subcard:hover {
-  background: rgba(255, 255, 255, 0.75);
+  background: var(--bg-subcard);
+  border-color: var(--card-border-hover);
   transform: translateY(-2px);
 }
 
-/* Tactile Soft Pill Buttons (Screenshot Style) */
+/* Tactile Soft Pill Buttons */
 .finnova-tactile-btn {
-  background: #01204E !important;
-  color: #ffffff !important;
+  background: var(--btn-main) !important;
+  color: var(--btn-text) !important;
   border-radius: var(--radius-pill) !important;
   font-weight: 800 !important;
   font-size: 0.85rem !important;
   letter-spacing: 0.03em !important;
   padding: 10px 24px !important;
   border: 1px solid rgba(255, 255, 255, 0.2) !important;
-  box-shadow: 0 8px 20px rgba(1, 32, 78, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.25) !important;
   transition: all 0.25s ease !important;
   cursor: pointer;
 }
 
 .finnova-tactile-btn:hover {
-  background: #028391 !important;
-  box-shadow: 0 12px 28px rgba(2, 131, 145, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
+  background: var(--btn-hover) !important;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4) !important;
   transform: translateY(-2px);
 }
 
 /* Filter Bar Pills / Buttons */
 .finnova-filter-pill {
-  background: #F6DCAC;
-  border: 1px solid rgba(1, 32, 78, 0.2);
+  background: var(--bg-pill);
+  border: 1px solid var(--card-border);
   border-radius: var(--radius-pill);
   padding: 8px 18px;
   font-size: 0.85rem;
   font-weight: 800;
-  color: #01204E;
+  color: var(--text-heading);
   display: inline-flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(1, 32, 78, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.8);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.15);
   transition: all 0.2s ease;
 }
 
 .finnova-filter-pill:hover {
-  border-color: #028391;
+  border-color: var(--btn-main);
   color: #ffffff;
-  background: #028391;
-  box-shadow: 0 6px 16px rgba(2, 131, 145, 0.3);
+  background: var(--btn-main);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
 }
 
 .finnova-filter-pill.active {
-  background: #01204E;
+  background: var(--btn-main);
   color: #ffffff;
-  border-color: #01204E;
-  box-shadow: 0 8px 20px rgba(1, 32, 78, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  border-color: var(--btn-main);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.3);
 }
 
 /* List Item Highlight */
@@ -236,35 +300,16 @@ body {
   cursor: pointer;
   background: transparent;
   border: 1px solid transparent;
+  color: var(--text-main);
 }
 
 .finnova-list-item:hover {
-  background: rgba(1, 32, 78, 0.05);
+  background: var(--table-row-hover);
 }
 
 .finnova-list-item.selected {
-  background: #01204E;
+  background: var(--btn-main);
   color: #ffffff;
-  box-shadow: 0 8px 20px rgba(1, 32, 78, 0.35);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
   border: 1px solid rgba(255, 255, 255, 0.25);
 }
-
-/* Dark Mode Overrides */
-[data-theme="dark"], body.dark-mode {
-  background-color: #FAA968;
-  color: #028391;
-}
-
-[data-theme="dark"] .finnova-card, body.dark-mode .finnova-card {
-  background: #F6DCAC;
-  border-color: rgba(255, 255, 255, 0.4);
-  box-shadow: 12px 18px 36px rgba(1, 32, 78, 0.1);
-}
-
-[data-theme="dark"] .finnova-filter-pill, body.dark-mode .finnova-filter-pill {
-  background: #F6DCAC;
-  border-color: rgba(1, 32, 78, 0.25);
-  color: #01204E;
-}
-
-

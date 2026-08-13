@@ -35,26 +35,6 @@ import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import PriceCheckIcon from "@mui/icons-material/PriceCheck";
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 
-const glassCardSx = {
-  borderRadius: "20px !important",
-  transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important",
-};
-
-const transferBlockSx = {
-  p: 2,
-  mb: 2,
-  borderRadius: "14px",
-  transition: "all 0.2s ease-in-out",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  "&:hover": {
-    borderColor: "#4f46e5",
-    boxShadow: "0 4px 14px rgba(79, 70, 229, 0.1)",
-    transform: "translateY(-2px)",
-  },
-};
-
 const TransferMarket: React.FC = () => {
   const [seasons, setSeasons] = useState<number[]>([]);
   const [selectedSeason, setSelectedSeason] = useState<number | null>(null);
@@ -157,7 +137,7 @@ const TransferMarket: React.FC = () => {
     <Box sx={{ p: { xs: 1, md: 0 } }}>
       <Box sx={{ mb: 4, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 2 }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 800, fontFamily: 'Outfit, sans-serif', mb: 1, color: "#0f172a" }}>
+          <Typography variant="h4" sx={{ fontWeight: 800, fontFamily: 'Outfit, sans-serif', mb: 1, color: "text.primary" }}>
             Transfer Market
           </Typography>
           <Typography variant="body1" color="text.secondary">
@@ -175,7 +155,7 @@ const TransferMarket: React.FC = () => {
               value={selectedSeason ?? ""}
               label="Season"
               onChange={(e) => handleSeasonChange(Number(e.target.value))}
-              sx={{ borderRadius: 9999, bgcolor: '#F6DCAC', color: '#01204E', border: '1px solid rgba(1, 32, 78, 0.15)', fontWeight: 800 }}
+              sx={{ borderRadius: 9999, bgcolor: 'var(--bg-pill)', color: 'text.primary', border: '1px solid', borderColor: 'divider', fontWeight: 800, '& .MuiSelect-select': { color: 'text.primary' }, '& .MuiSvgIcon-root': { color: 'text.primary' } }}
             >
               {seasons.map((y) => (
                 <MenuItem key={y} value={y} sx={{ fontWeight: 600 }}>
@@ -197,9 +177,9 @@ const TransferMarket: React.FC = () => {
         <Grid container spacing={3}>
           {/* Left Column: Transfer Blocks List */}
           <Grid item xs={12} lg={7}>
-            <Card sx={glassCardSx}>
+            <Card className="finnova-card">
               <CardContent sx={{ p: 3 }}>
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 3, color: "#0f172a" }}>
+                <Typography variant="h6" sx={{ fontWeight: 700, mb: 3, color: "text.primary" }}>
                   All Completed Deals ({totalTransfers})
                 </Typography>
                 
@@ -210,9 +190,26 @@ const TransferMarket: React.FC = () => {
                 ) : (
                   <Box sx={{ maxHeight: 600, overflowY: "auto", pr: 1 }}>
                     {normalizedTransfers.map((t, idx) => (
-                      <Box key={idx} sx={transferBlockSx}>
+                      <Box key={idx} sx={{
+                        p: 2,
+                        mb: 2,
+                        borderRadius: "14px",
+                        bgcolor: 'var(--bg-subcard)',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        transition: "all 0.2s ease-in-out",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        "&:hover": {
+                          borderColor: "primary.main",
+                          boxShadow: "0 4px 14px rgba(0,0,0,0.15)",
+                          transform: "translateY(-2px)",
+                          bgcolor: 'action.hover'
+                        },
+                      }}>
                         <Box sx={{ minWidth: 0, flex: 1 }}>
-                          <Typography sx={{ fontWeight: 700, color: "#0f172a" }} noWrap>
+                          <Typography sx={{ fontWeight: 700, color: "text.primary" }} noWrap>
                             {t.player}
                           </Typography>
 
@@ -262,35 +259,35 @@ const TransferMarket: React.FC = () => {
           <Grid item xs={12} lg={5}>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
               {/* Stat Boxes */}
-              <Card sx={glassCardSx}>
+              <Card className="finnova-card">
                 <CardContent sx={{ p: 3 }}>
-                  <Typography variant="h6" sx={{ fontWeight: 700, mb: 3, color: "#FFFFFF" }}>
+                  <Typography variant="h6" sx={{ fontWeight: 700, mb: 3, color: "text.primary" }}>
                     Market Summary
                   </Typography>
                   <Grid container spacing={2}>
                     <Grid item xs={6}>
-                      <Box sx={{ p: 2, borderRadius: 2, bgcolor: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(255, 255, 255, 0.04)" }}>
+                      <Box sx={{ p: 2, borderRadius: 2, bgcolor: "var(--bg-subcard)", border: "1px solid", borderColor: "divider" }}>
                         <PriceCheckIcon color="primary" sx={{ mb: 1 }} />
                         <Typography variant="subtitle2" color="text.secondary">Total Volume</Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 800, color: "#FFFFFF" }}>
+                        <Typography variant="h5" sx={{ fontWeight: 800, color: "text.primary" }}>
                           {currencyFormatter.format(totalSpent)}
                         </Typography>
                       </Box>
                     </Grid>
                     <Grid item xs={6}>
-                      <Box sx={{ p: 2, borderRadius: 2, bgcolor: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(255, 255, 255, 0.04)" }}>
+                      <Box sx={{ p: 2, borderRadius: 2, bgcolor: "var(--bg-subcard)", border: "1px solid", borderColor: "divider" }}>
                         <TrendingUpIcon color="success" sx={{ mb: 1 }} />
                         <Typography variant="subtitle2" color="text.secondary">Average Fee</Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 800, color: "#FFFFFF" }}>
+                        <Typography variant="h5" sx={{ fontWeight: 800, color: "text.primary" }}>
                           {currencyFormatter.format(avgFee)}
                         </Typography>
                       </Box>
                     </Grid>
                     <Grid item xs={12}>
-                      <Box sx={{ p: 2, borderRadius: 2, bgcolor: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(255, 255, 255, 0.04)" }}>
+                      <Box sx={{ p: 2, borderRadius: 2, bgcolor: "var(--bg-subcard)", border: "1px solid", borderColor: "divider" }}>
                         <EmojiEventsIcon color="warning" sx={{ mb: 1 }} />
                         <Typography variant="subtitle2" color="text.secondary">Marquee Transfer</Typography>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "#FFFFFF", mt: 0.5 }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "text.primary", mt: 0.5 }}>
                           {biggestTransfer.player}
                         </Typography>
                         <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
@@ -307,22 +304,23 @@ const TransferMarket: React.FC = () => {
 
               {/* Chart */}
               {topTransfersChartData.length > 0 && (
-                <Card sx={glassCardSx}>
+                <Card className="finnova-card">
                   <CardContent sx={{ p: 3 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 3, color: "#FFFFFF" }}>
+                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 3, color: "text.primary" }}>
                       Top 5 Transfer Fees (GBP Millions)
                     </Typography>
                     <Box sx={{ height: 260 }}>
                       <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                         <BarChart data={topTransfersChartData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                          <XAxis dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} />
-                          <YAxis tick={{ fill: "#94a3b8" }} unit="M" />
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                          <XAxis dataKey="name" tick={{ fill: "currentColor", fontSize: 11 }} />
+                          <YAxis tick={{ fill: "currentColor" }} unit="M" />
                           <Tooltip
                             contentStyle={{
-                              backgroundColor: "#1e293b",
-                              border: "none",
-                              borderRadius: 8,
+                              backgroundColor: "var(--bg-cards)",
+                              border: "1px solid var(--card-border)",
+                              borderRadius: 12,
+                              color: "var(--text-heading)"
                             }}
                             formatter={(value: any, _name: any, props: any) => [
                               `£${Number(value).toFixed(1)}M`,
@@ -331,7 +329,7 @@ const TransferMarket: React.FC = () => {
                           />
                           <Bar
                             dataKey="fee"
-                            fill="#6366f1"
+                            fill="var(--btn-main)"
                             radius={[4, 4, 0, 0]}
                           />
                         </BarChart>
@@ -346,9 +344,9 @@ const TransferMarket: React.FC = () => {
       )}
 
       <Dialog open={detailOpen} onClose={() => setDetailOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ bgcolor: "#0f172a", color: "#FFFFFF", fontWeight: 700 }}>Transfer Record Details</DialogTitle>
-        <DialogContent sx={{ bgcolor: "#0f172a" }}>
-          <DialogContentText component="pre" sx={{ whiteSpace: "pre-wrap", color: "#cbd5e1", p: 2, bgcolor: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "8px" }}>
+        <DialogTitle sx={{ bgcolor: "background.paper", color: "text.primary", fontWeight: 700 }}>Transfer Record Details</DialogTitle>
+        <DialogContent sx={{ bgcolor: "background.paper" }}>
+          <DialogContentText component="pre" sx={{ whiteSpace: "pre-wrap", color: "text.secondary", p: 2, bgcolor: "var(--bg-subcard)", border: "1px solid", borderColor: "divider", borderRadius: "8px" }}>
             {detailIdx !== null && transfers[detailIdx]
               ? JSON.stringify(transfers[detailIdx], null, 2)
               : "No details available."}

@@ -35,7 +35,7 @@ SIMULATION_SCRIPT = BASE_DIR / "main.py"
 API_PORT = _env_int("FOOTY_API_PORT", 5001)
 API_DEBUG = _env_bool("FOOTY_API_DEBUG", True)
 SIMULATION_TIMEOUT_SECONDS = _env_int("FOOTY_SIMULATION_TIMEOUT_SECONDS", 1800)
-NUM_SEASONS = _env_int("FOOTY_NUM_SEASONS", 10)
+NUM_SEASONS = _env_int("FOOTY_NUM_SEASONS", 1)
 
 
 def ensure_report_directories() -> None:

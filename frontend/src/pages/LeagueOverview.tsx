@@ -174,7 +174,7 @@ const LeagueOverview: React.FC = () => {
       {/* Header & Season Filter Pill Bar */}
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 2 }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 800, fontFamily: 'Outfit, sans-serif', color: '#0f172a', letterSpacing: '-0.03em' }}>
+          <Typography variant="h4" sx={{ fontWeight: 800, fontFamily: 'Outfit, sans-serif', color: 'text.primary', letterSpacing: '-0.03em' }}>
             League Overview & Standings
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
@@ -187,12 +187,14 @@ const LeagueOverview: React.FC = () => {
             onChange={(e) => setSelectedSeason(e.target.value as number)}
             sx={{
               borderRadius: 9999,
-              bgcolor: '#F6DCAC',
-              color: '#01204E',
+              bgcolor: 'var(--bg-pill)',
+              color: 'text.primary',
               fontWeight: 800,
-              boxShadow: '0 4px 12px rgba(1, 32, 78, 0.05)',
-              border: '1px solid rgba(1, 32, 78, 0.15)',
-              '& .MuiSelect-select': { py: 1, px: 2 }
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)',
+              border: '1px solid',
+              borderColor: 'divider',
+              '& .MuiSelect-select': { py: 1, px: 2, color: 'text.primary' },
+              '& .MuiSvgIcon-root': { color: 'text.primary' }
             }}
           >
             {seasonsList.map((s) => (
@@ -208,7 +210,7 @@ const LeagueOverview: React.FC = () => {
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '3fr 2fr' }, gap: 4, alignItems: 'start' }}>
         {/* Standings Table Block */}
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
+          <Typography variant="h5" sx={{ fontWeight: 700, mb: 2, color: 'text.primary' }}>
             Season {report.season_year} Standings
           </Typography>
           {loading ? (
@@ -222,7 +224,7 @@ const LeagueOverview: React.FC = () => {
 
         {/* Financial Charts Block */}
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
+          <Typography variant="h5" sx={{ fontWeight: 700, mb: 2, color: 'text.primary' }}>
             Financial Breakdown
           </Typography>
           
@@ -235,15 +237,12 @@ const LeagueOverview: React.FC = () => {
               {allMetrics.map((m) => (
                 <Paper 
                   key={m.key} 
+                  className="finnova-card"
                   sx={{ 
                     p: 2.5,
-                    bgcolor: '#F6DCAC',
-                    border: '1px solid rgba(255, 255, 255, 0.5)',
-                    borderRadius: 4,
-                    boxShadow: '12px 18px 36px rgba(1, 32, 78, 0.08), inset 0 1px 2px rgba(255, 255, 255, 0.9)'
                   }}
                 >
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#475569', mb: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.secondary', mb: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     {m.label}
                   </Typography>
                   <FinancialChart items={m.items} />

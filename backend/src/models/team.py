@@ -418,8 +418,7 @@ class Team:
 
     def add_player(self, player, force=False):
         """Add a player to the team with financial validation."""
-        if not force and len(self.players) >= 30:  # Reduced max squad size
-            # Allow adding players if squad is critically low
+        if not force and len(self.players) >= 30:  # Max squad size
             if len(self.players) < 15:
                 pass
             else:
@@ -427,7 +426,7 @@ class Team:
         
         # Check wage budget, but allow override if forced
         current_wages = sum(p.wage for p in self.players)
-        weekly_wage_budget = self.wage_budget / 52
+        weekly_wage_budget = (self.wage_budget / 52.0) if self.wage_budget > 0 else float('inf')
         
         if not force and current_wages + player.wage > weekly_wage_budget:
             raise ValueError("Adding player would exceed wage budget")

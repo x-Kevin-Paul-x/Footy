@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Typography,
   Box,
@@ -88,6 +88,7 @@ function getClubMeta(teamName: string) {
 
 const Dashboard: React.FC = () => {
   const theme = useTheme();
+  const navigate = useNavigate();
   const { availableSeasons, fetchAvailableSeasons } = useSimulationStore();
   const queryClient = useQueryClient();
   useSimulationSocket();
@@ -99,7 +100,7 @@ const Dashboard: React.FC = () => {
   }, [fetchAvailableSeasons]);
 
   const sortedSeasons = React.useMemo(() => [...availableSeasons].sort((a, b) => b - a), [availableSeasons]);
-  const activeSeasonYear = selectedDashboardSeason ?? (sortedSeasons.length > 0 ? sortedSeasons[0] : 2026);
+  const activeSeasonYear = selectedDashboardSeason ?? (sortedSeasons.length > 0 ? sortedSeasons[0] : null);
 
   // 1. All Seasons Overview
   const { data: allSeasonsData, error: seasonsErr } = useQuery({
@@ -110,15 +111,15 @@ const Dashboard: React.FC = () => {
   // 2. Selected Season Detailed Report (for Standings Table)
   const { data: seasonReport } = useQuery({
     queryKey: ['seasonReport', activeSeasonYear],
-    queryFn: () => getSeasonReportData(activeSeasonYear),
-    enabled: !!activeSeasonYear,
+    queryFn: () => getSeasonReportData(activeSeasonYear as number),
+    enabled: typeof activeSeasonYear === 'number' && activeSeasonYear > 0,
   });
 
   // 3. Recent Matches (for Match Center)
   const { data: matchesData } = useQuery({
     queryKey: ['matchesBySeason', activeSeasonYear],
-    queryFn: () => getMatchesBySeason(activeSeasonYear),
-    enabled: !!activeSeasonYear,
+    queryFn: () => getMatchesBySeason(activeSeasonYear as number),
+    enabled: typeof activeSeasonYear === 'number' && activeSeasonYear > 0,
   });
 
   const runSimMutation = useMutation({
@@ -191,40 +192,47 @@ const Dashboard: React.FC = () => {
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3.5, pb: 6 }}>
 
       {/* 1. HERO TITLE & SIMULATION COMMAND HUB */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, p: { xs: 2.5, md: 3 }, borderRadius: '24px', bgcolor: '#F6DCAC', border: '1.5px solid rgba(250, 169, 104, 0.45)', boxShadow: '0 12px 32px rgba(1, 32, 78, 0.08), 0 2px 8px rgba(250, 169, 104, 0.3), inset 0 1px 2px rgba(255, 245, 225, 0.6)' }}>
+      <Box className="finnova-card" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, p: { xs: 2.5, md: 3 } }}>
         <Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
             <FormControl size="small">
               <Select
-                value={activeSeasonYear}
+                value={activeSeasonYear ?? ""}
                 onChange={(e) => setSelectedDashboardSeason(Number(e.target.value))}
                 displayEmpty
                 renderValue={(selected) => (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#01204E' }} />
-                    <Typography variant="caption" sx={{ fontWeight: 800, color: '#01204E', letterSpacing: '0.06em', textTransform: 'uppercase', fontSize: '0.72rem' }}>
-                      SEASON {selected} COMMAND CENTER
+                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: theme.palette.mode === 'dark' ? '#F85525' : '#01204E' }} />
+                    <Typography variant="caption" sx={{ fontWeight: 800, color: 'text.primary', letterSpacing: '0.06em', textTransform: 'uppercase', fontSize: '0.72rem' }}>
+                      {selected ? `SEASON ${selected} COMMAND CENTER` : "SELECT SEASON"}
                     </Typography>
                   </Box>
                 )}
                 sx={{
                   borderRadius: 9999,
-                  bgcolor: '#FAA968',
-                  border: '1px solid rgba(1, 32, 78, 0.15)',
-                  boxShadow: '0 4px 12px rgba(1, 32, 78, 0.06)',
+                  bgcolor: 'var(--bg-pill)',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
                   height: 32,
                   '& .MuiSelect-select': {
                     display: 'flex',
                     alignItems: 'center',
                     py: '4px !important',
                     pl: '14px !important',
-                    pr: '28px !important'
+                    pr: '28px !important',
+                    color: 'text.primary',
                   },
                   '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
-                  '&:hover': { bgcolor: '#f79a52' },
-                  '& .MuiSvgIcon-root': { color: '#01204E' }
+                  '&:hover': { bgcolor: 'action.hover' },
+                  '& .MuiSvgIcon-root': { color: 'text.primary' }
                 }}
               >
+                {sortedSeasons.length === 0 && (
+                  <MenuItem value="" disabled sx={{ fontWeight: 600, fontSize: '0.82rem' }}>
+                    Loading Seasons...
+                  </MenuItem>
+                )}
                 {sortedSeasons.map((s) => (
                   <MenuItem key={s} value={s} sx={{ fontWeight: 700, fontSize: '0.82rem' }}>
                     Season {s} Command Center
@@ -233,10 +241,10 @@ const Dashboard: React.FC = () => {
               </Select>
             </FormControl>
           </Box>
-          <Typography variant="h3" sx={{ fontWeight: 900, fontFamily: 'Outfit, sans-serif', color: '#01204E', letterSpacing: '-0.03em', fontSize: { xs: '1.8rem', md: '2.4rem' } }}>
+          <Typography variant="h3" sx={{ fontWeight: 900, fontFamily: 'Outfit, sans-serif', color: 'text.primary', letterSpacing: '-0.03em', fontSize: { xs: '1.8rem', md: '2.4rem' } }}>
             Premier League Command Center
           </Typography>
-          <Typography variant="body2" sx={{ fontWeight: 600, color: '#028391', mt: 0.5 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mt: 0.5 }}>
             Real-time league standings, match results, top goalscorers, and AI season simulation.
           </Typography>
         </Box>
@@ -261,29 +269,29 @@ const Dashboard: React.FC = () => {
         <Card className="finnova-card">
           <CardContent sx={{ p: 2.5, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%', gap: 1.5 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="caption" sx={{ fontWeight: 800, color: '#028391', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              <Typography variant="caption" sx={{ fontWeight: 800, color: 'text.secondary', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                 Reigning Champions
               </Typography>
-              <Avatar sx={{ bgcolor: 'rgba(250, 169, 104, 0.25)', color: '#01204E', width: 32, height: 32 }}>
+              <Avatar sx={{ bgcolor: theme.palette.mode === 'dark' ? 'rgba(248, 85, 37, 0.2)' : 'rgba(250, 169, 104, 0.25)', color: theme.palette.mode === 'dark' ? '#F85525' : '#01204E', width: 32, height: 32 }}>
                 <EmojiEventsIcon fontSize="small" />
               </Avatar>
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              <Avatar sx={{ width: 44, height: 44, bgcolor: '#FAA968', color: '#01204E', fontWeight: 900, fontSize: '0.9rem', border: '1px solid rgba(1, 32, 78, 0.2)' }}>
+              <Avatar sx={{ width: 44, height: 44, bgcolor: theme.palette.mode === 'dark' ? '#132B4F' : '#FAA968', color: theme.palette.mode === 'dark' ? '#F8EBD5' : '#01204E', fontWeight: 900, fontSize: '0.9rem', border: '1px solid', borderColor: 'divider' }}>
                 {championTeam.substring(0, 3).toUpperCase()}
               </Avatar>
               <Box>
-                <Typography variant="h5" sx={{ fontWeight: 900, color: '#01204E', fontFamily: 'Outfit, sans-serif' }}>
+                <Typography variant="h5" sx={{ fontWeight: 900, color: 'text.primary', fontFamily: 'Outfit, sans-serif' }}>
                   {championTeam}
                 </Typography>
-                <Typography variant="caption" sx={{ fontWeight: 700, color: '#028391' }}>
+                <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
                   {championPoints} Points Accumulated
                 </Typography>
               </Box>
             </Box>
-            <Box sx={{ pt: 1, borderTop: '1px solid rgba(1, 32, 78, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="caption" sx={{ fontWeight: 700, color: '#028391' }}>Title Winner</Typography>
-              <Typography variant="caption" sx={{ fontWeight: 800, color: '#01204E' }}>Season {activeSeasonYear}</Typography>
+            <Box sx={{ pt: 1, borderTop: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>Title Winner</Typography>
+              <Typography variant="caption" sx={{ fontWeight: 800, color: 'text.primary' }}>Season {activeSeasonYear}</Typography>
             </Box>
           </CardContent>
         </Card>
@@ -292,10 +300,10 @@ const Dashboard: React.FC = () => {
         <Card className="finnova-card">
           <CardContent sx={{ p: 2.5, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%', gap: 1.5 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="caption" sx={{ fontWeight: 800, color: '#028391', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              <Typography variant="caption" sx={{ fontWeight: 800, color: 'text.secondary', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                 Golden Boot Leader
               </Typography>
-              <Avatar sx={{ bgcolor: 'rgba(2, 131, 145, 0.15)', color: '#028391', width: 32, height: 32 }}>
+              <Avatar sx={{ bgcolor: theme.palette.mode === 'dark' ? 'rgba(2, 131, 145, 0.25)' : 'rgba(2, 131, 145, 0.15)', color: theme.palette.mode === 'dark' ? '#8FE3EC' : '#028391', width: 32, height: 32 }}>
                 <SportsSoccerIcon fontSize="small" />
               </Avatar>
             </Box>
@@ -304,17 +312,17 @@ const Dashboard: React.FC = () => {
                 {topScorer.name ? topScorer.name.substring(0, 2).toUpperCase() : "MA"}
               </Avatar>
               <Box>
-                <Typography variant="h6" sx={{ fontWeight: 800, color: '#01204E', fontFamily: 'Outfit, sans-serif', lineHeight: 1.2 }}>
+                <Typography variant="h6" sx={{ fontWeight: 800, color: 'text.primary', fontFamily: 'Outfit, sans-serif', lineHeight: 1.2 }}>
                   {topScorer.name}
                 </Typography>
-                <Typography variant="caption" sx={{ fontWeight: 600, color: '#028391' }}>
-                  {topScorer.team} • <strong style={{ color: '#01204E' }}>{topScorer.goals} Goals</strong>
+                <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                  {topScorer.team} • <strong style={{ color: theme.palette.mode === 'dark' ? '#F8EBD5' : '#01204E' }}>{topScorer.goals} Goals</strong>
                 </Typography>
               </Box>
             </Box>
-            <Box sx={{ pt: 1, borderTop: '1px solid rgba(1, 32, 78, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="caption" sx={{ fontWeight: 700, color: '#028391' }}>Golden Boot</Typography>
-              <Chip label={`${topScorer.goals} Goals`} size="small" sx={{ height: 18, fontSize: '0.65rem', fontWeight: 800, bgcolor: '#01204E', color: '#ffffff' }} />
+            <Box sx={{ pt: 1, borderTop: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>Golden Boot</Typography>
+              <Chip label={`${topScorer.goals} Goals`} size="small" sx={{ height: 18, fontSize: '0.65rem', fontWeight: 800, bgcolor: theme.palette.mode === 'dark' ? '#F85525' : '#01204E', color: '#ffffff' }} />
             </Box>
           </CardContent>
         </Card>
@@ -323,30 +331,30 @@ const Dashboard: React.FC = () => {
         <Card className="finnova-card">
           <CardContent sx={{ p: 2.5, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%', gap: 1.5 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="caption" sx={{ fontWeight: 800, color: '#028391', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              <Typography variant="caption" sx={{ fontWeight: 800, color: 'text.secondary', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                 Simulated History
               </Typography>
-              <Avatar sx={{ bgcolor: 'rgba(1, 32, 78, 0.1)', color: '#01204E', width: 32, height: 32 }}>
+              <Avatar sx={{ bgcolor: theme.palette.mode === 'dark' ? 'rgba(2, 131, 145, 0.2)' : 'rgba(1, 32, 78, 0.1)', color: theme.palette.mode === 'dark' ? '#8FE3EC' : '#01204E', width: 32, height: 32 }}>
                 <TrendingUpIcon fontSize="small" />
               </Avatar>
             </Box>
             <Box>
-              <Typography variant="h3" sx={{ fontWeight: 900, color: '#01204E', fontFamily: 'Outfit, sans-serif' }}>
+              <Typography variant="h3" sx={{ fontWeight: 900, color: 'text.primary', fontFamily: 'Outfit, sans-serif' }}>
                 {totalSeasons}
               </Typography>
-              <Typography variant="caption" sx={{ fontWeight: 700, color: '#028391' }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
                 Complete Seasons Simulated
               </Typography>
             </Box>
-            <Box sx={{ pt: 1, borderTop: '1px solid rgba(1, 32, 78, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="caption" sx={{ fontWeight: 700, color: '#028391' }}>Active Model</Typography>
-              <Typography variant="caption" sx={{ fontWeight: 800, color: '#01204E' }}>DQN & Heuristics</Typography>
+            <Box sx={{ pt: 1, borderTop: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>Active Model</Typography>
+              <Typography variant="caption" sx={{ fontWeight: 800, color: 'text.primary' }}>DQN & Heuristics</Typography>
             </Box>
           </CardContent>
         </Card>
 
         {/* CARD 4: Quick Action Hub */}
-        <Card className="finnova-card" sx={{ bgcolor: '#01204E !important', color: '#ffffff !important' }}>
+        <Card className="finnova-card" sx={{ bgcolor: theme.palette.mode === 'dark' ? '#112746 !important' : '#01204E !important', color: '#ffffff !important', border: theme.palette.mode === 'dark' ? '1px solid rgba(248, 85, 37, 0.35)' : undefined }}>
           <CardContent sx={{ p: 2.5, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%', gap: 1.5 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography variant="caption" sx={{ fontWeight: 800, color: '#FAA968', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
@@ -437,10 +445,9 @@ const Dashboard: React.FC = () => {
                     return (
                       <TableRow
                         key={team.name}
-                        component={Link}
-                        to={`/team-details/${team.name}`}
+                        hover
+                        onClick={() => navigate(`/team-details/${team.name}`)}
                         sx={{
-                          textDecoration: 'none',
                           cursor: 'pointer',
                           transition: 'all 0.2s',
                           '&:hover': { bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : '#f8fafc' },
@@ -515,11 +522,11 @@ const Dashboard: React.FC = () => {
           <CardContent sx={{ p: 3, flex: 1, display: 'flex', flexDirection: 'column' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5, flexWrap: 'wrap', gap: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Avatar sx={{ bgcolor: 'rgba(1, 32, 78, 0.1)', color: '#01204E', width: 38, height: 38 }}>
+                <Avatar sx={{ bgcolor: theme.palette.mode === 'dark' ? 'rgba(2, 131, 145, 0.2)' : 'rgba(1, 32, 78, 0.1)', color: theme.palette.mode === 'dark' ? '#8FE3EC' : '#01204E', width: 38, height: 38 }}>
                   <EventNoteIcon />
                 </Avatar>
                 <Box>
-                  <Typography variant="h6" sx={{ fontWeight: 800, fontFamily: 'Outfit, sans-serif' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 800, fontFamily: 'Outfit, sans-serif', color: 'text.primary' }}>
                     Match Center Fixtures
                   </Typography>
                   <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
@@ -556,7 +563,7 @@ const Dashboard: React.FC = () => {
                     sx={{
                       p: 2,
                       borderRadius: '16px',
-                      bgcolor: '#F6DCAC',
+                      bgcolor: 'var(--bg-subcard)',
                       border: 1,
                       borderColor: 'divider',
                       textDecoration: 'none',
@@ -567,8 +574,8 @@ const Dashboard: React.FC = () => {
                       transition: 'all 0.2s',
                       '&:hover': {
                         transform: 'translateY(-2px)',
-                        bgcolor: 'rgba(1, 32, 78, 0.08)',
-                        borderColor: '#01204E'
+                        bgcolor: 'action.hover',
+                        borderColor: theme.palette.mode === 'dark' ? '#F85525' : '#01204E'
                       }
                     }}
                   >
@@ -583,7 +590,7 @@ const Dashboard: React.FC = () => {
                     </Box>
 
                     {/* Score Center Pill */}
-                    <Box sx={{ px: 2, py: 0.5, borderRadius: 9999, bgcolor: '#01204E', color: '#ffffff', display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ px: 2, py: 0.5, borderRadius: 9999, bgcolor: theme.palette.mode === 'dark' ? '#132B4F' : '#01204E', color: '#ffffff', display: 'flex', alignItems: 'center', gap: 1, border: theme.palette.mode === 'dark' ? '1px solid rgba(2, 131, 145, 0.3)' : 'none' }}>
                       <Typography variant="subtitle2" sx={{ fontWeight: 900, color: '#ffffff' }}>
                         {hScore}
                       </Typography>
@@ -624,31 +631,31 @@ const Dashboard: React.FC = () => {
         <Card className="finnova-card">
           <CardContent sx={{ p: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-              <Avatar sx={{ bgcolor: 'rgba(1, 32, 78, 0.1)', color: '#01204E', width: 36, height: 36, mr: 1.5 }}>
+              <Avatar sx={{ bgcolor: theme.palette.mode === 'dark' ? 'rgba(2, 131, 145, 0.2)' : 'rgba(1, 32, 78, 0.1)', color: theme.palette.mode === 'dark' ? '#8FE3EC' : '#01204E', width: 36, height: 36, mr: 1.5 }}>
                 <TrendingUpIcon fontSize="small" />
               </Avatar>
-              <Typography variant="h6" sx={{ fontWeight: 800, fontFamily: 'Outfit, sans-serif', color: '#01204E' }}>
+              <Typography variant="h6" sx={{ fontWeight: 800, fontFamily: 'Outfit, sans-serif', color: 'text.primary' }}>
                 Multi-Season Goals & Transfers Overview
               </Typography>
             </Box>
             {seasonTrendData.length > 0 ? (
-              <Box sx={{ height: 260, width: '100%', minWidth: 0 }}>
-                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+              <Box sx={{ width: '100%', minWidth: 0, height: 260 }}>
+                <ResponsiveContainer width="100%" height={260} minWidth={0}>
                   <BarChart data={seasonTrendData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(1, 32, 78, 0.1)" />
-                    <XAxis dataKey="season" tick={{ fill: theme.palette.text.secondary, fontSize: 11 }} />
-                    <YAxis tick={{ fill: theme.palette.text.secondary, fontSize: 11 }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.mode === 'dark' ? 'rgba(2, 131, 145, 0.2)' : 'rgba(1, 32, 78, 0.1)'} />
+                    <XAxis dataKey="season" tick={{ fill: theme.palette.mode === 'dark' ? '#8FE3EC' : '#028391', fontSize: 11 }} />
+                    <YAxis tick={{ fill: theme.palette.mode === 'dark' ? '#8FE3EC' : '#028391', fontSize: 11 }} />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: '#01204E',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        backgroundColor: theme.palette.mode === 'dark' ? '#0C1D36' : '#01204E',
+                        border: theme.palette.mode === 'dark' ? '1px solid rgba(2, 131, 145, 0.3)' : '1px solid rgba(255,255,255,0.1)',
                         borderRadius: 12,
                         color: '#FFF8ED',
                         boxShadow: '0 10px 25px rgba(0,0,0,0.3)'
                       }}
                     />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="goals" name="Goals Scored" fill="#01204E" radius={[6, 6, 0, 0]} />
+                    <Legend wrapperStyle={{ fontSize: 12, color: theme.palette.mode === 'dark' ? '#8FE3EC' : '#028391' }} />
+                    <Bar dataKey="goals" name="Goals Scored" fill={theme.palette.mode === 'dark' ? '#F85525' : '#01204E'} radius={[6, 6, 0, 0]} />
                     <Bar dataKey="transfers" name="Transfers Completed" fill="#028391" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -664,7 +671,7 @@ const Dashboard: React.FC = () => {
           <CardContent sx={{ p: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Avatar sx={{ bgcolor: 'rgba(1, 32, 78, 0.12)', color: '#01204E', width: 36, height: 36 }}>
+                <Avatar sx={{ bgcolor: theme.palette.mode === 'dark' ? 'rgba(248, 85, 37, 0.2)' : 'rgba(1, 32, 78, 0.12)', color: theme.palette.mode === 'dark' ? '#F85525' : '#01204E', width: 36, height: 36 }}>
                   <StarIcon fontSize="small" />
                 </Avatar>
                 <Typography variant="h6" sx={{ fontWeight: 800, fontFamily: 'Outfit, sans-serif', color: 'text.primary' }}>
@@ -697,13 +704,13 @@ const Dashboard: React.FC = () => {
                         p: 1.5,
                         px: 2,
                         borderRadius: '16px',
-                        bgcolor: '#F6DCAC',
+                        bgcolor: 'var(--bg-subcard)',
                         border: 1,
                         borderColor: 'divider',
                         textDecoration: 'none',
                         color: 'inherit',
                         transition: 'all 0.2s',
-                        '&:hover': { transform: 'translateX(4px)', bgcolor: 'rgba(1, 32, 78, 0.08)' }
+                        '&:hover': { transform: 'translateX(4px)', bgcolor: 'action.hover' }
                       }}
                     >
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -724,7 +731,7 @@ const Dashboard: React.FC = () => {
                         label={`${player.stats?.goals ?? 12} Goals`}
                         size="small"
                         sx={{
-                          bgcolor: '#01204E',
+                          bgcolor: theme.palette.mode === 'dark' ? '#F85525' : '#01204E',
                           color: '#ffffff',
                           fontWeight: 800,
                           fontSize: '0.72rem'
