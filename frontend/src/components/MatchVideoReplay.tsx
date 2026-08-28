@@ -35,6 +35,17 @@ interface MatchVideoReplayProps {
   isGenerating?: boolean;
 }
 
+const resolveVideoUrl = (url?: string | null): string => {
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("blob:")) {
+    return url;
+  }
+  const base = process.env.VITE_API_BASE_URL?.trim() || "http://localhost:5001";
+  const cleanBase = base.replace(/\/+$/, "");
+  const cleanPath = url.replace(/^\/+/, "");
+  return `${cleanBase}/${cleanPath}`;
+};
+
 export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
   videoUrl,
   matchId,
@@ -239,8 +250,10 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
             >
               <video
                 ref={videoRef}
-                src={activeVideoUrl}
+                src={resolveVideoUrl(activeVideoUrl)}
                 controls
+                playsInline
+                preload="auto"
                 style={{ width: "100%", maxHeight: "520px", display: "block" }}
                 onTimeUpdate={() => {
                   if (videoRef.current) setCurrentTime(videoRef.current.currentTime);

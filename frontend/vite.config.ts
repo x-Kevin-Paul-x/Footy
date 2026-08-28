@@ -7,6 +7,19 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    server: {
+      port: 5173,
+      proxy: {
+        '/recordings': {
+          target: 'http://localhost:5001',
+          changeOrigin: true,
+        },
+        '/api': {
+          target: 'http://localhost:5001',
+          changeOrigin: true,
+        },
+      },
+    },
     define: {
       'process.env.VITE_API_BASE_URL': JSON.stringify(env.VITE_API_BASE_URL ?? ''),
       'process.env.VITE_API_TIMEOUT_MS': JSON.stringify(env.VITE_API_TIMEOUT_MS ?? ''),
