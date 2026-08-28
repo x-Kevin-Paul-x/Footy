@@ -17,7 +17,7 @@ if sys.platform == "win32":
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse, Response
 from urllib.parse import unquote
 
 # DB query functions (these currently use raw sqlite)
@@ -51,6 +51,21 @@ ensure_report_directories()
 
 app = FastAPI(title="Footy API", description="FastAPI Backend for Footy Simulation")
 
+# Middleware to safely handle client disconnects (browser refresh / cancelled streaming)
+@app.middleware("http")
+async def client_disconnect_middleware(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except (ConnectionResetError, BrokenPipeError, asyncio.CancelledError):
+        logger.debug(f"Client disconnected gracefully during request to {request.url.path}")
+        return JSONResponse(status_code=499, content={"detail": "Client closed connection"})
+    except Exception as e:
+        err_msg = str(e).lower()
+        if "10054" in err_msg or "forcibly closed" in err_msg or "broken resource" in err_msg or "endofstream" in err_msg:
+            logger.debug(f"Connection reset handled gracefully for {request.url.path}")
+            return JSONResponse(status_code=499, content={"detail": "Client closed connection"})
+        raise
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -59,27 +74,117 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-if RECORDINGS_DIR.exists():
-    app.mount("/recordings", StaticFiles(directory=str(RECORDINGS_DIR)), name="recordings")
+# Resilient Video Streaming endpoint with full Range support and disconnect safety
+@app.get("/recordings/{filename:path}")
+async def stream_recording(filename: str, request: Request):
+    clean_name = os.path.basename(filename)
+    file_path = RECORDINGS_DIR / clean_name
+
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Recording not found")
+
+    try:
+        stat_result = file_path.stat()
+        file_size = stat_result.st_size
+    except OSError:
+        raise HTTPException(status_code=404, detail="Could not read recording file")
+
+    if file_size == 0:
+        return Response(status_code=204)
+
+    range_header = request.headers.get("range")
+    content_type = "video/mp4" if clean_name.endswith(".mp4") else "application/octet-stream"
+
+    if not range_header:
+        return FileResponse(
+            path=str(file_path),
+            media_type=content_type,
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(file_size),
+                "Cache-Control": "no-cache",
+            }
+        )
+
+    try:
+        range_str = range_header.replace("bytes=", "").strip()
+        parts = range_str.split("-")
+        start = int(parts[0]) if parts[0] else 0
+        end = int(parts[1]) if len(parts) > 1 and parts[1] else file_size - 1
+
+        if start >= file_size or end >= file_size or start > end:
+            return Response(
+                status_code=416,
+                headers={
+                    "Content-Range": f"bytes */{file_size}",
+                    "Accept-Ranges": "bytes"
+                }
+            )
+    except Exception:
+        start = 0
+        end = file_size - 1
+
+    chunk_length = end - start + 1
+
+    async def file_chunk_generator():
+        try:
+            with open(file_path, "rb") as f:
+                f.seek(start)
+                bytes_left = chunk_length
+                while bytes_left > 0:
+                    read_size = min(bytes_left, 1024 * 64)
+                    data = f.read(read_size)
+                    if not data:
+                        break
+                    bytes_left -= len(data)
+                    yield data
+        except (ConnectionResetError, BrokenPipeError, asyncio.CancelledError):
+            logger.debug(f"Client disconnected while streaming video {clean_name}")
+            return
+        except Exception as exc:
+            err_text = str(exc).lower()
+            if "10054" in err_text or "forcibly closed" in err_text or "broken resource" in err_text:
+                return
+            logger.warning(f"Error during video streaming {clean_name}: {exc}")
+
+    headers = {
+        "Content-Range": f"bytes {start}-{end}/{file_size}",
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(chunk_length),
+        "Content-Type": content_type,
+        "Cache-Control": "no-cache",
+    }
+    return StreamingResponse(
+        file_chunk_generator(),
+        status_code=206,
+        headers=headers,
+        media_type=content_type
+    )
 
 class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
 
     async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
+        try:
+            await websocket.accept()
+            self.active_connections.append(websocket)
+        except Exception as e:
+            logger.debug(f"Failed to accept websocket: {e}")
 
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
+            try:
+                self.active_connections.remove(websocket)
+            except ValueError:
+                pass
 
     async def broadcast(self, message: str):
-        for connection in self.active_connections:
+        for connection in list(self.active_connections):
             try:
                 await connection.send_text(message)
             except Exception:
-                pass
+                self.disconnect(connection)
 
     async def broadcast_event(self, event: str, message: Optional[str] = None, data: Optional[Dict[str, Any]] = None):
         payload = json.dumps({"event": event, "message": message, "data": data})
@@ -147,7 +252,9 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             await websocket.receive_text()
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, ConnectionResetError, BrokenPipeError, asyncio.CancelledError, Exception):
+        pass
+    finally:
         manager.disconnect(websocket)
 
 @app.post("/run-simulation", response_model=SimulationStatusResponse)
@@ -773,6 +880,10 @@ async def simulate_grf_match(req: MatchSimulationRequest):
         from models.match import Match, get_grf_simulator
         from models.manager import Manager
         from database.match_db import get_match_details
+        from datetime import datetime
+
+        match_id_str = str(req.match_id) if req.match_id else f"match_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
         # If this is an existing match from the database, use its exact scores and events
         existing_match = None
         if req.match_id:
