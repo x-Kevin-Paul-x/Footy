@@ -181,7 +181,7 @@ export const getSeasonReportData = async (year: number): Promise<SeasonReport | 
   try {
     const response = await apiClient.get<SeasonReport>(`/get-season-report/${year}`);
     return response.data;
-  } catch (error) {
+  } catch (_error) {
     return null;
   }
 };

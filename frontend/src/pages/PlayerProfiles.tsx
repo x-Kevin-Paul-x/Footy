@@ -91,8 +91,10 @@ const PlayerProfiles: React.FC = () => {
     if (currentReport) {
       setLocalLoading(true);
       const playersFromReport: Player[] = [];
-      currentReport.all_teams_details.forEach((team) => {
-        playersFromReport.push(...team.players);
+      currentReport.all_teams_details?.forEach((team) => {
+        if (team && Array.isArray(team.players)) {
+          playersFromReport.push(...team.players);
+        }
       });
       const sortedPlayers = playersFromReport.sort((a, b) => (b.market_value || 0) - (a.market_value || 0));
       setAllPlayers(sortedPlayers);

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   Alert,
   Box,
@@ -163,7 +163,7 @@ const MlBenchmarks: React.FC = () => {
   const [isRunningEval, setIsRunningEval] = useState(false);
   const [evalSuccessMsg, setEvalSuccessMsg] = useState<string | null>(null);
 
-  const fetchReports = async (selectLatest = false) => {
+  const fetchReports = useCallback(async (selectLatest = false) => {
     setIsLoadingReports(true);
     try {
       const nextReports = await getMlReports();
@@ -184,7 +184,7 @@ const MlBenchmarks: React.FC = () => {
       setIsLoadingReports(false);
       setIsLoadingReport(false);
     }
-  };
+  }, [selectedReportName]);
 
   useEffect(() => {
     fetchReports();
@@ -196,7 +196,7 @@ const MlBenchmarks: React.FC = () => {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [fetchReports]);
 
   const handleSelectReport = async (reportName: string) => {
     setSelectedReportName(reportName);

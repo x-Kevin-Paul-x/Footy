@@ -27,7 +27,7 @@ export function useSimulationSocket(url = 'ws://localhost:5001/ws') {
         } else {
           console.log('[Simulation Log]', data.message);
         }
-      } catch (err) {
+      } catch (_err) {
         console.error('Failed to parse WebSocket message', event.data);
       }
     };
