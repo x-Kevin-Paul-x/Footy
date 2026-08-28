@@ -221,8 +221,10 @@ def run_match(match_id, home_team, away_team, render_video, max_steps, output_mp
             if e_type == "goal" or "goal" in e_desc or "scores" in e_desc:
                 t_str = str(evt.get("team") or "").lower()
                 is_home = (t_str == "home" or home_team.lower() in t_str or home_team.lower() in str(evt.get("team_name", "")).lower())
+                raw_m = int(evt.get("minute", 1))
+                goal_m = max(1, raw_m)  # Goals in 1st minute are minute 1'
                 canonical_goals.append({
-                    "minute": int(evt.get("minute", 0)),
+                    "minute": goal_m,
                     "team": "home" if is_home else "away",
                     "player": evt.get("player") or (f"{home_team} Scorer" if is_home else f"{away_team} Scorer")
                 })
@@ -272,14 +274,18 @@ def run_match(match_id, home_team, away_team, render_video, max_steps, output_mp
         # Synchronize Score with Canonical Events
         active_goal_banner = None
         if canonical_goals:
-            h_count = sum(1 for g in canonical_goals if g["team"] == "home" and g["minute"] <= match_min)
-            a_count = sum(1 for g in canonical_goals if g["team"] == "away" and g["minute"] <= match_min)
-            display_score = [h_count, a_count]
+            if step < 25 or match_min < 1:
+                display_score = [0, 0]
+            else:
+                h_count = sum(1 for g in canonical_goals if g["team"] == "home" and g["minute"] <= match_min)
+                a_count = sum(1 for g in canonical_goals if g["team"] == "away" and g["minute"] <= match_min)
+                display_score = [h_count, a_count]
 
-            # Check if a canonical goal occurs at current minute
-            recent_goal = next((g for g in canonical_goals if g["minute"] == match_min), None)
-            if recent_goal:
-                active_goal_banner = f"GOAL! {recent_goal['player']} ({recent_goal['minute']}')"
+            # Check if a canonical goal occurs at current minute (only after opening kickoff)
+            if step >= 25:
+                recent_goal = next((g for g in canonical_goals if g["minute"] == match_min), None)
+                if recent_goal:
+                    active_goal_banner = f"GOAL! {recent_goal['player']} ({recent_goal['minute']}')"
         else:
             display_score = [int(curr_score[0]), int(curr_score[1])]
 
