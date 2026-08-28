@@ -15,7 +15,7 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Request, WebSocket, WebSocketDisconnect
-
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from urllib.parse import unquote
@@ -32,6 +32,7 @@ from config import (
     MATCH_REPORTS_DIR,
     ML_REPORTS_DIR,
     PROJECT_ROOT,
+    RECORDINGS_DIR,
     REPORTS_DIR,
     SEASON_REPORTS_DIR,
     SIMULATION_SCRIPT,
@@ -46,6 +47,8 @@ import main as footy_main
 logger = logging.getLogger("footy.api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
+ensure_report_directories()
+
 app = FastAPI(title="Footy API", description="FastAPI Backend for Footy Simulation")
 
 app.add_middleware(
@@ -55,6 +58,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+if RECORDINGS_DIR.exists():
+    app.mount("/recordings", StaticFiles(directory=str(RECORDINGS_DIR)), name="recordings")
 
 class ConnectionManager:
     def __init__(self):
@@ -102,7 +108,9 @@ from schemas import (
     SimulationStatusResponse,
     SaveStateItem,
     SaveStateResponse,
-    WebSocketEventFrame
+    WebSocketEventFrame,
+    MatchSimulationRequest,
+    MatchSimulationResponse
 )
 import shutil
 from database.session import DB_FILE
@@ -308,22 +316,29 @@ async def get_transfer_report_detail(season_year: int):
 @app.get('/get-seasons')
 async def get_seasons():
     try:
-        if not os.path.exists(SEASON_REPORTS_DIR):
-            return JSONResponse(status_code=200, content={"seasons": [], "message": "Season reports directory not found."})
-        
-        report_files = [f for f in os.listdir(SEASON_REPORTS_DIR) if f.startswith("season_report_") and f.endswith(".json")]
-        seasons = []
-        for report_file in report_files:
-            try:
-                year = report_file.replace("season_report_", "").replace(".json", "")
-                seasons.append(int(year))
-            except ValueError:
-                logger.warning("Could not parse year from filename: %s", report_file)
-        
-        seasons.sort(reverse=True) # Show newest first
+        seasons_set = set()
+        if os.path.exists(SEASON_REPORTS_DIR):
+            report_files = [f for f in os.listdir(SEASON_REPORTS_DIR) if f.startswith("season_report_") and f.endswith(".json")]
+            for report_file in report_files:
+                try:
+                    year = report_file.replace("season_report_", "").replace(".json", "")
+                    seasons_set.add(int(year))
+                except ValueError:
+                    pass
+
+        try:
+            with get_db_session() as db:
+                db_seasons = db.query(Match.season_year).distinct().all()
+                for row in db_seasons:
+                    if row[0]:
+                        seasons_set.add(int(row[0]))
+        except Exception:
+            pass
+
+        seasons = sorted(list(seasons_set), reverse=True)
         return JSONResponse(status_code=200, content={"seasons": seasons})
     except Exception as e:
-        print(f"Error getting seasons: {str(e)}")
+        logger.exception("Error getting seasons")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @app.get("/get-season-report/{year:int}")
@@ -644,6 +659,249 @@ async def get_match(match_id):
     except Exception as e:
         logger.exception("Error getting match details for match %s", match_id)
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@app.get("/api/v1/engine/status")
+async def get_engine_status():
+    """Returns the current status of the match engine and TiKick multi-agent system."""
+    try:
+        from models.match import get_grf_simulator
+        from config import ENGINE_MODE, BALLER_DIR, TIKICK_CHECKPOINT_PATH
+        sim = get_grf_simulator()
+        is_grf_ready = sim is not None and sim.is_available()
+        
+        return JSONResponse(status_code=200, content={
+            "engine_mode": ENGINE_MODE,
+            "grf_available": is_grf_ready,
+            "device": getattr(sim, "device", "cpu") if sim else "none",
+            "checkpoint_found": os.path.exists(str(TIKICK_CHECKPOINT_PATH)),
+            "baller_dir": str(BALLER_DIR),
+            "recordings_dir": str(RECORDINGS_DIR)
+        })
+    except Exception as e:
+        logger.exception("Error getting engine status")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@app.get("/api/v1/match/{match_id}/video")
+async def get_match_video(match_id: str):
+    """Get video replay metadata for a specific match."""
+    try:
+        clean_id = str(match_id)
+        v1 = RECORDINGS_DIR / f"{clean_id}.mp4"
+        v2 = RECORDINGS_DIR / f"match_{clean_id}.mp4"
+        v_target = v1 if v1.exists() else (v2 if v2.exists() else None)
+        if v_target:
+            return JSONResponse(status_code=200, content={
+                "match_id": match_id,
+                "video_url": f"/recordings/{v_target.name}",
+                "size_bytes": v_target.stat().st_size,
+                "available": True
+            })
+        return JSONResponse(status_code=200, content={
+            "match_id": match_id,
+            "video_url": None,
+            "available": False,
+            "message": "No broadcast replay video generated for this match."
+        })
+    except Exception as e:
+        logger.exception("Error checking match video for %s", match_id)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@app.get("/api/v1/match/{match_id}/render-status")
+async def get_match_render_status(match_id: str):
+    """Get live 3D replay rendering progress and stage details."""
+    try:
+        clean_id = str(match_id)
+        v1 = RECORDINGS_DIR / f"{clean_id}.mp4"
+        v2 = RECORDINGS_DIR / f"match_{clean_id}.mp4"
+        v_target = v1 if v1.exists() else (v2 if v2.exists() else None)
+
+        prog_file = RECORDINGS_DIR / f"progress_{clean_id}.json"
+        if prog_file.exists():
+            try:
+                with open(prog_file, "r", encoding="utf-8") as pf:
+                    data = json.load(pf)
+                    if v_target and data.get("completed"):
+                        data["video_url"] = f"/recordings/{v_target.name}"
+                        # Clean up temporary progress JSON file once complete
+                        try:
+                            prog_file.unlink()
+                        except Exception:
+                            pass
+                    return JSONResponse(status_code=200, content=data)
+            except Exception:
+                pass
+
+        if v_target:
+            if prog_file.exists():
+                try:
+                    prog_file.unlink()
+                except Exception:
+                    pass
+            return JSONResponse(status_code=200, content={
+                "status": "completed",
+                "progress": 100,
+                "match_minute": 90,
+                "stage": "3D Replay Available",
+                "video_url": f"/recordings/{v_target.name}",
+                "completed": True
+            })
+
+        return JSONResponse(status_code=200, content={
+            "status": "idle",
+            "progress": 0,
+            "match_minute": 0,
+            "stage": "Ready to Render",
+            "video_url": None,
+            "completed": False
+        })
+    except Exception as e:
+        logger.exception("Error checking render status for %s", match_id)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@app.post("/api/v1/match/simulate-grf", response_model=MatchSimulationResponse)
+async def simulate_grf_match(req: MatchSimulationRequest):
+    """
+    Execute on-demand match simulation between two teams with 720p HD broadcast video generation.
+    """
+    try:
+        from models.team import Team
+        from models.player import FootballPlayer
+        from models.match import Match, get_grf_simulator
+        from models.manager import Manager
+        from database.match_db import get_match_details
+        from logic.broadcast_renderer import BroadcastReplayRenderer
+
+        match_id_str = str(req.match_id) if req.match_id else f"match_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        # If this is an existing match from the database, use its exact scores and events
+        existing_match = None
+        if req.match_id:
+            try:
+                existing_match = get_match_details(int(req.match_id) if str(req.match_id).isdigit() else req.match_id)
+            except Exception:
+                pass
+
+        if existing_match:
+            h_score = existing_match.get("home_goals", 0)
+            a_score = existing_match.get("away_goals", 0)
+            h_team = existing_match.get("home_team_name", req.home_team_name)
+            a_team = existing_match.get("away_team_name", req.away_team_name)
+            evts = existing_match.get("events", [])
+            
+            # Use Native Google Research Football 3D Replay with TiKick MARL
+            video_url = None
+            try:
+                from logic.grf_native_runner import GRFNativeRunner
+                native_runner = GRFNativeRunner()
+                if native_runner.is_available():
+                    grf_out = await asyncio.to_thread(
+                        native_runner.run_match,
+                        match_id=match_id_str,
+                        home_team=h_team,
+                        away_team=a_team,
+                        render_video=True,
+                        max_steps=3000
+                    )
+                    video_url = grf_out.get("video_url")
+            except Exception as ex:
+                logger.warning("GRF Native Runner fallback triggered: %s", ex)
+
+            if not video_url:
+                renderer = BroadcastReplayRenderer()
+                video_url = await asyncio.to_thread(
+                    renderer.render_match_replay,
+                    match_id=match_id_str,
+                    home_team=h_team,
+                    away_team=a_team,
+                    score=(h_score, a_score),
+                    events=evts,
+                    duration_seconds=12
+                )
+
+            return MatchSimulationResponse(
+                match_id=match_id_str,
+                home_team=h_team,
+                away_team=a_team,
+                home_score=h_score,
+                away_score=a_score,
+                possession={"home": float(existing_match.get("home_possession", 50)), "away": float(existing_match.get("away_possession", 50))},
+                shots={"home": int(existing_match.get("shots", {}).get("home", {}).get("total", h_score * 3)), "away": int(existing_match.get("shots", {}).get("away", {}).get("total", a_score * 3))},
+                xg={"home": float(h_score * 0.75), "away": float(a_score * 0.75)},
+                timeline=evts,
+                video_url=video_url
+            )
+
+        # Find or create teams for new exhibition matches
+        home_team = Team(req.home_team_name, budget=200_000_000)
+        away_team = Team(req.away_team_name, budget=200_000_000)
+
+        positions = ["GK", "LB", "CB", "CB", "RB", "CM", "CDM", "CAM", "LW", "ST", "RW", "GK", "CB", "CM", "ST"]
+        for pos in positions:
+            p_home = FootballPlayer.create_player(position=pos)
+            home_team.add_player(p_home, force=True)
+            p_away = FootballPlayer.create_player(position=pos)
+            away_team.add_player(p_away, force=True)
+
+        home_team.manager = Manager(name=f"{req.home_team_name} Boss")
+        home_team.manager.formation = req.home_formation
+
+        away_team.manager = Manager(name=f"{req.away_team_name} Boss")
+        away_team.manager.formation = req.away_formation
+
+        match = Match(home_team, away_team)
+        result = match.play_match(use_grf=False, render_video=False, match_id=match_id_str)
+
+        timeline_list = []
+        for ev in result.get("events", []):
+            timeline_list.append({
+                "minute": getattr(ev, "minute", 0),
+                "type": getattr(ev, "type", "event"),
+                "player": getattr(ev, "player", ""),
+                "team": getattr(ev, "team", ""),
+                "details": getattr(ev, "details", "")
+            })
+
+        h_score = int(result.get("score", [0, 0])[0])
+        a_score = int(result.get("score", [0, 0])[1])
+
+        renderer = BroadcastReplayRenderer()
+        video_url = renderer.render_match_replay(
+            match_id=match_id_str,
+            home_team=req.home_team_name,
+            away_team=req.away_team_name,
+            score=(h_score, a_score),
+            events=timeline_list,
+            duration_seconds=12
+        )
+
+        return MatchSimulationResponse(
+            match_id=match_id_str,
+            home_team=req.home_team_name,
+            away_team=req.away_team_name,
+            home_score=h_score,
+            away_score=a_score,
+            possession={
+                "home": float(result.get("possession", [50, 50])[0]),
+                "away": float(result.get("possession", [50, 50])[1])
+            },
+            shots={
+                "home": int(result.get("shots", [0, 0])[0]),
+                "away": int(result.get("shots", [0, 0])[1])
+            },
+            xg={
+                "home": float(result.get("xg", [0.0, 0.0])[0]),
+                "away": float(result.get("xg", [0.0, 0.0])[1])
+            },
+            timeline=timeline_list,
+            video_url=video_url
+        )
+    except Exception as e:
+        logger.exception("Error simulating GRF match")
+        raise HTTPException(status_code=500, detail=f"Match simulation failed: {e}")
 
 @app.get("/team-history/{team_name}")
 async def get_team_history(team_name):

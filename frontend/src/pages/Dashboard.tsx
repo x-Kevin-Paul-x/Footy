@@ -29,7 +29,8 @@ import {
   getAllSeasonsOverview,
   getSeasonReportData,
   getMatchesBySeason,
-  runSimulation
+  runSimulation,
+  getEngineStatus
 } from "../services/api";
 import {
   XAxis,
@@ -120,6 +121,11 @@ const Dashboard: React.FC = () => {
     queryKey: ['matchesBySeason', activeSeasonYear],
     queryFn: () => getMatchesBySeason(activeSeasonYear as number),
     enabled: typeof activeSeasonYear === 'number' && activeSeasonYear > 0,
+  });
+
+  const { data: engineStatus } = useQuery({
+    queryKey: ['engineStatus'],
+    queryFn: getEngineStatus,
   });
 
   const runSimMutation = useMutation({
@@ -348,7 +354,9 @@ const Dashboard: React.FC = () => {
             </Box>
             <Box sx={{ pt: 1, borderTop: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>Active Model</Typography>
-              <Typography variant="caption" sx={{ fontWeight: 800, color: 'text.primary' }}>DQN & Heuristics</Typography>
+              <Typography variant="caption" sx={{ fontWeight: 800, color: 'text.primary' }}>
+                {engineStatus?.checkpoint_found ? "TiKick MARL & DQN" : "DQN & Heuristics"}
+              </Typography>
             </Box>
           </CardContent>
         </Card>
@@ -559,7 +567,7 @@ const Dashboard: React.FC = () => {
                   <Box
                     key={m.id || idx}
                     component={Link}
-                    to={`/match/${m.id || 3031}`}
+                    to={`/match/${m.match_id || m.id}`}
                     sx={{
                       p: 2,
                       borderRadius: '16px',

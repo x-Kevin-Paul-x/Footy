@@ -491,25 +491,30 @@ class Team:
             if not player.is_available_for_selection():
                 continue  # Skip injured/suspended players
                 
-            # Calculate position-specific rating
+            attrs = getattr(player, "attributes", {})
+            # Calculate position-specific rating safely
             if player.position == "GK":
-                rating = sum(player.attributes["goalkeeping"].values()) / len(player.attributes["goalkeeping"])
+                gk_dict = attrs.get("goalkeeping", {})
+                rating = sum(gk_dict.values()) / max(1, len(gk_dict)) if gk_dict else player.potential
             elif player.position in ["CB", "LB", "RB", "LWB", "RWB"]:
-                rating = (sum(player.attributes["defending"].values()) + 
-                         sum(player.attributes["physical"].values())) / (
-                    len(player.attributes["defending"]) + len(player.attributes["physical"]))
+                def_dict = attrs.get("defending", {})
+                phy_dict = attrs.get("physical", {})
+                num_keys = len(def_dict) + len(phy_dict)
+                rating = (sum(def_dict.values()) + sum(phy_dict.values())) / max(1, num_keys) if num_keys > 0 else player.potential
             elif player.position in ["CM", "CDM", "CAM", "LM", "RM"]:
-                rating = (sum(player.attributes["passing"].values()) + 
-                         sum(player.attributes["dribbling"].values())) / (
-                    len(player.attributes["passing"]) + len(player.attributes["dribbling"]))
+                pass_dict = attrs.get("passing", {})
+                drib_dict = attrs.get("dribbling", {})
+                num_keys = len(pass_dict) + len(drib_dict)
+                rating = (sum(pass_dict.values()) + sum(drib_dict.values())) / max(1, num_keys) if num_keys > 0 else player.potential
             else:  # Forwards
-                rating = (sum(player.attributes["shooting"].values()) + 
-                         sum(player.attributes["pace"].values())) / (
-                    len(player.attributes["shooting"]) + len(player.attributes["pace"]))
+                shoot_dict = attrs.get("shooting", {})
+                pace_dict = attrs.get("pace", {})
+                num_keys = len(shoot_dict) + len(pace_dict)
+                rating = (sum(shoot_dict.values()) + sum(pace_dict.values())) / max(1, num_keys) if num_keys > 0 else player.potential
             
             # Apply fitness and form factors
-            fitness_factor = player.stats["fitness"] / 100
-            form_factor = player.get_form_rating()
+            fitness_factor = player.stats.get("fitness", 100) / 100
+            form_factor = player.get_form_rating() if hasattr(player, "get_form_rating") else 0.7
             
             total_rating += rating * fitness_factor * form_factor
             active_players += 1

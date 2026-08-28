@@ -28,9 +28,10 @@ import {
   TimelineContent,
   TimelineDot,
 } from "@mui/lab";
-import { getMatchDetails } from "../services/api";
+import { getMatchDetails, getMatchVideo, simulateGrfMatch } from "../services/api";
 import FormationViewer from "../components/FormationViewer";
 import MatchStats from "../components/MatchStats";
+import MatchVideoReplay from "../components/MatchVideoReplay";
 
 // Club Palette map
 const CLUB_PALETTES: { [key: string]: { code: string; bg: string } } = {
@@ -114,20 +115,46 @@ const getEventIconAndColor = (details: string, type: string) => {
 };
 
 // Helper to determine if an event was performed by Home or Away team
-const checkIsHomeEvent = (event: any, homeTeam: string, awayTeam: string, idx: number): boolean => {
+const checkIsHomeEvent = (
+  event: any,
+  homeTeam: string,
+  awayTeam: string,
+  homePlayers: any[] = [],
+  awayPlayers: any[] = [],
+  homeBench: any[] = [],
+  awayBench: any[] = []
+): boolean => {
+  if (event.team) {
+    const t = String(event.team).toLowerCase().trim();
+    if (t === "home") return true;
+    if (t === "away") return false;
+  }
+  if (event.team_name) {
+    const tn = String(event.team_name).toLowerCase().trim();
+    if (tn === (homeTeam || "").toLowerCase().trim()) return true;
+    if (tn === (awayTeam || "").toLowerCase().trim()) return false;
+  }
+
+  const pName = (event.player || "").toLowerCase().trim();
+  if (pName) {
+    const isHome = [...homePlayers, ...homeBench].some(
+      (p) => (p.name || "").toLowerCase().trim() === pName || (p.name || "").toLowerCase().includes(pName) || pName.includes((p.name || "").toLowerCase())
+    );
+    if (isHome) return true;
+
+    const isAway = [...awayPlayers, ...awayBench].some(
+      (p) => (p.name || "").toLowerCase().trim() === pName || (p.name || "").toLowerCase().includes(pName) || pName.includes((p.name || "").toLowerCase())
+    );
+    if (isAway) return false;
+  }
+
   const details = (event.details || "").toLowerCase();
   const hName = (homeTeam || "").toLowerCase().trim();
   const aName = (awayTeam || "").toLowerCase().trim();
+  if (hName && details.includes(hName)) return true;
+  if (aName && details.includes(aName)) return false;
 
-  if (event.team_name) {
-    if (event.team_name.toLowerCase().includes(hName)) return true;
-    if (event.team_name.toLowerCase().includes(aName)) return false;
-  }
-
-  if (details.includes(hName)) return true;
-  if (details.includes(aName)) return false;
-
-  return idx % 2 === 0;
+  return true;
 };
 
 const MatchDetail: React.FC = () => {
@@ -136,6 +163,8 @@ const MatchDetail: React.FC = () => {
   const [match, setMatch] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
 
   useEffect(() => {
     const fetchMatch = async () => {
@@ -144,6 +173,15 @@ const MatchDetail: React.FC = () => {
       try {
         const data = await getMatchDetails(Number(matchId));
         setMatch(data);
+
+        try {
+          const vid = await getMatchVideo(String(matchId));
+          if (vid.available && vid.video_url) {
+            setVideoUrl(vid.video_url);
+          }
+        } catch {
+          // Video metadata check optional
+        }
       } catch (err) {
         setError("Failed to fetch match details.");
       } finally {
@@ -153,34 +191,251 @@ const MatchDetail: React.FC = () => {
     fetchMatch();
   }, [matchId]);
 
-  // Sample tactical positions for Home and Away
-  const homePlayers = [
-    { name: "GK Position", position: "GK", x: 0.08, y: 0.5, number: 1 },
-    { name: "Defender 1", position: "LB", x: 0.25, y: 0.2, number: 3 },
-    { name: "Defender 2", position: "CB", x: 0.22, y: 0.4, number: 4 },
-    { name: "Defender 3", position: "CB", x: 0.22, y: 0.6, number: 5 },
-    { name: "Defender 4", position: "RB", x: 0.25, y: 0.8, number: 2 },
-    { name: "Midfielder 1", position: "LM", x: 0.48, y: 0.2, number: 11 },
-    { name: "Midfielder 2", position: "CM", x: 0.45, y: 0.4, number: 6 },
-    { name: "Midfielder 3", position: "CM", x: 0.45, y: 0.6, number: 8 },
-    { name: "Midfielder 4", position: "RM", x: 0.48, y: 0.8, number: 7 },
-    { name: "Striker 1", position: "ST", x: 0.75, y: 0.38, number: 9 },
-    { name: "Striker 2", position: "ST", x: 0.75, y: 0.62, number: 10 },
-  ];
+  const handleGenerateReplay = async () => {
+    if (!match) return;
+    setIsGeneratingVideo(true);
+    try {
+      const res = await simulateGrfMatch({
+        match_id: String(match.match_id),
+        home_team_name: match.home_team_name,
+        away_team_name: match.away_team_name,
+        home_formation: match.home_formation,
+        away_formation: match.away_formation,
+        generate_video: true,
+      });
+      if (res.video_url) {
+        setVideoUrl(res.video_url);
+      }
+    } catch (err) {
+      console.error("Error generating GRF replay:", err);
+    } finally {
+      setIsGeneratingVideo(false);
+    }
+  };
 
-  const awayPlayers = [
-    { name: "GK Position", position: "GK", x: 0.08, y: 0.5, number: 1 },
-    { name: "Defender 1", position: "LB", x: 0.25, y: 0.2, number: 3 },
-    { name: "Defender 2", position: "CB", x: 0.22, y: 0.4, number: 4 },
-    { name: "Defender 3", position: "CB", x: 0.22, y: 0.6, number: 5 },
-    { name: "Defender 4", position: "RB", x: 0.25, y: 0.8, number: 2 },
-    { name: "Midfielder 1", position: "DM", x: 0.42, y: 0.5, number: 6 },
-    { name: "Midfielder 2", position: "CM", x: 0.55, y: 0.35, number: 8 },
-    { name: "Midfielder 3", position: "CM", x: 0.55, y: 0.65, number: 10 },
-    { name: "Winger 1", position: "LW", x: 0.75, y: 0.2, number: 11 },
-    { name: "Striker 1", position: "ST", x: 0.78, y: 0.5, number: 9 },
-    { name: "Winger 2", position: "RW", x: 0.75, y: 0.8, number: 7 },
-  ];
+  const FORMATION_OFFSETS: Record<string, Array<{ x: number; y: number }>> = {
+    "4-3-3": [
+      { x: 0.08, y: 0.50 },
+      { x: 0.25, y: 0.18 },
+      { x: 0.22, y: 0.38 },
+      { x: 0.22, y: 0.62 },
+      { x: 0.25, y: 0.82 },
+      { x: 0.42, y: 0.50 },
+      { x: 0.55, y: 0.32 },
+      { x: 0.55, y: 0.68 },
+      { x: 0.75, y: 0.20 },
+      { x: 0.80, y: 0.50 },
+      { x: 0.75, y: 0.80 },
+    ],
+    "4-2-3-1": [
+      { x: 0.08, y: 0.50 },
+      { x: 0.25, y: 0.18 },
+      { x: 0.22, y: 0.38 },
+      { x: 0.22, y: 0.62 },
+      { x: 0.25, y: 0.82 },
+      { x: 0.42, y: 0.35 },
+      { x: 0.42, y: 0.65 },
+      { x: 0.60, y: 0.50 },
+      { x: 0.65, y: 0.22 },
+      { x: 0.65, y: 0.78 },
+      { x: 0.80, y: 0.50 },
+    ],
+    "3-5-2": [
+      { x: 0.08, y: 0.50 },
+      { x: 0.22, y: 0.28 },
+      { x: 0.20, y: 0.50 },
+      { x: 0.22, y: 0.72 },
+      { x: 0.45, y: 0.15 },
+      { x: 0.45, y: 0.85 },
+      { x: 0.42, y: 0.50 },
+      { x: 0.55, y: 0.35 },
+      { x: 0.55, y: 0.65 },
+      { x: 0.78, y: 0.38 },
+      { x: 0.78, y: 0.62 },
+    ],
+    "4-4-2": [
+      { x: 0.08, y: 0.50 },
+      { x: 0.25, y: 0.18 },
+      { x: 0.22, y: 0.38 },
+      { x: 0.22, y: 0.62 },
+      { x: 0.25, y: 0.82 },
+      { x: 0.50, y: 0.18 },
+      { x: 0.48, y: 0.38 },
+      { x: 0.48, y: 0.62 },
+      { x: 0.50, y: 0.82 },
+      { x: 0.78, y: 0.38 },
+      { x: 0.78, y: 0.62 },
+    ],
+  };
+
+  const enrichPlayersWithEvents = (
+    lineup: any[],
+    formationName: string,
+    teamLabel: string,
+    events: any[] = [],
+    substitutions: any[] = []
+  ) => {
+    const coords = FORMATION_OFFSETS[formationName] || FORMATION_OFFSETS["4-3-3"];
+    const baseList = (lineup && lineup.length > 0)
+      ? lineup.slice(0, 11).map((p, i) => {
+          const coord = coords[i] || { x: 0.5, y: 0.5 };
+          return {
+            name: p.name || `Player ${i + 1}`,
+            position: p.position || (i === 0 ? "GK" : "CM"),
+            x: coord.x,
+            y: coord.y,
+            number: p.number ?? (i + 1),
+            rating: p.potential ? (p.potential > 10 ? p.potential / 10 : p.potential) : 7.2,
+          };
+        })
+      : coords.map((c, i) => ({
+          name: `${teamLabel} Player #${i + 1}`,
+          position: i === 0 ? "GK" : i <= 4 ? "DEF" : i <= 8 ? "MID" : "FWD",
+          x: c.x,
+          y: c.y,
+          number: i + 1,
+          rating: 7.2,
+        }));
+
+    return baseList.map((p) => {
+      const pNameLower = p.name.toLowerCase().trim();
+      let goals = 0;
+      let assists = 0;
+      let hasCard: "yellow" | "red" | undefined = undefined;
+      let isInjured = false;
+      let subbedOutMinute: number | undefined = undefined;
+
+      events.forEach((e) => {
+        const det = (e.details || "").toLowerCase();
+        const evPlayer = (e.player || "").toLowerCase().trim();
+        const isScorer =
+          (e.type === "goal" && (evPlayer === pNameLower || evPlayer.includes(pNameLower))) ||
+          det.includes(`goal! ${pNameLower} scores`) ||
+          det.includes(`${pNameLower} scores`);
+        const isAssister = det.includes(`assisted by ${pNameLower}`);
+
+        if (isScorer) {
+          goals += 1;
+        } else if (isAssister) {
+          assists += 1;
+        }
+
+        if (det.includes("red card") && (evPlayer === pNameLower || det.includes(pNameLower))) {
+          hasCard = "red";
+        } else if (det.includes("yellow card") && (evPlayer === pNameLower || det.includes(pNameLower)) && !hasCard) {
+          hasCard = "yellow";
+        }
+        if (e.type === "injury" && (evPlayer === pNameLower || det.includes(pNameLower))) {
+          isInjured = true;
+        }
+      });
+
+      substitutions.forEach((s) => {
+        const outName = (s.player_out || "").toLowerCase().trim();
+        if (outName && (outName.includes(pNameLower) || pNameLower.includes(outName))) {
+          subbedOutMinute = s.minute;
+        }
+      });
+
+      return {
+        ...p,
+        goals,
+        assists,
+        hasCard,
+        isInjured,
+        subbedOutMinute,
+      };
+    });
+  };
+
+  const enrichBench = (
+    bench: any[] = [],
+    events: any[] = [],
+    substitutions: any[] = []
+  ) => {
+    return bench.map((b, i) => {
+      const bNameLower = (b.name || "").toLowerCase().trim();
+      let goals = 0;
+      let assists = 0;
+      let hasCard: "yellow" | "red" | undefined = undefined;
+      let isInjured = false;
+      let subbedInMinute: number | undefined = undefined;
+      let subbedForPlayer: string | undefined = undefined;
+
+      events.forEach((e) => {
+        const det = (e.details || "").toLowerCase();
+        const evPlayer = (e.player || "").toLowerCase().trim();
+        const isScorer =
+          (e.type === "goal" && (evPlayer === bNameLower || evPlayer.includes(bNameLower))) ||
+          det.includes(`goal! ${bNameLower} scores`) ||
+          det.includes(`${bNameLower} scores`);
+        const isAssister = det.includes(`assisted by ${bNameLower}`);
+
+        if (isScorer) {
+          goals += 1;
+        } else if (isAssister) {
+          assists += 1;
+        }
+
+        if (det.includes("red card") && (evPlayer === bNameLower || det.includes(bNameLower))) {
+          hasCard = "red";
+        } else if (det.includes("yellow card") && (evPlayer === bNameLower || det.includes(bNameLower)) && !hasCard) {
+          hasCard = "yellow";
+        }
+        if (e.type === "injury" && (evPlayer === bNameLower || det.includes(bNameLower))) {
+          isInjured = true;
+        }
+      });
+
+      substitutions.forEach((s) => {
+        const inName = (s.player_in || "").toLowerCase().trim();
+        if (inName && (inName.includes(bNameLower) || bNameLower.includes(inName))) {
+          subbedInMinute = s.minute;
+          subbedForPlayer = s.player_out;
+        }
+      });
+
+      return {
+        name: b.name,
+        position: b.position || "SUB",
+        number: b.number ?? (i + 12),
+        rating: b.potential ? (b.potential > 10 ? b.potential / 10 : b.potential) : 6.8,
+        subbedInMinute,
+        subbedForPlayer,
+        goals,
+        hasCard,
+        isInjured,
+      };
+    });
+  };
+
+  const homePlayers = match
+    ? enrichPlayersWithEvents(
+        match.home_lineup,
+        match.home_formation || "4-3-3",
+        match.home_team_name,
+        match.events || [],
+        match.substitutions || []
+      )
+    : [];
+
+  const awayPlayers = match
+    ? enrichPlayersWithEvents(
+        match.away_lineup,
+        match.away_formation || "4-2-3-1",
+        match.away_team_name,
+        match.events || [],
+        match.substitutions || []
+      )
+    : [];
+
+  const homeBench = match
+    ? enrichBench(match.home_bench || [], match.events || [], match.substitutions || [])
+    : [];
+
+  const awayBench = match
+    ? enrichBench(match.away_bench || [], match.events || [], match.substitutions || [])
+    : [];
 
   if (loading) return <Box sx={{ p: 4, display: "flex", justifyContent: "center" }}><CircularProgress /></Box>;
   if (error) return <Box sx={{ p: 4 }}><Alert severity="error">{error}</Alert></Box>;
@@ -318,7 +573,19 @@ const MatchDetail: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* 2. BALANCED TWO-COLUMN DASHBOARD GRID */}
+      {/* 2. 3D BROADCAST REPLAY PLAYER */}
+      <MatchVideoReplay
+        videoUrl={videoUrl}
+        matchId={matchId || "0"}
+        homeTeam={match.home_team_name}
+        awayTeam={match.away_team_name}
+        score={[hGoals, aGoals]}
+        events={match.events || []}
+        onGenerateReplay={handleGenerateReplay}
+        isGenerating={isGeneratingVideo}
+      />
+
+      {/* 3. BALANCED TWO-COLUMN DASHBOARD GRID */}
       <Grid container spacing={3.5} alignItems="flex-start">
         {/* LEFT COLUMN: Tactical Formations & Match Stats (lg={7}) */}
         <Grid item xs={12} lg={7} sx={{ display: "flex", flexDirection: "column", gap: 3.5 }}>
@@ -326,14 +593,18 @@ const MatchDetail: React.FC = () => {
           <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <FormationViewer
               teamName={match.home_team_name}
-              formation="4-4-2"
+              formation={match.home_formation || "4-3-3"}
               players={homePlayers}
+              bench={homeBench}
+              coachName={match.home_manager_name || `${match.home_team_name} Manager`}
               teamColor={homeMeta.bg.includes("#2563eb") ? "#2563eb" : "#4f46e5"}
             />
             <FormationViewer
               teamName={match.away_team_name}
-              formation="4-3-3"
+              formation={match.away_formation || "4-2-3-1"}
               players={awayPlayers}
+              bench={awayBench}
+              coachName={match.away_manager_name || `${match.away_team_name} Manager`}
               teamColor={awayMeta.bg.includes("#334155") ? "#334155" : "#f43f5e"}
             />
           </Box>
@@ -368,7 +639,7 @@ const MatchDetail: React.FC = () => {
         </Grid>
 
         {/* RIGHT COLUMN: Compact Dual-Sided Match Event Timeline (lg={5}) */}
-        <Grid item xs={12} lg={5} sx={{ position: "sticky", top: 80 }}>
+        <Grid item xs={12} lg={5} sx={{ position: { lg: "sticky" }, top: 80 }}>
           <Card
             sx={{
               bgcolor: "background.paper",
@@ -378,10 +649,11 @@ const MatchDetail: React.FC = () => {
               boxShadow: theme.palette.mode === "dark" ? "0 10px 30px rgba(0,0,0,0.3)" : "0 10px 30px -5px rgba(0,0,0,0.04)",
               display: "flex",
               flexDirection: "column",
-              maxHeight: { lg: "calc(100vh - 120px)" }
+              height: "100%",
+              maxHeight: { lg: "calc(100vh - 100px)" }
             }}
           >
-            <CardContent sx={{ p: { xs: 2.5, md: 3 }, display: "flex", flexDirection: "column", height: "100%" }}>
+            <CardContent sx={{ p: { xs: 2.5, md: 3 }, display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
               <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2, flexWrap: "wrap", gap: 1.5 }}>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
                   <Avatar sx={{ bgcolor: "rgba(79, 70, 229, 0.1)", color: "#4f46e5", width: 36, height: 36 }}>
@@ -425,16 +697,28 @@ const MatchDetail: React.FC = () => {
               <Box
                 sx={{
                   flex: 1,
+                  minHeight: 300,
+                  maxHeight: { xs: 550, lg: "calc(100vh - 220px)" },
                   overflowY: "auto",
+                  overflowX: "hidden",
                   pr: 1,
-                  "&::-webkit-scrollbar": { width: 5 },
+                  pb: 2,
+                  "&::-webkit-scrollbar": { width: 6 },
                   "&::-webkit-scrollbar-thumb": { bgcolor: "divider", borderRadius: 9999 }
                 }}
               >
-                <Timeline position="alternate" sx={{ p: 0 }}>
+                <Timeline position="alternate" sx={{ p: 0, m: 0 }}>
                   {(match.events || []).map((event: any, idx: number) => {
                     const { icon, bgcolor } = getEventIconAndColor(event.details, event.type);
-                    const isHome = checkIsHomeEvent(event, match.home_team_name, match.away_team_name, idx);
+                    const isHome = checkIsHomeEvent(
+                      event,
+                      match.home_team_name,
+                      match.away_team_name,
+                      homePlayers,
+                      awayPlayers,
+                      homeBench,
+                      awayBench
+                    );
                     const sidePos = isHome ? "left" : "right";
 
                     return (
@@ -453,7 +737,7 @@ const MatchDetail: React.FC = () => {
                           {idx < (match.events.length - 1) && <TimelineConnector sx={{ bgcolor: "divider" }} />}
                         </TimelineSeparator>
 
-                        <TimelineContent sx={{ py: 1, px: 1.5 }}>
+                        <TimelineContent sx={{ py: 1, px: { xs: 0.8, sm: 1.5 } }}>
                           <Box
                             sx={{
                               display: "inline-block",
@@ -466,11 +750,12 @@ const MatchDetail: React.FC = () => {
                               border: 1,
                               borderColor: isHome ? "rgba(79, 70, 229, 0.2)" : "rgba(244, 63, 94, 0.2)",
                               textAlign: isHome ? "right" : "left",
-                              maxWidth: 240,
+                              maxWidth: "100%",
+                              wordBreak: "break-word",
                               boxShadow: "0 2px 6px rgba(0,0,0,0.02)"
                             }}
                           >
-                            <Box sx={{ display: "flex", alignItems: "center", gap: 0.8, justifyContent: isHome ? "flex-end" : "flex-start", mb: 0.3 }}>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 0.8, justifyContent: isHome ? "flex-end" : "flex-start", mb: 0.3, flexWrap: "wrap" }}>
                               <Chip
                                 label={`${event.minute}'`}
                                 size="small"
@@ -486,7 +771,7 @@ const MatchDetail: React.FC = () => {
                                 {isHome ? match.home_team_name : match.away_team_name}
                               </Typography>
                             </Box>
-                            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: "0.8rem", color: "text.primary", lineHeight: 1.3 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: "0.8rem", color: "text.primary", lineHeight: 1.35 }}>
                               {event.details}
                             </Typography>
                           </Box>

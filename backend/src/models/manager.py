@@ -1004,8 +1004,13 @@ class Manager:
         role_priority = {"STARTER": 0, "BENCH": 1, "YOUTH": 2}
         
         def get_player_priority(player):
-            rating = sum(sum(cat.values()) for cat in player.attributes.values()) / \
-                     (len(player.attributes) * len(next(iter(player.attributes.values()))))
+            attrs = getattr(player, "attributes", {})
+            if not attrs:
+                rating = getattr(player, "potential", 70)
+            else:
+                total_sum = sum(sum(cat.values()) for cat in attrs.values() if isinstance(cat, dict))
+                total_count = sum(len(cat) for cat in attrs.values() if isinstance(cat, dict))
+                rating = (total_sum / total_count) if total_count > 0 else getattr(player, "potential", 70)
             return (role_priority.get(player.squad_role, 3), -rating)  # Negative for descending sort
         
         sorted_gk = sorted(goalkeepers, key=get_player_priority)
@@ -1027,9 +1032,12 @@ class Manager:
         
         # Fill remaining spots with best available players
         def get_player_rating(player):
-            return sum(sum(cat.values()) for cat in player.attributes.values()) / (
-                len(player.attributes) * len(next(iter(player.attributes.values())))
-            )
+            attrs = getattr(player, "attributes", {})
+            if not attrs:
+                return getattr(player, "potential", 70)
+            total_sum = sum(sum(cat.values()) for cat in attrs.values() if isinstance(cat, dict))
+            total_count = sum(len(cat) for cat in attrs.values() if isinstance(cat, dict))
+            return (total_sum / total_count) if total_count > 0 else getattr(player, "potential", 70)
         while len(lineup) < 11 and (sorted_def or sorted_mid or sorted_fwd):
             best_remaining = []
             if sorted_def:
@@ -1171,9 +1179,13 @@ class Manager:
         """Predict player's potential development and future value."""
         age = player.age
         potential = player.potential
-        current_ability = sum(sum(cat.values()) for cat in player.attributes.values()) / (
-            len(player.attributes) * len(next(iter(player.attributes.values())))
-        )
+        attrs = getattr(player, "attributes", {})
+        if not attrs:
+            current_ability = potential
+        else:
+            total_sum = sum(sum(cat.values()) for cat in attrs.values() if isinstance(cat, dict))
+            total_count = sum(len(cat) for cat in attrs.values() if isinstance(cat, dict))
+            current_ability = (total_sum / total_count) if total_count > 0 else potential
         
         # Calculate development potential
         years_to_peak = max(0, 27 - age)  # Assume peak at 27
@@ -1358,8 +1370,12 @@ class Manager:
         """Create a lineup that fits the formation requirements."""
         # Helper function to sort players by rating
         def get_player_rating(player):
-            return sum(sum(cat.values()) for cat in player.attributes.values()) / \
-                   (len(player.attributes) * len(next(iter(player.attributes.values()))))
+            attrs = getattr(player, "attributes", {})
+            if not attrs:
+                return getattr(player, "potential", 70)
+            total_sum = sum(sum(cat.values()) for cat in attrs.values() if isinstance(cat, dict))
+            total_count = sum(len(cat) for cat in attrs.values() if isinstance(cat, dict))
+            return (total_sum / total_count) if total_count > 0 else getattr(player, "potential", 70)
         
         # Sort players by rating in each position group
         sorted_players = {

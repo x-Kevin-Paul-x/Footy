@@ -503,3 +503,82 @@ export const listSaveStates = async (): Promise<Array<{ save_id: string; timesta
   return response.data;
 };
 
+export interface EngineStatusResponse {
+  engine_mode: string;
+  grf_available: boolean;
+  device: string;
+  checkpoint_found: boolean;
+  baller_dir: string;
+  recordings_dir: string;
+}
+
+export interface MatchVideoResponse {
+  match_id: string;
+  video_url: string | null;
+  size_bytes?: number;
+  available: boolean;
+  message?: string;
+}
+
+export interface GrfMatchSimulationRequest {
+  match_id?: string;
+  home_team_name: string;
+  away_team_name: string;
+  home_formation?: string;
+  away_formation?: string;
+  generate_video?: boolean;
+  max_steps?: number;
+}
+
+export interface GrfMatchSimulationResponse {
+  match_id: string;
+  home_team: string;
+  away_team: string;
+  home_score: number;
+  away_score: number;
+  possession: { home: number; away: number };
+  shots: { home: number; away: number };
+  xg: { home: number; away: number };
+  timeline: Array<{
+    minute: number;
+    type: string;
+    player: string;
+    team: string;
+    details: string;
+  }>;
+  video_url?: string | null;
+}
+
+export const getEngineStatus = async (): Promise<EngineStatusResponse> => {
+  const response = await apiClient.get<EngineStatusResponse>('/api/v1/engine/status');
+  return response.data;
+};
+
+export const getMatchVideo = async (matchId: string): Promise<MatchVideoResponse> => {
+  const response = await apiClient.get<MatchVideoResponse>(`/api/v1/match/${matchId}/video`);
+  return response.data;
+};
+
+export const simulateGrfMatch = async (params: GrfMatchSimulationRequest): Promise<GrfMatchSimulationResponse> => {
+  const response = await apiClient.post<GrfMatchSimulationResponse>('/api/v1/match/simulate-grf', params);
+  return response.data;
+};
+
+export interface MatchRenderStatusResponse {
+  status: "idle" | "initializing" | "rendering" | "simulating" | "completed" | "failed";
+  progress: number;
+  step?: number;
+  total_steps?: number;
+  match_minute?: number;
+  stage?: string;
+  video_url?: string | null;
+  score?: [number, number];
+  completed: boolean;
+}
+
+export const getMatchRenderStatus = async (matchId: string): Promise<MatchRenderStatusResponse> => {
+  const response = await apiClient.get<MatchRenderStatusResponse>(`/api/v1/match/${matchId}/render-status`);
+  return response.data;
+};
+
+

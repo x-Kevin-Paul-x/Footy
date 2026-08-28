@@ -16,7 +16,8 @@ import GridViewIcon from "@mui/icons-material/GridView";
 import ViewListIcon from "@mui/icons-material/ViewList";
 import LocalHospitalIcon from "@mui/icons-material/LocalHospital";
 
-interface PlayerPosition {
+export interface PlayerPosition {
+  player_id?: number;
   name: string;
   position: string;
   x: number;
@@ -25,12 +26,36 @@ interface PlayerPosition {
   isInjured?: boolean;
   hasCard?: "yellow" | "red";
   rating?: number;
+  subbedOutMinute?: number;
+  subbedInMinute?: number;
+  goals?: number;
+  assists?: number;
+  wage?: number;
+  squad_role?: string;
 }
 
-interface FormationViewerProps {
+export interface BenchPlayer {
+  player_id?: number;
+  name: string;
+  position: string;
+  number?: number;
+  rating?: number;
+  subbedInMinute?: number;
+  subbedOutMinute?: number;
+  subbedForPlayer?: string;
+  goals?: number;
+  hasCard?: "yellow" | "red";
+  isInjured?: boolean;
+  wage?: number;
+  squad_role?: string;
+}
+
+export interface FormationViewerProps {
   teamName: string;
   formation: string;
   players: PlayerPosition[];
+  bench?: BenchPlayer[];
+  coachName?: string;
   teamColor?: string;
 }
 
@@ -88,10 +113,26 @@ const PositionBadgeColor = (pos: string) => {
   return "#8b5cf6";
 };
 
+const getRatingColor = (rating?: number) => {
+  if (!rating) return { bg: "#10b981", text: "#ffffff" };
+  const r = rating > 10 ? rating / 10 : rating;
+  if (r >= 7.5) return { bg: "#10b981", text: "#ffffff" };
+  if (r >= 6.5) return { bg: "#f59e0b", text: "#000000" };
+  return { bg: "#ef4444", text: "#ffffff" };
+};
+
+const formatRating = (rating?: number) => {
+  if (!rating) return "7.2";
+  const r = rating > 10 ? rating / 10 : rating;
+  return r.toFixed(1);
+};
+
 const FormationViewer: React.FC<FormationViewerProps> = ({
   teamName,
   formation,
   players,
+  bench = [],
+  coachName,
   teamColor = "#4f46e5",
 }) => {
   const theme = useTheme();
@@ -304,6 +345,7 @@ const FormationViewer: React.FC<FormationViewerProps> = ({
               const yPos = Math.max(0.08, Math.min(p.y, 0.92)) * pitchHeight;
               const posColor = PositionBadgeColor(p.position);
               const jerseyMainColor = p.position.startsWith("GK") ? "#f59e0b" : teamColor;
+              const rStyle = getRatingColor(p.rating);
 
               return (
                 <Tooltip
@@ -314,6 +356,21 @@ const FormationViewer: React.FC<FormationViewerProps> = ({
                       <Typography variant="caption" sx={{ color: posColor, fontWeight: 700 }}>
                         {p.position} • #{p.number ?? idx + 1}
                       </Typography>
+                      {p.subbedOutMinute && (
+                        <Typography variant="caption" sx={{ display: "block", color: "#f43f5e", fontWeight: 700 }}>
+                          Substituted Off at {p.subbedOutMinute}'
+                        </Typography>
+                      )}
+                      {p.goals ? (
+                        <Typography variant="caption" sx={{ display: "block", color: "#10b981", fontWeight: 700 }}>
+                          ⚽ {p.goals} Goal{p.goals > 1 ? "s" : ""}
+                        </Typography>
+                      ) : null}
+                      {p.assists ? (
+                        <Typography variant="caption" sx={{ display: "block", color: "#38bdf8", fontWeight: 700 }}>
+                          👟 {p.assists} Assist{p.assists > 1 ? "s" : ""}
+                        </Typography>
+                      ) : null}
                     </Box>
                   }
                   arrow
@@ -342,22 +399,74 @@ const FormationViewer: React.FC<FormationViewerProps> = ({
                       number={p.number ?? idx + 1}
                     />
 
-                    {/* Booking Card Indicator */}
-                    {p.hasCard && (
+                    {/* Top-Right: Rating Badge Pill */}
+                    <Box
+                      sx={{
+                        position: "absolute",
+                        top: -8,
+                        right: -10,
+                        bgcolor: rStyle.bg,
+                        color: rStyle.text,
+                        fontSize: "0.62rem",
+                        fontWeight: 900,
+                        px: 0.6,
+                        py: 0.1,
+                        borderRadius: "8px",
+                        boxShadow: "0 2px 6px rgba(0,0,0,0.6)",
+                        border: "1px solid rgba(255,255,255,0.4)",
+                        zIndex: 10
+                      }}
+                    >
+                      {formatRating(p.rating)}
+                    </Box>
+
+                    {/* Top-Left: Substitution OUT Badge (Red with minute) */}
+                    {p.subbedOutMinute && (
                       <Box
                         sx={{
                           position: "absolute",
-                          top: -2,
-                          right: 2,
-                          width: 10,
-                          height: 14,
-                          bgcolor: p.hasCard === "yellow" ? "#fbbf24" : "#f43f5e",
-                          borderRadius: "1.5px",
+                          top: -8,
+                          left: -12,
+                          bgcolor: "#e11d48",
+                          color: "#ffffff",
+                          fontSize: "0.6rem",
+                          fontWeight: 900,
+                          px: 0.5,
+                          py: 0.1,
+                          borderRadius: "8px",
                           boxShadow: "0 2px 6px rgba(0,0,0,0.6)",
-                          border: "1px solid #fff",
+                          border: "1px solid rgba(255,255,255,0.4)",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 0.2,
+                          zIndex: 10
                         }}
-                      />
+                      >
+                        <span>{p.subbedOutMinute}'</span>
+                        <span style={{ fontSize: "0.55rem" }}>🔴</span>
+                      </Box>
                     )}
+
+                    {/* Goal & Card Badges */}
+                    <Box sx={{ position: "absolute", top: 12, right: -12, display: "flex", flexDirection: "column", gap: 0.3, zIndex: 8 }}>
+                      {p.goals ? (
+                        <Box sx={{ bgcolor: "rgba(0,0,0,0.8)", borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.55rem" }}>
+                          ⚽
+                        </Box>
+                      ) : null}
+                      {p.hasCard && (
+                        <Box
+                          sx={{
+                            width: 9,
+                            height: 12,
+                            bgcolor: p.hasCard === "yellow" ? "#fbbf24" : "#f43f5e",
+                            borderRadius: "1.5px",
+                            boxShadow: "0 2px 4px rgba(0,0,0,0.5)",
+                            border: "1px solid #fff",
+                          }}
+                        />
+                      )}
+                    </Box>
 
                     {/* Injury Badge */}
                     {p.isInjured && (
@@ -421,6 +530,7 @@ const FormationViewer: React.FC<FormationViewerProps> = ({
           <Stack spacing={1.5} sx={{ mt: 1 }}>
             {players.map((p, idx) => {
               const posColor = PositionBadgeColor(p.position);
+              const rStyle = getRatingColor(p.rating);
               return (
                 <Box
                   key={idx}
@@ -454,22 +564,27 @@ const FormationViewer: React.FC<FormationViewerProps> = ({
                         {p.name}
                       </Typography>
                       <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                        Squad Member
+                        Starter • #{p.number ?? idx + 1}
                       </Typography>
                     </Box>
                   </Box>
 
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    {p.isInjured && (
-                      <Chip label="Injured" size="small" color="error" icon={<LocalHospitalIcon sx={{ fontSize: 12 }} />} />
-                    )}
-                    {p.hasCard && (
+                    {p.subbedOutMinute && (
                       <Chip
-                        label={p.hasCard === "yellow" ? "Yellow Card" : "Red Card"}
+                        label={`Out: ${p.subbedOutMinute}' 🔴`}
                         size="small"
-                        sx={{ bgcolor: p.hasCard === "yellow" ? "#fbbf24" : "#f43f5e", color: "#000", fontWeight: 700 }}
+                        sx={{ bgcolor: "rgba(244, 63, 94, 0.15)", color: "#f43f5e", fontWeight: 800 }}
                       />
                     )}
+                    {p.goals ? (
+                      <Chip label={`⚽ ${p.goals}`} size="small" sx={{ bgcolor: "rgba(16, 185, 129, 0.15)", color: "#10b981", fontWeight: 800 }} />
+                    ) : null}
+                    <Chip
+                      label={formatRating(p.rating)}
+                      size="small"
+                      sx={{ bgcolor: rStyle.bg, color: rStyle.text, fontWeight: 900 }}
+                    />
                     <Chip
                       label={p.position}
                       size="small"
@@ -486,6 +601,134 @@ const FormationViewer: React.FC<FormationViewerProps> = ({
             })}
           </Stack>
         )}
+
+        {/* COACH & BENCH (SUBSTITUTES) SECTION - FOTMOB / SOFASCORE STYLE */}
+        <Box sx={{ mt: 3, pt: 2.5, borderTop: 1, borderColor: "divider" }}>
+          {/* Coach Banner */}
+          {coachName && (
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2.5, p: 1.5, px: 2, borderRadius: "14px", bgcolor: theme.palette.mode === "dark" ? "rgba(255,255,255,0.02)" : "#f8fafc", border: 1, borderColor: "divider" }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                <Avatar sx={{ width: 28, height: 28, bgcolor: "#475569", fontSize: "0.75rem", fontWeight: 800 }}>
+                  👔
+                </Avatar>
+                <Box>
+                  <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 700, textTransform: "uppercase", fontSize: "0.68rem" }}>
+                    Head Coach
+                  </Typography>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                    {coachName}
+                  </Typography>
+                </Box>
+              </Box>
+              <Chip label={`Tactics: ${formation}`} size="small" sx={{ height: 20, fontSize: "0.7rem", fontWeight: 700 }} />
+            </Box>
+          )}
+
+          {/* Substitutes Header */}
+          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.5, fontSize: "0.75rem", color: "text.secondary" }}>
+              Substitutes ({bench.length})
+            </Typography>
+            <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 600 }}>
+              Green badge indicates in-game substitution
+            </Typography>
+          </Box>
+
+          {/* Bench Players Grid */}
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.2 }}>
+            {bench.map((b, bIdx) => {
+              const posColor = PositionBadgeColor(b.position);
+              const rStyle = getRatingColor(b.rating);
+
+              return (
+                <Box
+                  key={bIdx}
+                  sx={{
+                    p: 1.2,
+                    px: 1.8,
+                    borderRadius: "14px",
+                    bgcolor: theme.palette.mode === "dark" ? "rgba(255,255,255,0.03)" : "#f8fafc",
+                    border: 1,
+                    borderColor: b.subbedInMinute ? "rgba(16, 185, 129, 0.4)" : "divider",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 1
+                  }}
+                >
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1.2, minWidth: 0 }}>
+                    <Avatar
+                      sx={{
+                        width: 26,
+                        height: 26,
+                        bgcolor: b.subbedInMinute ? "#10b981" : posColor,
+                        color: "#fff",
+                        fontWeight: 900,
+                        fontSize: "0.7rem"
+                      }}
+                    >
+                      {b.number ?? bIdx + 12}
+                    </Avatar>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 700, fontSize: "0.82rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {b.name}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: posColor, fontWeight: 700, fontSize: "0.68rem" }}>
+                        {b.position}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.8, flexShrink: 0 }}>
+                    {b.subbedInMinute ? (
+                      <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 0.2 }}>
+                        <Chip
+                          label={`${b.subbedInMinute}' 🟢`}
+                          size="small"
+                          sx={{
+                            height: 20,
+                            fontSize: "0.68rem",
+                            fontWeight: 900,
+                            bgcolor: "rgba(16, 185, 129, 0.15)",
+                            color: "#10b981",
+                            border: "1px solid rgba(16, 185, 129, 0.3)"
+                          }}
+                        />
+                        {b.subbedForPlayer && (
+                          <Typography variant="caption" sx={{ fontSize: "0.62rem", color: "text.secondary", fontWeight: 700 }}>
+                            for {b.subbedForPlayer.split(" ").pop()}
+                          </Typography>
+                        )}
+                      </Box>
+                    ) : (
+                      <Typography variant="caption" sx={{ color: "text.disabled", fontWeight: 700 }}>
+                        -
+                      </Typography>
+                    )}
+
+                    <Chip
+                      label={formatRating(b.rating)}
+                      size="small"
+                      sx={{
+                        height: 20,
+                        fontSize: "0.68rem",
+                        fontWeight: 900,
+                        bgcolor: rStyle.bg,
+                        color: rStyle.text
+                      }}
+                    />
+                  </Box>
+                </Box>
+              );
+            })}
+
+            {bench.length === 0 && (
+              <Typography variant="caption" color="text.secondary" sx={{ py: 2, textAlign: "center", gridColumn: "1 / -1" }}>
+                No bench substitutes listed.
+              </Typography>
+            )}
+          </Box>
+        </Box>
       </CardContent>
     </Card>
   );

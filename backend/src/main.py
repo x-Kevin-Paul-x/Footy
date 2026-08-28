@@ -622,7 +622,7 @@ def main():
 
     ensure_report_directories()
 
-    num_seasons = NUM_SEASONS
+    num_seasons = int(os.environ.get("FOOTY_NUM_SEASONS", str(NUM_SEASONS)))
     
     # Create league and transfer market
     premier_league = create_premier_league()

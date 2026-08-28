@@ -90,5 +90,8 @@ test_database.py
 test_transfers.log
 test_training.py
 test_transfers.py
-ml/
 node_modules/*
+*.mp4
+*.avi
+*.webm
+backend/reports/recordings/

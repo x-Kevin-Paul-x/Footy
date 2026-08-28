@@ -55,3 +55,26 @@ class WebSocketEventFrame(BaseModel):
     message: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
 
+
+class MatchSimulationRequest(BaseModel):
+    match_id: Optional[str] = None
+    home_team_name: str = "Arsenal"
+    away_team_name: str = "Chelsea"
+    home_formation: str = "4-3-3"
+    away_formation: str = "4-2-3-1"
+    generate_video: bool = False
+    max_steps: int = 3000
+
+
+class MatchSimulationResponse(BaseModel):
+    match_id: str
+    home_team: str
+    away_team: str
+    home_score: int
+    away_score: int
+    possession: Dict[str, float]
+    shots: Dict[str, int]
+    xg: Dict[str, float]
+    timeline: List[Dict[str, Any]]
+    video_url: Optional[str] = None
+

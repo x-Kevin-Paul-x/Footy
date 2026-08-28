@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
     "fastapi",
     "uvicorn",
+    "watchfiles",
     "sqlalchemy",
     "pydantic",
     "torch",

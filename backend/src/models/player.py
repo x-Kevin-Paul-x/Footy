@@ -146,7 +146,24 @@ class FootballPlayer:
         player.player_id = data["player_id"]
         player.contract_length = data["contract_length"]
         player.squad_role = data["squad_role"]
-        player.attributes = data["attributes"]
+        
+        # Merge with default full attribute template
+        default_attrs = {
+            "pace": {"acceleration": 50, "sprint_speed": 50},
+            "shooting": {"finishing": 50, "shot_power": 50, "long_shots": 50},
+            "passing": {"vision": 50, "crossing": 50, "free_kick": 50},
+            "dribbling": {"agility": 50, "balance": 50, "ball_control": 50},
+            "defending": {"marking": 50, "standing_tackle": 50, "sliding_tackle": 50},
+            "physical": {"strength": 50, "stamina": 50, "aggression": 50},
+            "goalkeeping": {"diving": 50, "handling": 50, "reflexes": 50, "positioning": 50}
+        }
+        if data.get("attributes"):
+            for k, v in data["attributes"].items():
+                if k in default_attrs and isinstance(v, dict):
+                    default_attrs[k].update(v)
+                else:
+                    default_attrs[k] = v
+        player.attributes = default_attrs
         return player
     
     def apply_age_decline(self):
