@@ -52,59 +52,100 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
 
-  // Live Rendering Progress State
+  // Active Video URL & Live Rendering State
+  const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(videoUrl || null);
+  const [isActivelyRendering, setIsActivelyRendering] = useState<boolean>(isGenerating);
   const [renderProgress, setRenderProgress] = useState<number>(0);
   const [renderStage, setRenderStage] = useState<string>("Initializing TiKick MARL Policy...");
   const [matchMinute, setMatchMinute] = useState<number>(0);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [liveScore, setLiveScore] = useState<[number, number]>(score);
 
-  // Live Timer & Status Polling
+  // Synchronize when videoUrl prop changes
+  useEffect(() => {
+    if (videoUrl) {
+      setActiveVideoUrl(videoUrl);
+      setIsActivelyRendering(false);
+    }
+  }, [videoUrl]);
+
+  // Synchronize when isGenerating prop changes
+  useEffect(() => {
+    if (isGenerating) {
+      setIsActivelyRendering(true);
+      setRenderProgress((prev) => (prev > 0 ? prev : 5));
+    }
+  }, [isGenerating]);
+
+  // Status Polling and Mount Check
   useEffect(() => {
     let timerInterval: any = null;
     let pollInterval: any = null;
 
-    if (isGenerating) {
-      setElapsedSeconds(0);
-      setRenderProgress(10);
-      setRenderStage("Loading TiKick 11v11 MARL Neural Policy & Initializing Pitch...");
+    const checkStatus = async () => {
+      try {
+        const statusData = await getMatchRenderStatus(String(matchId));
+        if (statusData) {
+          if (statusData.completed && statusData.video_url) {
+            setActiveVideoUrl(statusData.video_url);
+            setIsActivelyRendering(false);
+            return;
+          }
+          if (
+            statusData.status === "rendering" ||
+            statusData.status === "initializing" ||
+            (statusData.progress !== undefined && statusData.progress > 0 && !statusData.completed)
+          ) {
+            setIsActivelyRendering(true);
+            if (statusData.progress !== undefined) setRenderProgress(statusData.progress);
+            if (statusData.stage) setRenderStage(statusData.stage);
+            if (statusData.match_minute !== undefined) setMatchMinute(statusData.match_minute);
+            if (statusData.score) setLiveScore(statusData.score);
+          }
+        }
+      } catch {
+        // Ignore poll error
+      }
+    };
 
-      // Ticking Timer
+    // Check status on mount if no video
+    if (!activeVideoUrl) {
+      checkStatus();
+    }
+
+    if (isGenerating || isActivelyRendering) {
       timerInterval = setInterval(() => {
         setElapsedSeconds((prev) => prev + 1);
       }, 1000);
 
-      // Status Polling from Backend
       pollInterval = setInterval(async () => {
         try {
           const statusData = await getMatchRenderStatus(String(matchId));
           if (statusData) {
+            if (statusData.completed && statusData.video_url) {
+              setActiveVideoUrl(statusData.video_url);
+              setIsActivelyRendering(false);
+              return;
+            }
             if (statusData.progress !== undefined && statusData.progress > 0) {
               setRenderProgress(statusData.progress);
+              setIsActivelyRendering(true);
             }
-            if (statusData.stage) {
-              setRenderStage(statusData.stage);
-            }
-            if (statusData.match_minute !== undefined) {
-              setMatchMinute(statusData.match_minute);
-            }
-            if (statusData.score) {
-              setLiveScore(statusData.score);
-            }
+            if (statusData.stage) setRenderStage(statusData.stage);
+            if (statusData.match_minute !== undefined) setMatchMinute(statusData.match_minute);
+            if (statusData.score) setLiveScore(statusData.score);
           }
         } catch {
-          // Ignore transient poll errors
+          // Ignore transient poll error
         }
       }, 800);
-    } else {
-      setElapsedSeconds(0);
     }
 
     return () => {
       if (timerInterval) clearInterval(timerInterval);
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, [isGenerating, matchId]);
+  }, [isGenerating, isActivelyRendering, matchId, activeVideoUrl]);
 
   const handlePlayPause = () => {
     if (!videoRef.current) return;
@@ -130,6 +171,8 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
     videoRef.current.play();
     setIsPlaying(true);
   };
+
+  const isDisplayingHUD = (isGenerating || isActivelyRendering) && !activeVideoUrl;
 
   const goalEvents = events.filter(
     (e) => (e.type || "").toLowerCase() === "goal" || (e.details || "").toLowerCase().includes("goal")
@@ -181,7 +224,7 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
       </Box>
 
       <CardContent sx={{ p: 3 }}>
-        {videoUrl ? (
+        {activeVideoUrl ? (
           <Box>
             {/* HTML5 Video Player */}
             <Box
@@ -196,7 +239,7 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
             >
               <video
                 ref={videoRef}
-                src={videoUrl}
+                src={activeVideoUrl}
                 controls
                 style={{ width: "100%", maxHeight: "520px", display: "block" }}
                 onTimeUpdate={() => {
@@ -273,7 +316,7 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
               </Box>
             )}
           </Box>
-        ) : isGenerating ? (
+        ) : isDisplayingHUD ? (
           /* Rich Live Rendering Progress Dashboard */
           <Box
             sx={{
