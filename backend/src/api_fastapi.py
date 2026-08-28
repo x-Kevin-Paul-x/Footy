@@ -804,7 +804,9 @@ async def simulate_grf_match(req: MatchSimulationRequest):
                         home_team=h_team,
                         away_team=a_team,
                         render_video=True,
-                        max_steps=3000
+                        max_steps=3000,
+                        target_events=evts,
+                        target_score=(h_score, a_score)
                     )
                     video_url = grf_out.get("video_url")
             except Exception as ex:

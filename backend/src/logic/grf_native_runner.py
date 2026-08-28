@@ -1,7 +1,7 @@
 """
 Native Google Research Football (GRF) 3D Simulation & Video Replay Bridge.
 Executes 11v11 MARL matches with TiKick actor weights (actor.pt) via WSL2 / Docker.
-Provides deterministic simulation for consistent match stats, half-time intermission, and native 3D video rendering.
+Synchronizes 3D OpenGL frame rendering with canonical match scores, scorers, and timeline events at broadcast FPS.
 """
 
 import os
@@ -171,7 +171,7 @@ def extract_features_268(raw_obs, num_agents=10, last_loffside=None, last_roffsi
 
     return np.array(obs, dtype=np.float32), loffside, roffside
 
-def run_match(match_id, home_team, away_team, render_video, max_steps, output_mp4, ckpt_path, progress_file):
+def run_match(match_id, home_team, away_team, render_video, max_steps, output_mp4, ckpt_path, progress_file, target_events=None, target_score=None):
     try:
         with open(progress_file, "w") as pf:
             json.dump({
@@ -212,22 +212,39 @@ def run_match(match_id, home_team, away_team, render_video, max_steps, output_mp
     avail_actions = torch.zeros(num_agents, 33, device=device)
     avail_actions[:, :20] = 1.0
 
+    # Parse Canonical Events and Goals
+    canonical_goals = []
+    if target_events:
+        for evt in target_events:
+            e_type = (evt.get("type") or "").lower()
+            e_desc = (evt.get("details") or "").lower()
+            if e_type == "goal" or "goal" in e_desc or "scores" in e_desc:
+                t_str = str(evt.get("team") or "").lower()
+                is_home = (t_str == "home" or home_team.lower() in t_str or home_team.lower() in str(evt.get("team_name", "")).lower())
+                canonical_goals.append({
+                    "minute": int(evt.get("minute", 0)),
+                    "team": "home" if is_home else "away",
+                    "player": evt.get("player") or (f"{home_team} Scorer" if is_home else f"{away_team} Scorer")
+                })
+        canonical_goals.sort(key=lambda x: x["minute"])
+
     video_writer = None
     if render_video:
         import imageio
         os.makedirs(os.path.dirname(output_mp4), exist_ok=True)
-        video_writer = imageio.get_writer(output_mp4, fps=25, codec='libx264', pixelformat='yuv420p', quality=8)
+        # Broadcast standard 12 FPS for smooth, natural TV-style action pace
+        video_writer = imageio.get_writer(output_mp4, fps=12, codec='libx264', pixelformat='yuv420p', quality=8)
 
     done = False
     step = 0
     events = []
-    last_score = [0, 0]
     left_poss_steps = 0
     right_poss_steps = 0
     total_shots_left = 0
     total_shots_right = 0
     last_loffside = None
     last_roffside = None
+    last_rendered_goal_min = -1
 
     while not done and step < max_steps:
         obs_vec, last_loffside, last_roffside = extract_features_268(
@@ -252,30 +269,19 @@ def run_match(match_id, home_team, away_team, render_video, max_steps, output_mp
 
         match_min = int((step / max_steps) * 90)
 
-        # Check for goal
-        goal_scored_this_step = False
-        if curr_score[0] > last_score[0]:
-            events.append({
-                "minute": match_min,
-                "type": "goal",
-                "team": "home",
-                "player": f"{home_team} Striker",
-                "details": f"Goal! {home_team} scores!"
-            })
-            total_shots_left += 1
-            goal_scored_this_step = True
-        elif curr_score[1] > last_score[1]:
-            events.append({
-                "minute": match_min,
-                "type": "goal",
-                "team": "away",
-                "player": f"{away_team} Striker",
-                "details": f"Goal! {away_team} scores!"
-            })
-            total_shots_right += 1
-            goal_scored_this_step = True
+        # Synchronize Score with Canonical Events
+        active_goal_banner = None
+        if canonical_goals:
+            h_count = sum(1 for g in canonical_goals if g["team"] == "home" and g["minute"] <= match_min)
+            a_count = sum(1 for g in canonical_goals if g["team"] == "away" and g["minute"] <= match_min)
+            display_score = [h_count, a_count]
 
-        last_score = list(curr_score)
+            # Check if a canonical goal occurs at current minute
+            recent_goal = next((g for g in canonical_goals if g["minute"] == match_min), None)
+            if recent_goal:
+                active_goal_banner = f"GOAL! {recent_goal['player']} ({recent_goal['minute']}')"
+        else:
+            display_score = [int(curr_score[0]), int(curr_score[1])]
 
         # Half-Time Break Logic at 45'
         if step == (max_steps // 2):
@@ -284,16 +290,16 @@ def run_match(match_id, home_team, away_team, render_video, max_steps, output_mp
                 if ht_frame is not None:
                     ht_annotated = ht_frame.copy()
                     h_img, w_img = ht_annotated.shape[:2]
-                    cv2.rectangle(ht_annotated, (0, 0), (w_img, 90), (10, 15, 25), -1)
+                    cv2.rectangle(ht_annotated, (0, 0), (w_img, 95), (12, 18, 28), -1)
                     ht_title = "HALF TIME"
-                    cv2.putText(ht_annotated, ht_title, (int(w_img/2 - 80), 34), cv2.FONT_HERSHEY_DUPLEX, 0.85, (0, 240, 255), 2)
-                    ht_score_str = f"{home_team.upper()}  {curr_score[0]} - {curr_score[1]}  {away_team.upper()}"
-                    cv2.putText(ht_annotated, ht_score_str, (int(w_img/2 - 210), 72), cv2.FONT_HERSHEY_DUPLEX, 0.75, (255, 255, 255), 2)
-                    for _ in range(12):
+                    cv2.putText(ht_annotated, ht_title, (int(w_img/2 - 80), 36), cv2.FONT_HERSHEY_DUPLEX, 0.85, (0, 240, 255), 2)
+                    ht_score_str = f"{home_team.upper()}  {display_score[0]} - {display_score[1]}  {away_team.upper()}"
+                    cv2.putText(ht_annotated, ht_score_str, (int(w_img/2 - 210), 75), cv2.FONT_HERSHEY_DUPLEX, 0.75, (255, 255, 255), 2)
+                    for _ in range(16):
                         video_writer.append_data(ht_annotated)
 
-        # Broadcast frame sampling: record every 5th step or whenever a goal occurs
-        if render_video and video_writer is not None and (step % 5 == 0 or goal_scored_this_step):
+        # Broadcast frame sampling: record every 3rd step or whenever a goal happens
+        if render_video and video_writer is not None and (step % 3 == 0 or active_goal_banner is not None):
             frame = env.render(mode='rgb_array')
             if frame is not None:
                 annotated = frame.copy()
@@ -301,13 +307,25 @@ def run_match(match_id, home_team, away_team, render_video, max_steps, output_mp
                 
                 # Overlay Scoreboard Header
                 cv2.rectangle(annotated, (0, 0), (w_img, 65), (15, 20, 30), -1)
-                score_str = f"{home_team.upper()}  {curr_score[0]} - {curr_score[1]}  {away_team.upper()}"
+                score_str = f"{home_team.upper()}  {display_score[0]} - {display_score[1]}  {away_team.upper()}"
                 cv2.putText(annotated, score_str, (int(w_img/2 - 200), 32), cv2.FONT_HERSHEY_DUPLEX, 0.75, (255, 255, 255), 2)
                 half_tag = "1st Half" if step <= (max_steps // 2) else "2nd Half"
                 clock_str = f"{half_tag} | {match_min:02d}:00"
-                cv2.putText(annotated, clock_str, (w_img - 160, 38), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (245, 180, 50), 2)
+                cv2.putText(annotated, clock_str, (w_img - 170, 38), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (245, 180, 50), 2)
                 
-                video_writer.append_data(annotated)
+                # Goal Highlight Banner
+                if active_goal_banner:
+                    cv2.rectangle(annotated, (int(w_img/2 - 260), h_img - 60), (int(w_img/2 + 260), h_img - 15), (16, 185, 129), -1)
+                    cv2.putText(annotated, active_goal_banner, (int(w_img/2 - 240), h_img - 28), cv2.FONT_HERSHEY_DUPLEX, 0.68, (255, 255, 255), 2)
+                    if match_min != last_rendered_goal_min:
+                        last_rendered_goal_min = match_min
+                        # Write 10 frames of goal highlight celebration
+                        for _ in range(10):
+                            video_writer.append_data(annotated)
+                    else:
+                        video_writer.append_data(annotated)
+                else:
+                    video_writer.append_data(annotated)
 
         step += 1
         raw_obs = raw_next_obs
@@ -327,7 +345,7 @@ def run_match(match_id, home_team, away_team, render_video, max_steps, output_mp
                         "total_steps": max_steps,
                         "match_minute": match_min,
                         "stage": stage_msg,
-                        "score": [int(curr_score[0]), int(curr_score[1])],
+                        "score": [int(display_score[0]), int(display_score[1])],
                         "completed": False
                     }, pf)
             except Exception:
@@ -337,6 +355,7 @@ def run_match(match_id, home_team, away_team, render_video, max_steps, output_mp
         video_writer.close()
     env.close()
 
+    final_score = target_score if target_score else (display_score if canonical_goals else [int(curr_score[0]), int(curr_score[1])])
     total_poss = max(1, left_poss_steps + right_poss_steps)
     h_poss = round((left_poss_steps / total_poss) * 100, 1)
     a_poss = round(100 - h_poss, 1)
@@ -354,7 +373,7 @@ def run_match(match_id, home_team, away_team, render_video, max_steps, output_mp
                 "match_minute": 90,
                 "stage": "3D Replay Render Complete!",
                 "video_url": video_rel_url,
-                "score": [int(last_score[0]), int(last_score[1])],
+                "score": [int(final_score[0]), int(final_score[1])],
                 "completed": True
             }, pf)
     except Exception:
@@ -364,10 +383,10 @@ def run_match(match_id, home_team, away_team, render_video, max_steps, output_mp
         "match_id": str(match_id),
         "home_team": home_team,
         "away_team": away_team,
-        "score": last_score,
+        "score": final_score,
         "possession": [h_poss, a_poss],
-        "shots": [max(last_score[0], total_shots_left), max(last_score[1], total_shots_right)],
-        "events": events,
+        "shots": [max(final_score[0], total_shots_left), max(final_score[1], total_shots_right)],
+        "events": target_events if target_events else events,
         "video_url": video_rel_url
     }
     print("MATCH_RESULT_JSON:" + json.dumps(result))
@@ -382,7 +401,9 @@ if __name__ == "__main__":
         max_steps=args["max_steps"],
         output_mp4=args["output_mp4"],
         ckpt_path=args["ckpt_path"],
-        progress_file=args["progress_file"]
+        progress_file=args["progress_file"],
+        target_events=args.get("target_events"),
+        target_score=args.get("target_score")
     )
 """
 
@@ -416,7 +437,9 @@ class GRFNativeRunner:
         home_team: str,
         away_team: str,
         render_video: bool = False,
-        max_steps: int = 3000
+        max_steps: int = 3000,
+        target_events: Optional[List[Dict[str, Any]]] = None,
+        target_score: Optional[Tuple[int, int]] = None
     ) -> Dict[str, Any]:
         RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
         filename = f"match_{match_id}.mp4" if not str(match_id).startswith("match_") else f"{match_id}.mp4"
@@ -441,7 +464,9 @@ class GRFNativeRunner:
             "max_steps": max_steps,
             "output_mp4": output_mp4_wsl,
             "ckpt_path": ckpt_wsl,
-            "progress_file": prog_file_wsl
+            "progress_file": prog_file_wsl,
+            "target_events": target_events,
+            "target_score": list(target_score) if target_score else None
         }
         args_json = json.dumps(match_args)
 
