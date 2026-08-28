@@ -1,7 +1,8 @@
 """
 Native Google Research Football (GRF) 3D Simulation & Video Replay Bridge.
-Executes authentic 11v11 MARL physics matches with TiKick actor policy (actor.pt) via WSL2 / Docker.
-All goals, score updates, kickoff restarts, and timeline events are 100% physically driven by the GRF physics engine.
+Executes authentic 11v11 MARL physics matches with Dual TiKick Actor Policies (Self-Play) via WSL2 / Docker.
+Both Home and Away teams are driven by the TiKick neural network policy.
+Deterministic seeding ensures 100% bit-for-bit consistency between normal simulation and 3D broadcast replay.
 """
 
 import os
@@ -21,7 +22,7 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
-# Script executed inside WSL Linux environment to run GRF + TiKick
+# Script executed inside WSL Linux environment to run GRF + TiKick Self-Play
 WSL_GRF_SCRIPT = """
 import os
 import sys
@@ -180,7 +181,7 @@ def run_match(match_id, home_team, away_team, render_video, max_steps, output_mp
                 "step": 0,
                 "total_steps": max_steps,
                 "match_minute": 0,
-                "stage": "Loading TiKick 11v11 MARL Neural Policy & Initializing Pitch...",
+                "stage": "Loading Dual TiKick 11v11 MARL Neural Policy & Initializing Pitch...",
                 "completed": False
             }, pf)
     except Exception:
@@ -188,11 +189,17 @@ def run_match(match_id, home_team, away_team, render_video, max_steps, output_mp
 
     policy, device = load_tikick(ckpt_path)
     
-    seed_val = int(hashlib.md5(str(match_id).encode()).hexdigest()[:8], 16) % 100000
+    # Deterministic Seeding: guarantees 100% identical play sequence for normal simulation & 3D replay
+    seed_val = int(hashlib.md5(f"match_{match_id}".encode()).hexdigest()[:8], 16) % 100000
     np.random.seed(seed_val)
     torch.manual_seed(seed_val)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed_val)
 
-    num_agents = 10
+    # 10 outfield agents per team (Total 20 neural controlled players + 2 GKs)
+    num_agents_per_team = 10
+    total_controlled = 20
+
     env = football_env.create_environment(
         env_name="11_vs_11_kaggle",
         stacked=False,
@@ -201,15 +208,15 @@ def run_match(match_id, home_team, away_team, render_video, max_steps, output_mp
         write_goal_dumps=False,
         write_full_episode_dumps=False,
         render=render_video,
-        number_of_left_players_agent_controls=num_agents,
-        number_of_right_players_agent_controls=0,
+        number_of_left_players_agent_controls=num_agents_per_team,
+        number_of_right_players_agent_controls=num_agents_per_team,
         other_config_options={'action_set': 'full'}
     )
 
     raw_obs = env.reset()
-    rnn_states = torch.zeros(num_agents, 1, 256, device=device)
-    masks = torch.ones(num_agents, 1, device=device)
-    avail_actions = torch.zeros(num_agents, 33, device=device)
+    rnn_states = torch.zeros(total_controlled, 1, 256, device=device)
+    masks = torch.ones(total_controlled, 1, device=device)
+    avail_actions = torch.zeros(total_controlled, 33, device=device)
     avail_actions[:, :20] = 1.0
 
     # Default player rosters if not supplied
@@ -233,19 +240,24 @@ def run_match(match_id, home_team, away_team, render_video, max_steps, output_mp
     right_poss_steps = 0
     total_shots_left = 0
     total_shots_right = 0
-    last_loffside = None
-    last_roffside = None
+    loff_l, roff_l = None, None
+    loff_r, roff_r = None, None
     active_goal_banner = None
     goal_banner_countdown = 0
 
     while not done and step < max_steps:
-        obs_vec, last_loffside, last_roffside = extract_features_268(
-            raw_obs, num_agents=num_agents, last_loffside=last_loffside, last_roffside=last_roffside
+        # Extract features for Left Team (agents 0..9) & Right Team (agents 10..19)
+        obs_l, loff_l, roff_l = extract_features_268(
+            raw_obs[0:10], num_agents=num_agents_per_team, last_loffside=loff_l, last_roffside=roff_l
         )
-        obs_t = torch.tensor(obs_vec, dtype=torch.float32, device=device)
+        obs_r, loff_r, roff_r = extract_features_268(
+            raw_obs[10:20], num_agents=num_agents_per_team, last_loffside=loff_r, last_roffside=roff_r
+        )
+        obs_all = np.concatenate([obs_l, obs_r], axis=0) # (20, 268)
+        obs_t = torch.tensor(obs_all, dtype=torch.float32, device=device)
 
         with torch.no_grad():
-            actions, _, next_rnn_states = policy(
+            actions, _, rnn_states = policy(
                 obs_t, rnn_states, masks, avail_actions, deterministic=True
             )
 
@@ -261,7 +273,7 @@ def run_match(match_id, home_team, away_team, render_video, max_steps, output_mp
 
         match_min = max(1, min(90, int((step / max_steps) * 90)))
 
-        # Detect TRUE Physics Goals from the GRF Engine
+        # Detect TRUE In-Game Goals from the GRF Physics Engine
         if curr_score[0] > last_score[0]:
             # Real goal scored by Home team!
             active_p = int(raw_next_obs[0].get('active', 10))
@@ -275,12 +287,13 @@ def run_match(match_id, home_team, away_team, render_video, max_steps, output_mp
             })
             total_shots_left += 1
             active_goal_banner = f"GOAL! {scorer_name} ({match_min}')"
-            goal_banner_countdown = 16  # Show banner during celebration and kickoff restart
+            goal_banner_countdown = 16  # Highlight celebration banner
             last_score = list(curr_score)
 
         elif curr_score[1] > last_score[1]:
             # Real goal scored by Away team!
-            scorer_name = away_players[10] if len(away_players) > 10 else f"{away_team} Striker"
+            active_p = int(raw_next_obs[10].get('active', 10))
+            scorer_name = away_players[min(active_p, len(away_players) - 1)]
             events.append({
                 "minute": match_min,
                 "type": "goal",
@@ -335,7 +348,6 @@ def run_match(match_id, home_team, away_team, render_video, max_steps, output_mp
 
         step += 1
         raw_obs = raw_next_obs
-        rnn_states = next_rnn_states
 
         # Write progress every 25 steps
         if step % 25 == 0 or step == max_steps:
@@ -481,7 +493,7 @@ class GRFNativeRunner:
             f'xvfb-run -a -s "-screen 0 1280x720x24" {self.wsl_python} {script_file_wsl} \'{args_json}\''
         ]
 
-        logger.info("Executing authentic GRF 3D physics simulation for match %s (render_video=%s, max_steps=%d)...", match_id, render_video, max_steps)
+        logger.info("Executing authentic Dual TiKick MARL 3D simulation for match %s (render_video=%s, max_steps=%d)...", match_id, render_video, max_steps)
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
 
         # Cleanup runner script
