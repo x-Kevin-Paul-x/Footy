@@ -892,83 +892,42 @@ async def simulate_grf_match(req: MatchSimulationRequest):
             except Exception:
                 pass
 
-        if existing_match:
-            h_score = existing_match.get("home_goals", 0)
-            a_score = existing_match.get("away_goals", 0)
-            h_team = existing_match.get("home_team_name", req.home_team_name)
-            a_team = existing_match.get("away_team_name", req.away_team_name)
-            evts = existing_match.get("events", [])
-            
-            # Use Exclusive Native Google Research Football 3D Replay with TiKick MARL
-            from logic.grf_native_runner import GRFNativeRunner
-            native_runner = GRFNativeRunner()
-            grf_out = await asyncio.to_thread(
-                native_runner.run_match,
-                match_id=match_id_str,
-                home_team=h_team,
-                away_team=a_team,
-                render_video=True,
-                max_steps=3000,
-                target_events=evts,
-                target_score=(h_score, a_score)
-            )
-            video_url = grf_out.get("video_url")
+        h_team = existing_match.get("home_team_name", req.home_team_name) if existing_match else req.home_team_name
+        a_team = existing_match.get("away_team_name", req.away_team_name) if existing_match else req.away_team_name
+        h_players = [p.get("name", "") for p in existing_match.get("home_players", [])] if existing_match and "home_players" in existing_match else []
+        a_players = [p.get("name", "") for p in existing_match.get("away_players", [])] if existing_match and "away_players" in existing_match else []
 
-            return MatchSimulationResponse(
-                match_id=match_id_str,
-                home_team=h_team,
-                away_team=a_team,
-                home_score=h_score,
-                away_score=a_score,
-                possession={"home": float(existing_match.get("home_possession", 50)), "away": float(existing_match.get("away_possession", 50))},
-                shots={"home": int(existing_match.get("shots", {}).get("home", {}).get("total", h_score * 3)), "away": int(existing_match.get("shots", {}).get("away", {}).get("total", a_score * 3))},
-                xg={"home": float(h_score * 0.75), "away": float(a_score * 0.75)},
-                timeline=evts,
-                video_url=video_url
-            )
-
-        # Find or create teams for new exhibition matches
-        home_team = Team(req.home_team_name, budget=200_000_000)
-        away_team = Team(req.away_team_name, budget=200_000_000)
-
-        positions = ["GK", "LB", "CB", "CB", "RB", "CM", "CDM", "CAM", "LW", "ST", "RW", "GK", "CB", "CM", "ST"]
-        for pos in positions:
-            p_home = FootballPlayer.create_player(position=pos)
-            home_team.add_player(p_home, force=True)
-            p_away = FootballPlayer.create_player(position=pos)
-            away_team.add_player(p_away, force=True)
-
-        home_team.manager = Manager(name=f"{req.home_team_name} Boss")
-        home_team.manager.formation = req.home_formation
-
-        away_team.manager = Manager(name=f"{req.away_team_name} Boss")
-        away_team.manager.formation = req.away_formation
-
-        # Run 3D GRF match directly
+        # Execute 100% Authentic Google Research Football 3D Physics Simulation
         from logic.grf_native_runner import GRFNativeRunner
         native_runner = GRFNativeRunner()
         grf_out = await asyncio.to_thread(
             native_runner.run_match,
             match_id=match_id_str,
-            home_team=req.home_team_name,
-            away_team=req.away_team_name,
+            home_team=h_team,
+            away_team=a_team,
             render_video=True,
-            max_steps=3000
+            max_steps=3000,
+            home_players=h_players if len(h_players) >= 11 else None,
+            away_players=a_players if len(a_players) >= 11 else None
         )
+
         h_score = int(grf_out.get("score", [0, 0])[0])
         a_score = int(grf_out.get("score", [0, 0])[1])
+        real_events = grf_out.get("events", [])
+        real_poss = grf_out.get("possession", [50.0, 50.0])
+        real_shots = grf_out.get("shots", [h_score, a_score])
         video_url = grf_out.get("video_url")
 
         return MatchSimulationResponse(
             match_id=match_id_str,
-            home_team=req.home_team_name,
-            away_team=req.away_team_name,
+            home_team=h_team,
+            away_team=a_team,
             home_score=h_score,
             away_score=a_score,
-            possession={"home": float(grf_out.get("possession", [50, 50])[0]), "away": float(grf_out.get("possession", [50, 50])[1])},
-            shots={"home": int(grf_out.get("shots", [h_score, a_score])[0]), "away": int(grf_out.get("shots", [h_score, a_score])[1])},
+            possession={"home": float(real_poss[0]), "away": float(real_poss[1])},
+            shots={"home": int(real_shots[0]), "away": int(real_shots[1])},
             xg={"home": float(h_score * 0.75), "away": float(a_score * 0.75)},
-            timeline=grf_out.get("events", []),
+            timeline=real_events,
             video_url=video_url
         )
     except Exception as e:
