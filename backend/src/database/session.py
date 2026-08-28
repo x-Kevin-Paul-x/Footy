@@ -5,7 +5,11 @@ import os
 from database.models import Base
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_FILE = os.path.join(BASE_DIR, "..", "..", "data", "football_sim.db")
+_DATA_DIR_OVERRIDE = os.environ.get("FOOTY_DATA_DIR")
+if _DATA_DIR_OVERRIDE:
+    DB_FILE = os.path.join(_DATA_DIR_OVERRIDE, "football_sim.db")
+else:
+    DB_FILE = os.path.join(BASE_DIR, "..", "..", "data", "football_sim.db")
 os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)
 db_url = f"sqlite:///{DB_FILE}"
 
@@ -40,3 +44,15 @@ def get_db_session():
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+
+import sqlite3
+
+def get_raw_conn(db_file=None):
+    """Return a raw sqlite3 connection configured with FK enforcement, WAL mode, and busy timeout."""
+    target_db = db_file or DB_FILE
+    os.makedirs(os.path.dirname(target_db), exist_ok=True)
+    conn = sqlite3.connect(target_db, timeout=10.0)
+    conn.execute("PRAGMA foreign_keys=ON;")
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA busy_timeout=5000;")
+    return conn

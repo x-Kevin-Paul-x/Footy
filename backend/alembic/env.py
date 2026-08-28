@@ -16,10 +16,16 @@ if config.config_file_name is not None:
 
 import sys
 import os
-# Add backend directory to sys.path so we can import src.database.models
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from pathlib import Path
 
-from src.database.models import Base
+# Add backend/src and backend to sys.path
+backend_dir = Path(__file__).resolve().parent.parent
+backend_src = backend_dir / "src"
+for p in [str(backend_src), str(backend_dir)]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
+from database.models import Base
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,

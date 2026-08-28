@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Table, Boolean
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Table, Boolean, Index
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -154,6 +154,7 @@ class PlayerStat(Base):
 
 class Match(Base):
     __tablename__ = 'Match'
+    __table_args__ = (Index('ix_match_season_year', 'season_year'),)
     
     match_id = Column(Integer, primary_key=True, autoincrement=True)
     match_number = Column(Integer, nullable=False)
@@ -188,7 +189,7 @@ class SeasonReport(Base):
     __tablename__ = 'SeasonReport'
     
     report_id = Column(Integer, primary_key=True, autoincrement=True)
-    season_year = Column(Integer, nullable=False)
+    season_year = Column(Integer, nullable=False, unique=True)
     champion_team = Column(String, nullable=False)
     report_data = Column(String, nullable=False) # JSON encoded data for easy historical querying
     created_at = Column(String, nullable=False)
@@ -197,7 +198,7 @@ class TransferReport(Base):
     __tablename__ = 'TransferReport'
     
     report_id = Column(Integer, primary_key=True, autoincrement=True)
-    season_year = Column(Integer, nullable=False)
+    season_year = Column(Integer, nullable=False, unique=True)
     report_data = Column(String, nullable=False) # JSON encoded data
     created_at = Column(String, nullable=False)
 

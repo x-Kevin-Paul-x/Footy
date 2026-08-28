@@ -3,8 +3,7 @@ import os
 from typing import List, Dict, Optional
 import random
 from datetime import datetime
-import sqlite3
-from database.db_setup import DB_FILE
+from database.session import DB_FILE, get_raw_conn
 from models.player import FootballPlayer
 from models.team import Team
 
@@ -304,7 +303,7 @@ class TransferMarket:
         # Persist listing to DB if we have reliable IDs
         try:
             if hasattr(player, "player_id") and getattr(player, "player_id", None) is not None and hasattr(team, "team_id") and getattr(team, "team_id", None) is not None:
-                conn = sqlite3.connect(DB_FILE)
+                conn = get_raw_conn()
                 cur = conn.cursor()
                 cur.execute(
                     "INSERT OR IGNORE INTO TransferListing (listing_id, player_id, asking_price, selling_team_id, listed_date, expires_in) VALUES (?, ?, ?, ?, ?, ?)",
@@ -491,7 +490,7 @@ class TransferMarket:
 
         # Persist transfer to DB and remove listing row if possible
         try:
-            conn = sqlite3.connect(DB_FILE)
+            conn = get_raw_conn()
             cur = conn.cursor()
             player_id = getattr(player, "player_id", None)
             from_team_id = getattr(listing.selling_team, "team_id", None)

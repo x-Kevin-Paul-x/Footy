@@ -1,9 +1,7 @@
 import random
 import names  # Requires: pip install names
 from database.player_db import create_player, get_player, update_player, delete_player
-from database.db_setup import DB_FILE
-
-import sqlite3
+from database.session import DB_FILE, get_raw_conn
 
 class FootballPlayer:
     
@@ -75,7 +73,7 @@ class FootballPlayer:
         
     def _generate_unique_name(self):
         """Generate a unique player name not present in the database."""
-        conn = sqlite3.connect(DB_FILE)
+        conn = get_raw_conn()
         cursor = conn.cursor()
         while True:
             candidate = names.get_full_name()
@@ -94,7 +92,7 @@ class FootballPlayer:
 
         if self.player_id is None:
             # Ensure unique name before saving
-            conn = sqlite3.connect(DB_FILE)
+            conn = get_raw_conn()
             cursor = conn.cursor()
             cursor.execute("SELECT 1 FROM Player WHERE name = ?", (self.name,))
             if cursor.fetchone():

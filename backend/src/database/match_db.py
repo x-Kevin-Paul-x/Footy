@@ -65,7 +65,7 @@ def save_match_to_db(match_data: Dict[str, Any], season_year: int, match_number:
                     home_possession=h_pos,
                     away_possession=a_pos,
                     weather=match_data.get("weather", "Sunny"),
-                    intensity=match_data.get("intensity", 50),
+                    intensity=str(match_data.get("intensity", "50")),
                     home_passes_attempted=h_att,
                     away_passes_attempted=a_att,
                     home_passes_completed=h_cmp,
@@ -88,7 +88,7 @@ def save_match_to_db(match_data: Dict[str, Any], season_year: int, match_number:
                 match_obj.home_possession = h_pos
                 match_obj.away_possession = a_pos
                 match_obj.weather = match_data.get("weather", "Sunny")
-                match_obj.intensity = match_data.get("intensity", 50)
+                match_obj.intensity = str(match_data.get("intensity", "50"))
                 match_obj.home_passes_attempted = h_att
                 match_obj.away_passes_attempted = a_att
                 match_obj.home_passes_completed = h_cmp
