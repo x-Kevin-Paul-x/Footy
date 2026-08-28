@@ -39,7 +39,7 @@ def test_summarize_episode_results_aggregates_actions_and_positions():
     assert summary["top_4_rate"] == 1.0
     assert summary["position_histogram"] == {"2": 1, "4": 1}
     assert summary["action_distribution"]["do_nothing"] == 4
-    assert summary["action_distribution"]["buy_value_or_prime"] == 3
+    assert summary["action_distribution"]["buy_value"] == 3
 
 
 def test_compare_policy_summaries_returns_reward_and_position_deltas():
