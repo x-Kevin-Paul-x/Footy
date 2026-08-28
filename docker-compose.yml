@@ -9,8 +9,8 @@ services:
     ports:
       - "5001:5001"
     environment:
-      - API_PORT=5001
-      - API_DEBUG=False
+      - FOOTY_API_PORT=5001
+      - FOOTY_API_DEBUG=False
     volumes:
       - ./backend/data:/app/data
       - ./backend/reports:/app/reports
