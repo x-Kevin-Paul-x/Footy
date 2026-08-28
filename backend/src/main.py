@@ -26,7 +26,7 @@ from models.team import Team
 from models.player import FootballPlayer
 from models.manager import Manager
 from models.transfer import TransferMarket
-from config import NUM_SEASONS, REPORTS_DIR, ensure_report_directories
+from config import NUM_SEASONS, REPORTS_DIR, ML_MODELS_DIR, ensure_report_directories
 from database.db_setup import initialize_fresh_database
 from database.match_db import save_match_to_db
 from database.report_db import save_season_report_to_db, save_transfer_report_to_db
@@ -107,13 +107,12 @@ def create_premier_league():
 
             if not team.manager:
                 ml_model_name = os.environ.get("FOOTY_ACTIVE_ML_MODEL", "dqn_best.pt")
-                ml_models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "ml", "models")
-                model_path = os.path.join(ml_models_dir, ml_model_name)
+                model_path = ML_MODELS_DIR / ml_model_name
                 has_dqn = os.path.exists(model_path)
 
                 manager = Manager(profile=None, use_dqn=has_dqn)
                 if has_dqn:
-                    manager.brain.load_model(model_path)
+                    manager.brain.load_model(str(model_path))
                     logger.info(f"Loaded ML model: {ml_model_name} for {team_name}")
 
                 manager.save_to_database()
@@ -176,13 +175,12 @@ def create_premier_league():
         
         # Get correct dynamic ML model config. Falls back to dqn_best if not provided
         ml_model_name = os.environ.get("FOOTY_ACTIVE_ML_MODEL", "dqn_best.pt")
-        ml_models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "ml", "models")
-        model_path = os.path.join(ml_models_dir, ml_model_name)
+        model_path = ML_MODELS_DIR / ml_model_name
         has_dqn = os.path.exists(model_path)
         
         manager = Manager(profile=None, use_dqn=has_dqn)  # Will use random profile
         if has_dqn:
-            manager.brain.load_model(model_path)
+            manager.brain.load_model(str(model_path))
             logger.info(f"Loaded ML model: {ml_model_name} for {team_name}")
             
         manager.save_to_database()
@@ -470,8 +468,59 @@ def sync_simulation_state_to_db(premier_league, transfer_market):
                     player.player_id = db_p.player_id
                     existing_players[player.name] = db_p
         logger.info("Database sync complete.")
+
+        # Immediately save live season report so frontend displays current standings in real time
+        save_live_season_report(premier_league, transfer_market)
     except Exception as e:
         logger.warning(f"Error during batched database sync: {e}")
+
+
+def save_live_season_report(premier_league, transfer_market):
+    try:
+        report_filename = REPORTS_DIR / 'season_reports' / f'season_report_{premier_league.season_year}.json'
+        table = premier_league.get_final_table()
+        champions_name = table[0][0] if table else "TBD"
+
+        all_teams_details = []
+        for team in premier_league.teams:
+            all_teams_details.append({
+                "id": team.team_id,
+                "name": team.name,
+                "budget": team.budget,
+                "manager_name": team.manager.name if team.manager else "N/A",
+                "manager_formation": team.manager.formation if team.manager else "4-3-3",
+                "players_count": len(team.players),
+            })
+
+        best_p = []
+        if hasattr(premier_league, "get_best_players"):
+            try:
+                best_p = premier_league.get_best_players(11)
+            except Exception:
+                best_p = []
+
+        live_report = {
+            "season_year": premier_league.season_year,
+            "champions": champions_name,
+            "champions_manager": premier_league.teams[0].manager.get_stats() if (premier_league.teams and premier_league.teams[0].manager and hasattr(premier_league.teams[0].manager, "get_stats")) else {},
+            "table": table,
+            "transfers": transfer_market.get_market_analysis() if transfer_market else {},
+            "best_players": best_p,
+            "season_stats": {
+                "total_matches": sum(stats.get("played", 0) for _, stats in table) // 2 if table else 0,
+                "total_goals": sum(stats.get("gf", 0) for _, stats in table) if table else 0,
+                "average_goals_per_match": round(sum(stats.get("gf", 0) for _, stats in table) / max(1, sum(stats.get("played", 0) for _, stats in table) // 2), 2) if table else 0,
+                "best_attack": [table[0][0], {"gf": table[0][1].get("gf", 0)}] if table else ["N/A", {"gf": 0}],
+                "best_defense": [table[0][0], {"ga": table[0][1].get("ga", 0)}] if table else ["N/A", {"ga": 0}],
+            },
+            "all_teams_details": all_teams_details,
+            "financial_summary": [team.get_financials() for team in premier_league.teams],
+            "transfer_summary": transfer_market.get_market_analysis() if transfer_market else {},
+        }
+
+        save_season_report_to_db(premier_league.season_year, champions_name, live_report)
+    except Exception as e:
+        logger.warning(f"Live season report DB save notice: {e}")
 
 def simulate_season_with_transfers(premier_league, transfer_market):
     """Simulate a season with active transfer market"""
@@ -500,117 +549,120 @@ def simulate_season_with_transfers(premier_league, transfer_market):
     # Generate schedule and play first half of season
     premier_league.generate_schedule()
     
-    # Play matches until January
+    # Play matches until January (concurrent multi-process matchdays)
     matches_played = 0
     total_matches = len(premier_league.schedule)
     january_start = total_matches // 2
-    
-    logger.info(f"\nPlaying first half of season ({january_start} matches)...")
-    # Compute scheduling helpers
-    for i in range(january_start):
-        match = premier_league.schedule[i]
-        match_result = premier_league.play_match(match[0], match[1])
-        # Assign scheduled date consistent with League.play_season
-        season_start = datetime(premier_league.season_year, 8, 1)
-        matches_per_week = max(1, len(premier_league.teams) // 2)
-        matchday = i // matches_per_week
-        scheduled_date = season_start + timedelta(days=7 * matchday)
-        if match_result is not None:
-            match_result['date'] = scheduled_date.isoformat()
-        save_match_to_db(match_result, premier_league.season_year, i + 1)
-        matches_played += 1
-        
-        # Process weekly finances for teams
-        if matches_played % 2 == 0:  # Every 2 matches = roughly 1 week
-            for team in premier_league.teams:
-                # Calculate matchday revenue
-                if match_result:
-                    home_team = match[0]
-                    away_team = match[1]
-                    
-                    if team == home_team:
-                        attendance_factor = 1.0 if match_result['score'][0] >= match_result['score'][1] else 0.9
-                        team.calculate_matchday_revenue(attendance_factor)
-                    
-                team.process_weekly_finances()
-        
-        # Age players and apply decline
-        if matches_played % 10 == 0:  # Every 10 matches
-            for team in premier_league.teams:
-                # Manager scouts for talent
-                if team.manager:
-                    team.manager.scout_for_talent(premier_league.teams, transfer_market)
+    matches_per_week = max(1, len(premier_league.teams) // 2)
+    chunk_size = matches_per_week * 2  # 2 matchdays = 20 matches concurrently
 
-                # Check and reinforce squad if necessary
-                team.check_and_reinforce_squad(transfer_market)
-                
-                for player in team.players + team.youth_academy:
-                    if random.random() < 0.02:  # 2% chance per period
-                        player.apply_age_decline()
-                    
-                    # Process injury recovery
-                    if hasattr(player, 'recover_from_injury'):
-                        player.recover_from_injury(7)  # 1 week recovery
-    
-    sync_simulation_state_to_db(premier_league, transfer_market)
-    
+    logger.info(f"\nPlaying first half of season ({january_start} matches)...")
+    for start_idx in range(0, january_start, chunk_size):
+        end_idx = min(start_idx + chunk_size, january_start)
+        matchday_batches = []
+        for m_start in range(start_idx, end_idx, matches_per_week):
+            m_end = min(m_start + matches_per_week, end_idx)
+            matchday_batches.append(premier_league.schedule[m_start:m_end])
+
+        all_batch_results = premier_league.play_matchdays_concurrent(matchday_batches, max_workers=2)
+
+        for md_offset, (batch, batch_results) in enumerate(zip(matchday_batches, all_batch_results)):
+            curr_start = start_idx + md_offset * matches_per_week
+            matchday = curr_start // matches_per_week
+            season_start = datetime(premier_league.season_year, 8, 1)
+            scheduled_date = season_start + timedelta(days=7 * matchday)
+
+            for idx_in_batch, match_result in enumerate(batch_results):
+                match_global_idx = curr_start + idx_in_batch
+                if match_result is not None:
+                    match_result['date'] = scheduled_date.isoformat()
+                save_match_to_db(match_result, premier_league.season_year, match_global_idx + 1)
+                matches_played += 1
+
+                home_team, away_team = batch[idx_in_batch]
+                if match_result:
+                    attendance_factor = 1.0 if match_result['score'][0] >= match_result['score'][1] else 0.9
+                    home_team.calculate_matchday_revenue(attendance_factor)
+
+            for team in premier_league.teams:
+                team.process_weekly_finances()
+                if matches_played % 10 == 0:
+                    if team.manager:
+                        team.manager.scout_for_talent(premier_league.teams, transfer_market)
+                    team.check_and_reinforce_squad(transfer_market)
+                    for player in team.players + team.youth_academy:
+                        if random.random() < 0.02:
+                            player.apply_age_decline()
+                        if hasattr(player, 'recover_from_injury'):
+                            player.recover_from_injury(7)
+
+            # Instantly sync updated league standings, team records, and player stats after every matchday
+            sync_simulation_state_to_db(premier_league, transfer_market)
+
     # January transfer window (days 183-214)
     logger.info("\n=== JANUARY TRANSFER WINDOW OPEN ===")
     transfer_market.current_day = 183
-    
+
     for day in range(183, 215):
         transfer_market.advance_day(premier_league.teams)
-        
+
         # More active January window
         if day % 2 == 0:
             # AI managers act on their scouting lists
             transfer_market.simulate_ai_transfers(premier_league.teams)
-        
+
         if day % 10 == 0:
             analysis = transfer_market.get_market_analysis()
             logger.info(f"Day {day}: {analysis['transfers_completed']} total transfers, "
                   f"{analysis['total_listings']} active listings")
-    
+
     logger.info("=== JANUARY TRANSFER WINDOW CLOSED ===")
     print_transfer_summary(transfer_market)
     sync_simulation_state_to_db(premier_league, transfer_market)
-    
+
     # Play remaining matches
     logger.info(f"\nPlaying second half of season...")
-    # Compute scheduling helpers
-    for i in range(january_start, total_matches):
-        match = premier_league.schedule[i]
-        match_result = premier_league.play_match(match[0], match[1])
-        # Assign scheduled date consistent with League.play_season
-        season_start = datetime(premier_league.season_year, 8, 1)
-        matches_per_week = max(1, len(premier_league.teams) // 2)
-        matchday = i // matches_per_week
-        scheduled_date = season_start + timedelta(days=7 * matchday)
-        if match_result is not None:
-            match_result['date'] = scheduled_date.isoformat()
-        save_match_to_db(match_result, premier_league.season_year, i + 1)
-        matches_played += 1
-        
-        # Continue financial processing
-        if matches_played % 2 == 0:
-            for team in premier_league.teams:
-                if team == match[0]:  # Home team
-                    attendance_factor = 1.0 if match_result['score'][0] >= match_result['score'][1] else 0.9
-                    team.calculate_matchday_revenue(attendance_factor)
-                
-                team.process_weekly_finances()
+    for start_idx in range(january_start, total_matches, chunk_size):
+        end_idx = min(start_idx + chunk_size, total_matches)
+        matchday_batches = []
+        for m_start in range(start_idx, end_idx, matches_per_week):
+            m_end = min(m_start + matches_per_week, end_idx)
+            matchday_batches.append(premier_league.schedule[m_start:m_end])
 
-        if matches_played % 10 == 0:
-             for team in premier_league.teams:
-                # Manager scouts for talent
-                if team.manager:
-                    team.manager.scout_for_talent(premier_league.teams, transfer_market)
-    
+        all_batch_results = premier_league.play_matchdays_concurrent(matchday_batches, max_workers=2)
+
+        for md_offset, (batch, batch_results) in enumerate(zip(matchday_batches, all_batch_results)):
+            curr_start = start_idx + md_offset * matches_per_week
+            matchday = curr_start // matches_per_week
+            season_start = datetime(premier_league.season_year, 8, 1)
+            scheduled_date = season_start + timedelta(days=7 * matchday)
+
+            for idx_in_batch, match_result in enumerate(batch_results):
+                match_global_idx = curr_start + idx_in_batch
+                if match_result is not None:
+                    match_result['date'] = scheduled_date.isoformat()
+                save_match_to_db(match_result, premier_league.season_year, match_global_idx + 1)
+                matches_played += 1
+
+                home_team, away_team = batch[idx_in_batch]
+                if match_result:
+                    attendance_factor = 1.0 if match_result['score'][0] >= match_result['score'][1] else 0.9
+                    home_team.calculate_matchday_revenue(attendance_factor)
+
+            for team in premier_league.teams:
+                team.process_weekly_finances()
+                if matches_played % 10 == 0:
+                    if team.manager:
+                        team.manager.scout_for_talent(premier_league.teams, transfer_market)
+
+            # Instantly sync updated league standings, team records, and player stats after every matchday
+            sync_simulation_state_to_db(premier_league, transfer_market)
+
     # Process contract expiries at end of season
     expired_contracts = transfer_market.process_contract_expiries(premier_league.teams)
     if expired_contracts > 0:
         logger.info(f"\n{expired_contracts} players' contracts expired and became free agents")
-    
+
     sync_simulation_state_to_db(premier_league, transfer_market)
     
     return premier_league.get_final_table()
@@ -669,7 +721,7 @@ def main():
                 try:
                     rating = sum(sum(cat.values()) for cat in player_data["attributes"].values()) / \
                            sum(len(cat) for cat in player_data["attributes"].values())
-                except:
+                except Exception:
                     rating = 0
             
             logger.info(f"{player_data.get('position', 'N/A'):<8} {player_data.get('name', 'N/A'):<20} "
@@ -701,24 +753,14 @@ def main():
             }
         }
 
-        with open(report_filename, 'w') as f:
-            json.dump(enhanced_report, f, indent=2, default=str)
-            
         save_season_report_to_db(premier_league.season_year, champions_name, enhanced_report)
 
-        # Save transfer market data to DB and file for now
-        transfer_filename = REPORTS_DIR / 'transfer_logs' / f'transfer_summary_{premier_league.season_year}.json'
-        
         transfer_report_data = {
             "season": premier_league.season_year,
             "analysis": transfer_market.get_market_analysis(),
             "transfer_history": transfer_market.transfer_history,
             "loan_history": transfer_market.loan_history
         }
-
-        with open(transfer_filename, 'w') as f:
-            json.dump(transfer_report_data, f, indent=2, default=str)
-            
         save_transfer_report_to_db(premier_league.season_year, transfer_report_data)
 
         # Increment to next season

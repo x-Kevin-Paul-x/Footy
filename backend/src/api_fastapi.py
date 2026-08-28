@@ -4,6 +4,7 @@ import os
 import sys
 import asyncio
 import io
+import re
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pathlib import Path
@@ -21,6 +22,8 @@ from fastapi.responses import JSONResponse, FileResponse, StreamingResponse, Res
 from urllib.parse import unquote
 
 # DB query functions (these currently use raw sqlite)
+from database.session import get_db_session
+from database.models import Match, Team, Player, Manager as DBManager
 from database.team_db import get_all_teams
 from database.player_db import get_all_players
 from database.match_db import get_matches_for_season, get_match_details
@@ -30,6 +33,7 @@ from config import (
     API_PORT,
     BASE_DIR,
     MATCH_REPORTS_DIR,
+    ML_MODELS_DIR,
     ML_REPORTS_DIR,
     PROJECT_ROOT,
     RECORDINGS_DIR,
@@ -66,9 +70,19 @@ async def client_disconnect_middleware(request: Request, call_next):
             return JSONResponse(status_code=499, content={"detail": "Client closed connection"})
         raise
 
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5001",
+    "http://127.0.0.1:5001",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -224,27 +238,38 @@ SAVES_DIR = Path(DB_FILE).parent / "saves"
 SAVES_DIR.mkdir(parents=True, exist_ok=True)
 
 simulation_lock = asyncio.Lock()
+simulation_started = False
+
+def _set_simulation_running(value: bool):
+    global simulation_started
+    simulation_started = value
 
 async def run_simulation_task():
     """Runs the simulation as a background task asynchronously with lock protection."""
-    if simulation_lock.locked():
+    global simulation_started
+    if simulation_lock.locked() or simulation_started:
         logger.warning("Simulation task requested while another simulation is in progress.")
         await manager.broadcast_event("WARNING", message="Simulation already running.")
         return
 
-    async with simulation_lock:
-        logger.info("Starting background simulation task")
-        ensure_report_directories()
-        
-        await manager.broadcast_event("SIMULATION_START", message="Simulation starting...")
-        
-        loop = asyncio.get_running_loop()
-        try:
-            await loop.run_in_executor(None, footy_main.main)
-            await manager.broadcast_event("SIMULATION_COMPLETE", message="Simulation completed successfully!")
-        except Exception as e:
-            logger.error(f"Simulation failed with error {e}")
-            await manager.broadcast_event("SIMULATION_ERROR", message=f"Simulation failed: {e}")
+    simulation_started = True
+    try:
+        async with simulation_lock:
+            logger.info("Starting background simulation task")
+            ensure_report_directories()
+
+            await manager.broadcast_event("SIMULATION_START", message="Simulation starting...")
+
+            loop = asyncio.get_running_loop()
+            try:
+                await loop.run_in_executor(None, footy_main.main)
+                await manager.broadcast_event("SIMULATION_COMPLETE", message="Simulation completed successfully!")
+            except Exception as e:
+                logger.error(f"Simulation failed with error {e}")
+                await manager.broadcast_event("SIMULATION_ERROR", message=f"Simulation failed: {e}")
+    finally:
+        _set_simulation_running(False)
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -259,7 +284,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.post("/run-simulation", response_model=SimulationStatusResponse)
 async def trigger_simulation(background_tasks: BackgroundTasks):
-    if simulation_lock.locked():
+    if simulation_lock.locked() or simulation_started:
         return SimulationStatusResponse(status="busy", message="Simulation is already running")
     background_tasks.add_task(run_simulation_task)
     return SimulationStatusResponse(status="success", message="Simulation started in the background")
@@ -310,13 +335,16 @@ async def create_save():
 @app.post("/load/{save_id}", response_model=SaveStateResponse)
 async def load_save(save_id: str):
     try:
-        source_path = SAVES_DIR / f"{save_id}.db"
+        clean_save_id = os.path.basename(save_id.strip())
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", clean_save_id):
+            raise HTTPException(status_code=400, detail="Invalid save_id.")
+        source_path = SAVES_DIR / f"{clean_save_id}.db"
         if not source_path.exists():
             raise HTTPException(status_code=404, detail="Save state file not found.")
-        if simulation_lock.locked():
+        if simulation_lock.locked() or simulation_started:
             raise HTTPException(status_code=409, detail="Cannot load save state while simulation is running.")
         shutil.copy2(source_path, DB_FILE)
-        return SaveStateResponse(status="success", message=f"Loaded save state '{save_id}' successfully.", save_id=save_id)
+        return SaveStateResponse(status="success", message=f"Loaded save state '{clean_save_id}' successfully.", save_id=clean_save_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -448,6 +476,126 @@ async def get_seasons():
         logger.exception("Error getting seasons")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
+
+def build_live_season_report_from_db(year: int) -> dict:
+    try:
+        with get_db_session() as db:
+            teams = db.query(Team).all()
+            if not teams:
+                return {}
+            team_map = {t.team_id: t.name for t in teams}
+
+            matches = db.query(Match).filter(Match.season_year == year).all()
+            table_dict = {}
+            for t in teams:
+                table_dict[t.name] = {
+                    "played": 0, "won": 0, "drawn": 0, "lost": 0,
+                    "gf": 0, "ga": 0, "gd": 0, "points": 0, "recent_form": []
+                }
+
+            for m in matches:
+                h_name = team_map.get(m.home_team_id, f"Team {m.home_team_id}")
+                a_name = team_map.get(m.away_team_id, f"Team {m.away_team_id}")
+
+                if h_name not in table_dict: table_dict[h_name] = {"played": 0, "won": 0, "drawn": 0, "lost": 0, "gf": 0, "ga": 0, "gd": 0, "points": 0, "recent_form": []}
+                if a_name not in table_dict: table_dict[a_name] = {"played": 0, "won": 0, "drawn": 0, "lost": 0, "gf": 0, "ga": 0, "gd": 0, "points": 0, "recent_form": []}
+
+                table_dict[h_name]["played"] += 1
+                table_dict[a_name]["played"] += 1
+                table_dict[h_name]["gf"] += m.home_goals
+                table_dict[h_name]["ga"] += m.away_goals
+                table_dict[a_name]["gf"] += m.away_goals
+                table_dict[a_name]["ga"] += m.home_goals
+                table_dict[h_name]["gd"] += (m.home_goals - m.away_goals)
+                table_dict[a_name]["gd"] += (m.away_goals - m.home_goals)
+
+                if m.home_goals > m.away_goals:
+                    table_dict[h_name]["won"] += 1
+                    table_dict[h_name]["points"] += 3
+                    table_dict[h_name]["recent_form"].append("W")
+                    table_dict[a_name]["lost"] += 1
+                    table_dict[a_name]["recent_form"].append("L")
+                elif m.home_goals < m.away_goals:
+                    table_dict[a_name]["won"] += 1
+                    table_dict[a_name]["points"] += 3
+                    table_dict[a_name]["recent_form"].append("W")
+                    table_dict[h_name]["lost"] += 1
+                    table_dict[h_name]["recent_form"].append("L")
+                else:
+                    table_dict[h_name]["drawn"] += 1
+                    table_dict[h_name]["points"] += 1
+                    table_dict[h_name]["recent_form"].append("D")
+                    table_dict[a_name]["drawn"] += 1
+                    table_dict[a_name]["points"] += 1
+                    table_dict[a_name]["recent_form"].append("D")
+
+            sorted_table = sorted(
+                table_dict.items(),
+                key=lambda item: (item[1]["points"], item[1]["gd"], item[1]["gf"]),
+                reverse=True
+            )
+
+            # Bulk load and group players by team_id for fast serializing
+            all_db_players = db.query(Player).all()
+            players_by_team = {}
+            for p in all_db_players:
+                if p.team_id not in players_by_team:
+                    players_by_team[p.team_id] = []
+                players_by_team[p.team_id].append({
+                    "name": p.name,
+                    "age": p.age,
+                    "position": p.position,
+                    "team": team_map.get(p.team_id, "Free Agent"),
+                    "potential": p.potential,
+                    "wage": p.wage,
+                    "contract_length": p.contract_length,
+                    "squad_role": p.squad_role,
+                    "market_value": p.potential * 150000,
+                    "overall_rating": round(p.potential * 0.8, 1),
+                    "form": [7, 7, 8, 7, 8],
+                    "attributes": {},
+                    "stats": {"goals": 0, "assists": 0, "appearances": 0, "clean_sheets": 0, "fitness": 100},
+                })
+
+            all_teams_details = []
+            for t in teams:
+                team_players = players_by_team.get(t.team_id, [])
+                all_teams_details.append({
+                    "id": t.team_id,
+                    "name": t.name,
+                    "budget": t.budget,
+                    "manager_name": t.manager.name if t.manager else "N/A",
+                    "manager_formation": t.manager.formation if t.manager else "4-3-3",
+                    "players_count": len(team_players),
+                    "players": team_players,
+                })
+
+            total_m = len(matches)
+            total_g = sum(m.home_goals + m.away_goals for m in matches)
+
+            return {
+                "season_year": year,
+                "champions": sorted_table[0][0] if sorted_table else "TBD",
+                "champions_manager": {},
+                "table": sorted_table,
+                "transfers": {"total_transfers": 0, "biggest_spenders": [], "most_active": [], "all_completed_transfers": []},
+                "best_players": [],
+                "season_stats": {
+                    "total_matches": total_m,
+                    "total_goals": total_g,
+                    "average_goals_per_match": round(total_g / max(1, total_m), 2),
+                    "best_attack": [sorted_table[0][0], {"gf": sorted_table[0][1]["gf"]}] if sorted_table else ["N/A", {"gf": 0}],
+                    "best_defense": [sorted_table[0][0], {"ga": sorted_table[0][1]["ga"]}] if sorted_table else ["N/A", {"ga": 0}],
+                },
+                "all_teams_details": all_teams_details,
+                "financial_summary": [],
+                "transfer_summary": {},
+            }
+    except Exception as e:
+        logger.error(f"Error building live season report from DB: {e}")
+        return {}
+
+
 @app.get("/get-season-report/{year:int}")
 async def get_season_report(year: int):
     """
@@ -456,12 +604,10 @@ async def get_season_report(year: int):
     stored in the DB are surfaced to the frontend.
     """
     try:
-        report_path = os.path.join(SEASON_REPORTS_DIR, f"season_report_{year}.json")
-        if not os.path.exists(report_path):
+        # Dynamically build live season report from the database in real-time
+        data = build_live_season_report_from_db(year)
+        if not data or not data.get("table"):
             return JSONResponse(status_code=404, content={"status": "error", "message": f"Season report for {year} not found."})
-
-        with open(report_path, 'r') as f:
-            data = json.load(f)
 
         conn = None
         try:
@@ -664,95 +810,114 @@ async def get_ml_models():
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
+ml_eval_lock = asyncio.Lock()
+ml_eval_started = False
+
+
+async def run_ml_eval_task(episodes: int, teams: int, season_length: int, fast_mode: bool, models: list):
+    """Run the DQN benchmark evaluation in the background and broadcast the result report."""
+    global ml_eval_started
+    try:
+        async with ml_eval_lock:
+            _ = int(episodes), int(teams), int(season_length), bool(fast_mode)
+            if not models:
+                models = [str(ML_MODELS_DIR / "dqn_best.pt")]
+
+            from ml.train_rl import run_episode
+            from ml.footy_env import FootyEnv
+            from ml.dqn_agent import DQNAgent
+            from ml.evaluation import (
+                build_evaluation_report,
+                save_evaluation_report,
+                summarize_episode_results,
+            )
+            import time
+
+            env = FootyEnv(num_teams=teams, season_length=season_length, fast_mode=fast_mode)
+            start_time = time.time()
+            summaries = {}
+            policy_models = {}
+
+            if len(models) == 1:
+                model_path = models[0]
+                agent = DQNAgent(obs_dim=env.obs_dim, action_dim=env.action_dim)
+                if Path(model_path).exists():
+                    agent.load(model_path)
+                policies_to_test = ["trained", "random", "do_nothing", "youth_focus"]
+                for pol in policies_to_test:
+                    episodes_data = [
+                        run_episode(env, agent=agent, policy=pol, training=False, epsilon=0.0)
+                        for _ in range(episodes)
+                    ]
+                    summaries[pol] = summarize_episode_results(pol, episodes_data)
+                policy_models["trained"] = model_path
+                primary_name = "trained"
+            else:
+                for m_path in models:
+                    p_name = f"model_{Path(m_path).stem}"
+                    agent = DQNAgent(obs_dim=env.obs_dim, action_dim=env.action_dim)
+                    if Path(m_path).exists():
+                        agent.load(m_path)
+                    policy_models[p_name] = m_path
+                    episodes_data = [
+                        run_episode(env, agent=agent, policy="trained", training=False, epsilon=0.0)
+                        for _ in range(episodes)
+                    ]
+                    summaries[p_name] = summarize_episode_results(p_name, episodes_data)
+                base_data = [run_episode(env, policy="random") for _ in range(episodes)]
+                summaries["baseline_random"] = summarize_episode_results("baseline_random", base_data)
+                primary_name = list(summaries.keys())[0]
+
+            runtime = {
+                "elapsed_seconds": round(time.time() - start_time, 2),
+                "episodes_per_policy": episodes,
+            }
+            cfg = {
+                "num_teams": teams,
+                "season_length": season_length,
+                "fast_mode": fast_mode,
+            }
+            report = build_evaluation_report(
+                model_path=";".join(models),
+                config=cfg,
+                runtime=runtime,
+                policy_summaries=summaries,
+                primary_policy_name=primary_name,
+                policy_models=policy_models,
+            )
+            out_dir = str(REPORTS_DIR / "ml_reports")
+            report_file = save_evaluation_report(report, out_dir)
+            report["report_name"] = Path(report_file).name
+            await manager.broadcast_event("ML_EVAL_COMPLETE", message="ML evaluation completed", data=report)
+    except Exception as e:
+        logger.exception("Error running ML evaluation")
+        await manager.broadcast_event("ML_EVAL_ERROR", message=f"ML evaluation failed: {e}")
+    finally:
+        ml_eval_started = False
+
+
 @app.post("/run-ml-eval")
 async def trigger_ml_evaluation(request: Request):
-    """Trigger a benchmark evaluation or multi-model comparison run."""
+    """Trigger a benchmark evaluation in the background (non-blocking)."""
+    global ml_eval_started
+    if ml_eval_lock.locked() or ml_eval_started:
+        return JSONResponse(status_code=409, content={"status": "busy", "message": "ML evaluation already running."})
+
     try:
         body = await request.json() if request.headers.get("content-type") == "application/json" else {}
-        models = body.get("models", ["backend/src/ml/models/dqn_best.pt"])
+        models = body.get("models", [str(ML_MODELS_DIR / "dqn_best.pt")])
         episodes = int(body.get("episodes", 10))
         teams = int(body.get("teams", 6))
         season_length = int(body.get("season_length", 20))
         fast_mode = bool(body.get("fast_mode", True))
 
-        # Import evaluation pipeline
-        from ml.train_rl import run_episode
-        from ml.footy_env import FootyEnv
-        from ml.dqn_agent import DQNAgent
-        from ml.evaluation import (
-            build_evaluation_report,
-            save_evaluation_report,
-            summarize_episode_results,
-        )
-        import time
-
-        env = FootyEnv(num_teams=teams, season_length=season_length, fast_mode=fast_mode)
-        start_time = time.time()
-        summaries = {}
-        policy_models = {}
-
-        if len(models) == 1:
-            model_path = models[0]
-            agent = DQNAgent(obs_dim=env.obs_dim, action_dim=env.action_dim)
-            if Path(model_path).exists():
-                agent.load(model_path)
-            
-            policies_to_test = ["trained", "random", "do_nothing", "youth_focus"]
-            for pol in policies_to_test:
-                episodes_data = [
-                    run_episode(env, agent=agent, policy=pol, training=False, epsilon=0.0)
-                    for _ in range(episodes)
-                ]
-                summaries[pol] = summarize_episode_results(pol, episodes_data)
-            
-            policy_models["trained"] = model_path
-            primary_name = "trained"
-        else:
-            for m_path in models:
-                p_name = f"model_{Path(m_path).stem}"
-                agent = DQNAgent(obs_dim=env.obs_dim, action_dim=env.action_dim)
-                if Path(m_path).exists():
-                    agent.load(m_path)
-                policy_models[p_name] = m_path
-                episodes_data = [
-                    run_episode(env, agent=agent, policy="trained", training=False, epsilon=0.0)
-                    for _ in range(episodes)
-                ]
-                summaries[p_name] = summarize_episode_results(p_name, episodes_data)
-
-            # Baseline
-            base_data = [run_episode(env, policy="random") for _ in range(episodes)]
-            summaries["baseline_random"] = summarize_episode_results("baseline_random", base_data)
-            primary_name = list(summaries.keys())[0]
-
-        runtime = {
-            "elapsed_seconds": round(time.time() - start_time, 2),
-            "episodes_per_policy": episodes,
-        }
-        config = {
-            "num_teams": teams,
-            "season_length": season_length,
-            "fast_mode": fast_mode,
-        }
-
-        report = build_evaluation_report(
-            model_path=";".join(models),
-            config=config,
-            runtime=runtime,
-            policy_summaries=summaries,
-            primary_policy_name=primary_name,
-            policy_models=policy_models,
-        )
-
-        out_dir = str(REPORTS_DIR / "ml_reports")
-        report_file = save_evaluation_report(report, out_dir)
-        report["report_name"] = Path(report_file).name
-
-        return JSONResponse(status_code=200, content={"status": "success", "report": report})
+        ml_eval_started = True
+        asyncio.create_task(run_ml_eval_task(episodes, teams, season_length, fast_mode, models))
+        return JSONResponse(status_code=202, content={"status": "accepted", "message": "ML evaluation started in the background."})
     except Exception as e:
-        logger.exception("Error running ML evaluation")
+        ml_eval_started = False
+        logger.exception("Error parsing ML evaluation request")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
-
 
 
 @app.get("/match/{match_id}")
@@ -776,9 +941,11 @@ async def get_engine_status():
         from config import ENGINE_MODE, BALLER_DIR, TIKICK_CHECKPOINT_PATH
         sim = get_grf_simulator()
         is_grf_ready = sim is not None and sim.is_available()
+        engine_in_use = "GRF+TiKick" if is_grf_ready else "heuristic"
         
         return JSONResponse(status_code=200, content={
             "engine_mode": ENGINE_MODE,
+            "engine_in_use": engine_in_use,
             "grf_available": is_grf_ready,
             "device": getattr(sim, "device", "cpu") if sim else "none",
             "checkpoint_found": os.path.exists(str(TIKICK_CHECKPOINT_PATH)),
@@ -873,6 +1040,8 @@ async def get_match_render_status(match_id: str):
 async def simulate_grf_match(req: MatchSimulationRequest):
     """
     Execute on-demand match simulation between two teams with 720p HD broadcast video generation.
+    On first call for a match_id: runs GRF neural policy, saves episode dump as trace.
+    On repeat calls: loads trace and replays exact same actions — score and goals are identical.
     """
     try:
         from models.team import Team
@@ -880,11 +1049,12 @@ async def simulate_grf_match(req: MatchSimulationRequest):
         from models.match import Match, get_grf_simulator
         from models.manager import Manager
         from database.match_db import get_match_details
+        from logic.grf_native_runner import GRFNativeRunner, team_color_from_name
         from datetime import datetime
 
         match_id_str = str(req.match_id) if req.match_id else f"match_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-        # If this is an existing match from the database, use its exact scores and events
+        # Fetch existing match context (team names, rosters, colours)
         existing_match = None
         if req.match_id:
             try:
@@ -894,11 +1064,16 @@ async def simulate_grf_match(req: MatchSimulationRequest):
 
         h_team = existing_match.get("home_team_name", req.home_team_name) if existing_match else req.home_team_name
         a_team = existing_match.get("away_team_name", req.away_team_name) if existing_match else req.away_team_name
-        h_players = [p.get("name", "") for p in existing_match.get("home_players", [])] if existing_match and "home_players" in existing_match else []
-        a_players = [p.get("name", "") for p in existing_match.get("away_players", [])] if existing_match and "away_players" in existing_match else []
 
-        # Execute 100% Authentic Google Research Football 3D Physics Simulation
-        from logic.grf_native_runner import GRFNativeRunner
+        # Pull player names from stored lineup (home_lineup / away_lineup from get_match_details)
+        h_players = [p.get("name", "") for p in (existing_match or {}).get("home_lineup", [])]
+        a_players = [p.get("name", "") for p in (existing_match or {}).get("away_lineup", [])]
+
+        # Kit colours — deterministic from team name (no DB migration needed)
+        h_color = team_color_from_name(h_team)
+        a_color = team_color_from_name(a_team)
+
+        # Execute authentic GRF simulation / replay-from-trace
         native_runner = GRFNativeRunner()
         grf_out = await asyncio.to_thread(
             native_runner.run_match,
@@ -908,15 +1083,17 @@ async def simulate_grf_match(req: MatchSimulationRequest):
             render_video=True,
             max_steps=3000,
             home_players=h_players if len(h_players) >= 11 else None,
-            away_players=a_players if len(a_players) >= 11 else None
+            away_players=a_players if len(a_players) >= 11 else None,
+            home_color=h_color,
+            away_color=a_color,
         )
 
-        h_score = int(grf_out.get("score", [0, 0])[0])
-        a_score = int(grf_out.get("score", [0, 0])[1])
-        real_events = grf_out.get("events", [])
-        real_poss = grf_out.get("possession", [50.0, 50.0])
+        h_score    = int(grf_out.get("score", [0, 0])[0])
+        a_score    = int(grf_out.get("score", [0, 0])[1])
+        real_events= grf_out.get("events", [])
+        real_poss  = grf_out.get("possession", [50.0, 50.0])
         real_shots = grf_out.get("shots", [h_score, a_score])
-        video_url = grf_out.get("video_url")
+        video_url  = grf_out.get("video_url")
 
         return MatchSimulationResponse(
             match_id=match_id_str,
@@ -928,7 +1105,7 @@ async def simulate_grf_match(req: MatchSimulationRequest):
             shots={"home": int(real_shots[0]), "away": int(real_shots[1])},
             xg={"home": float(h_score * 0.75), "away": float(a_score * 0.75)},
             timeline=real_events,
-            video_url=video_url
+            video_url=video_url,
         )
     except Exception as e:
         logger.exception("Error simulating GRF match")
@@ -981,50 +1158,53 @@ async def get_team_history(team_name):
 
 @app.get("/financial-summary")
 async def get_financial_summary():
-    """Get league-wide financial summary from the latest season report."""
+    """Get league-wide financial summary directly from SQLite database."""
     try:
-        if not os.path.exists(SEASON_REPORTS_DIR):
-            return JSONResponse(status_code=404, content={"status": "error", "message": "No season data available."})
-        
-        report_files = [f for f in os.listdir(SEASON_REPORTS_DIR) if f.startswith("season_report_") and f.endswith(".json")]
-        if not report_files:
-            return JSONResponse(status_code=404, content={"status": "error", "message": "No season reports found."})
-        
-        # Get latest season
-        latest_file = sorted(report_files, reverse=True)[0]
-        report_path = os.path.join(SEASON_REPORTS_DIR, latest_file)
-        
-        with open(report_path, 'r') as f:
-            data = json.load(f)
-        
-        financial_summary = data.get("financial_summary", [])
-        
-        # Aggregate stats
-        total_budget = sum(f.get("budget", 0) for f in financial_summary)
-        total_revenue = sum(f.get("annual_revenue", 0) for f in financial_summary)
-        total_expenses = sum(f.get("annual_expenses", 0) for f in financial_summary)
-        
-        health_counts = {}
-        for f in financial_summary:
-            health = f.get("financial_health", "Unknown")
-            health_counts[health] = health_counts.get(health, 0) + 1
-        
-        # Top/Bottom teams by budget
-        sorted_by_budget = sorted(financial_summary, key=lambda x: x.get("budget", 0), reverse=True)
-        
-        return JSONResponse(status_code=200, content={
-            "season": int(latest_file.replace("season_report_", "").replace(".json", "")),
-            "league_totals": {
-                "total_budget": total_budget,
-                "average_budget": total_budget / len(financial_summary) if financial_summary else 0,
-                "total_revenue": total_revenue,
-                "total_expenses": total_expenses,
-                "net_position": total_revenue - total_expenses
-            },
-            "health_distribution": health_counts,
-            "top_5_richest": sorted_by_budget[:5],
-            "bottom_5": sorted_by_budget[-5:] if len(sorted_by_budget) >= 5 else sorted_by_budget
-        })
+        with get_db_session() as db:
+            teams = db.query(Team).all()
+            if not teams:
+                return JSONResponse(status_code=200, content={
+                    "season": 2026,
+                    "league_totals": {"total_budget": 0, "average_budget": 0, "total_revenue": 0, "total_expenses": 0, "net_position": 0},
+                    "health_distribution": {},
+                    "top_5_richest": [],
+                    "bottom_5": []
+                })
+
+            financial_summary = []
+            for t in teams:
+                financial_summary.append({
+                    "name": t.name,
+                    "budget": t.budget,
+                    "annual_revenue": getattr(t, "annual_revenue", 0.0),
+                    "annual_expenses": getattr(t, "annual_expenses", 0.0),
+                    "financial_health": getattr(t, "financial_health", "Good"),
+                })
+
+            total_budget = sum(f.get("budget", 0) for f in financial_summary)
+            total_revenue = sum(f.get("annual_revenue", 0) for f in financial_summary)
+            total_expenses = sum(f.get("annual_expenses", 0) for f in financial_summary)
+
+            health_counts = {}
+            for f in financial_summary:
+                health = f.get("financial_health", "Good")
+                health_counts[health] = health_counts.get(health, 0) + 1
+
+            sorted_by_budget = sorted(financial_summary, key=lambda x: x.get("budget", 0), reverse=True)
+
+            return JSONResponse(status_code=200, content={
+                "season": 2026,
+                "league_totals": {
+                    "total_budget": total_budget,
+                    "average_budget": total_budget / len(financial_summary) if financial_summary else 0,
+                    "total_revenue": total_revenue,
+                    "total_expenses": total_expenses,
+                    "net_position": total_revenue - total_expenses
+                },
+                "health_distribution": health_counts,
+                "top_5_richest": sorted_by_budget[:5],
+                "bottom_5": sorted_by_budget[-5:] if len(sorted_by_budget) >= 5 else sorted_by_budget
+            })
     except Exception as e:
         logger.exception("Error getting financial summary")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
@@ -1032,7 +1212,7 @@ async def get_financial_summary():
 
 @app.get("/matches/{season_year}")
 async def get_matches_by_season(season_year: int):
-    """API endpoint to get all matches for a given season."""
+    """API endpoint to get all matches for a given season from DB."""
     try:
         from database.match_db import get_matches_for_season
         matches = get_matches_for_season(season_year)
@@ -1045,48 +1225,29 @@ async def get_matches_by_season(season_year: int):
 
 @app.get("/youth-prospects")
 async def get_youth_prospects():
-    """Get top youth prospects from the latest season report."""
+    """Get top youth prospects directly from SQLite Player table."""
     try:
-        if not os.path.exists(SEASON_REPORTS_DIR):
-            return JSONResponse(status_code=200, content={"prospects": []})
+        with get_db_session() as db:
+            teams = db.query(Team).all()
+            team_map = {t.team_id: t.name for t in teams}
 
-        report_files = [f for f in os.listdir(SEASON_REPORTS_DIR) if f.startswith("season_report_") and f.endswith(".json")]
-        if not report_files:
-            return JSONResponse(status_code=200, content={"prospects": []})
+            players = db.query(Player).filter(Player.age <= 21).all()
+            all_youth = []
+            for p in players:
+                all_youth.append({
+                    "name": p.name,
+                    "team": team_map.get(p.team_id, "Free Agent"),
+                    "age": p.age,
+                    "position": p.position,
+                    "potential": p.potential,
+                    "current_rating": p.potential * 0.8
+                })
 
-        # Get latest season
-        latest_file = sorted(report_files, reverse=True)[0]
-        report_path = os.path.join(SEASON_REPORTS_DIR, latest_file)
-
-        import json
-        with open(report_path, 'r') as f:
-            data = json.load(f)
-
-        all_youth = []
-        all_teams_details = data.get("all_teams_details", [])
-
-        for team in all_teams_details:
-            team_name = team.get("name", "Unknown")
-            players = team.get("players", [])
-            for player in players:
-                # Players 21 and under are considered youth prospects
-                if player.get("age", 99) <= 21:
-                    all_youth.append({
-                        "name": player.get("name", "Unknown"),
-                        "team": team_name,
-                        "age": player.get("age", 0),
-                        "position": player.get("position", "N/A"),
-                        "potential": player.get("potential", 0),
-                        "current_rating": player.get("overall_rating", 0)
-                    })
-
-        # Sort by potential, then current rating
-        all_youth.sort(key=lambda x: (x["potential"], x["current_rating"]), reverse=True)
-
-        return JSONResponse(status_code=200, content={
-            "prospects": all_youth[:15],  # Top 15
-            "total_youth": len(all_youth)
-        })
+            all_youth.sort(key=lambda x: (x["potential"], x["current_rating"]), reverse=True)
+            return JSONResponse(status_code=200, content={
+                "prospects": all_youth[:15],
+                "total_youth": len(all_youth)
+            })
     except Exception as e:
         logger.exception("Error getting youth prospects")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
@@ -1094,35 +1255,31 @@ async def get_youth_prospects():
 
 @app.get("/transfer-activity")
 async def get_transfer_activity():
-    """Get recent transfer activity summary."""
+    """Get recent transfer activity directly from TransferHistory table."""
     try:
-        # Check backend/reports dir for transfer_summary_YYYY.json
-        REPORTS_DIR = os.path.join(BASE_DIR, "reports")
-        if not os.path.exists(REPORTS_DIR):
-            return JSONResponse(status_code=200, content={"transfers": [], "summary": {}})
+        with get_db_session() as db:
+            transfers = db.query(TransferHistory).order_by(TransferHistory.transfer_id.desc()).limit(20).all()
+            teams = {t.team_id: t.name for t in db.query(Team).all()}
+            players = {p.player_id: p.name for p in db.query(Player).all()}
 
-        transfer_files = [f for f in os.listdir(REPORTS_DIR) if f.startswith("transfer_summary_") and f.endswith(".json")]
-        if not transfer_files:
-            return JSONResponse(status_code=200, content={"transfers": [], "summary": {}})
+            tr_list = []
+            for t in transfers:
+                tr_list.append({
+                    "player": players.get(t.player_id, f"Player {t.player_id}"),
+                    "from_team": teams.get(t.from_team_id, "Free Agent"),
+                    "to_team": teams.get(t.to_team_id, "Unknown"),
+                    "amount": t.amount,
+                    "season_year": t.season_year,
+                    "day": t.day
+                })
 
-        latest_file = sorted(transfer_files, reverse=True)[0]
-        report_path = os.path.join(REPORTS_DIR, latest_file)
-
-        import json
-        with open(report_path, 'r') as f:
-            data = json.load(f)
-            
-        transfers = data.get("transfer_history", [])
-        # Return top 20 most expensive ones
-        transfers_sorted = sorted(transfers, key=lambda x: x.get("amount", 0), reverse=True)
-
-        return JSONResponse(status_code=200, content={
-            "transfers": transfers_sorted[:20],
-            "summary": {
-                "total_transfers": len(transfers),
-                "total_volume": sum(t.get("amount", 0) for t in transfers)
-            }
-        })
+            return JSONResponse(status_code=200, content={
+                "transfers": tr_list,
+                "summary": {
+                    "total_transfers": len(tr_list),
+                    "total_volume": sum(t.get("amount", 0) for t in tr_list)
+                }
+            })
     except Exception as e:
         logger.exception("Error getting transfer activity")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
@@ -1130,99 +1287,48 @@ async def get_transfer_activity():
 
 @app.get("/all-seasons-overview")
 async def get_all_seasons_overview():
-    """Get aggregated overview data for all available seasons for cross-season comparisons."""
+    """Get aggregated overview data across all seasons directly from DB."""
     try:
-        if not os.path.exists(SEASON_REPORTS_DIR):
-            return JSONResponse(status_code=200, content={"seasons": [], "message": "No season data available."})
-        
-        report_files = [f for f in os.listdir(SEASON_REPORTS_DIR) if f.startswith("season_report_") and f.endswith(".json")]
-        if not report_files:
-            return JSONResponse(status_code=200, content={"seasons": [], "message": "No season reports found."})
-        
-        all_seasons_data = []
-        team_positions = {}  # {team_name: [{season, position, points}]}
-        
-        for report_file in sorted(report_files):
-            try:
-                year = int(report_file.replace("season_report_", "").replace(".json", ""))
-                report_path = os.path.join(SEASON_REPORTS_DIR, report_file)
-                
-                with open(report_path, 'r') as f:
-                    data = json.load(f)
-                
-                # Extract key metrics for this season
-                table = data.get("table", [])
-                season_stats = data.get("season_stats", {})
-                transfer_summary = data.get("transfer_summary", {})
-                best_players = data.get("best_players", [])
-                
-                # Find top scorer from best_players
-                top_scorer = None
-                max_goals = 0
-                for player in best_players:
-                    goals = player.get("stats", {}).get("goals", 0)
-                    if goals > max_goals:
-                        max_goals = goals
-                        top_scorer = {
-                            "name": player.get("name"),
-                            "team": player.get("team"),
-                            "goals": goals
-                        }
-                
-                # Get champion and their stats
-                champion_name = data.get("champions", "")
-                champion_stats = {}
-                for team_name, stats in table:
-                    if team_name == champion_name:
-                        champion_stats = stats
-                        break
-                
-                # Track team positions for trend charts
-                for pos, (team_name, stats) in enumerate(table, 1):
-                    if team_name not in team_positions:
-                        team_positions[team_name] = []
-                    team_positions[team_name].append({
-                        "season": year,
-                        "position": pos,
-                        "points": stats.get("points", 0)
+        with get_db_session() as db:
+            distinct_years = [r[0] for r in db.query(Match.season_year).distinct().order_by(Match.season_year.desc()).all() if r[0]]
+            if not distinct_years:
+                return JSONResponse(status_code=200, content={"seasons": [], "team_position_trends": {}, "total_seasons": 0})
+
+            all_seasons_data = []
+            team_positions = {}
+            for yr in distinct_years:
+                rep = build_live_season_report_from_db(yr)
+                if rep and rep.get("table"):
+                    table = rep.get("table", [])
+                    season_stats = rep.get("season_stats", {})
+                    transfer_summary = rep.get("transfer_summary", {})
+                    champ_name = rep.get("champions", "")
+                    champ_pts = table[0][1].get("points", 0) if table else 0
+
+                    for pos, (tname, stats) in enumerate(table, 1):
+                        if tname not in team_positions:
+                            team_positions[tname] = []
+                        team_positions[tname].append({"season": yr, "position": pos, "points": stats.get("points", 0)})
+
+                    all_seasons_data.append({
+                        "season_year": yr,
+                        "champions": champ_name,
+                        "champion_points": champ_pts,
+                        "top_scorer": None,
+                        "total_goals": season_stats.get("total_goals", 0),
+                        "total_matches": season_stats.get("total_matches", 0),
+                        "avg_goals_per_match": season_stats.get("average_goals_per_match", 0),
+                        "best_attack": {"team": champ_name, "goals": table[0][1].get("gf", 0) if table else 0},
+                        "best_defense": {"team": champ_name, "goals_conceded": table[0][1].get("ga", 0) if table else 0},
+                        "transfers_completed": transfer_summary.get("transfers_completed", 0),
+                        "total_market_value": transfer_summary.get("total_market_value", 0)
                     })
-                
-                # Build season summary
-                season_summary = {
-                    "season_year": year,
-                    "champions": champion_name,
-                    "champion_points": champion_stats.get("points", 0),
-                    "top_scorer": top_scorer,
-                    "total_goals": season_stats.get("total_goals", 0),
-                    "total_matches": season_stats.get("total_matches", 0),
-                    "avg_goals_per_match": season_stats.get("average_goals_per_match", 0),
-                    "best_attack": {
-                        "team": season_stats.get("best_attack", [None, {}])[0],
-                        "goals": season_stats.get("best_attack", [None, {}])[1].get("gf", 0)
-                    },
-                    "best_defense": {
-                        "team": season_stats.get("best_defense", [None, {}])[0],
-                        "goals_conceded": season_stats.get("best_defense", [None, {}])[1].get("ga", 0)
-                    },
-                    "transfers_completed": transfer_summary.get("transfers_completed", 0),
-                    "total_market_value": transfer_summary.get("total_market_value", 0)
-                }
-                
-                all_seasons_data.append(season_summary)
-                
-            except Exception as e:
-                logger.warning("Error processing %s: %s", report_file, e)
-                continue
-        
-        # Sort by season year
-        all_seasons_data.sort(key=lambda x: x["season_year"], reverse=True)
-        
-        return JSONResponse(status_code=200, content={
-            "seasons": all_seasons_data,
-            "team_position_trends": team_positions,
-            "total_seasons": len(all_seasons_data)
-        })
-        
+
+            return JSONResponse(status_code=200, content={
+                "seasons": all_seasons_data,
+                "team_position_trends": team_positions,
+                "total_seasons": len(all_seasons_data)
+            })
     except Exception as e:
         logger.exception("Error getting all seasons overview")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
