@@ -7,10 +7,10 @@ from typing import Dict, Any, List, Optional
 
 ACTION_NAMES = {
     0: "do_nothing",
-    1: "sell_reserve",
-    2: "buy_youth",
-    3: "buy_value_or_prime",
-    4: "train_squad",
+    1: "scout_or_youth",
+    2: "buy_cheap",
+    3: "buy_value",
+    4: "buy_star",
 }
 
 
