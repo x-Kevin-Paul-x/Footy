@@ -196,7 +196,118 @@ class League:
                         "forfeit": True,
                         "reward_override": forfeit_penalty
                     })
-            return forfeit_result
+    def play_matchday(self, fixtures_batch):
+        """
+        Play a batch of matches (e.g. 10 fixtures of a matchday) concurrently
+        using GRFBatchRunner with GPU batching when GRF is enabled.
+        """
+        from config import ENGINE_MODE
+        if ENGINE_MODE in ["GRF", "AUTO"]:
+            try:
+                from logic.grf_batch_runner import GRFBatchRunner
+                runner = GRFBatchRunner()
+                if runner.is_available():
+                    # Pre-match preparation for all fixtures
+                    min_players = 11
+                    for home_team, away_team in fixtures_batch:
+                        for team in [home_team, away_team]:
+                            team.generate_youth_players_weekly(count=3)
+                            team.check_and_reinforce_squad(self.transfer_market)
+                            self._ensure_minimum_squad(team, min_players=min_players)
+                            self._weekly_team_training(team)
+
+                    prepared = []
+                    for home_team, away_team in fixtures_batch:
+                        prepared.append({
+                            "match_id": f"match_{self.season_year}_{home_team.team_id}_{away_team.team_id}",
+                            "home_team": home_team,
+                            "away_team": away_team,
+                            "home_team_name": home_team.name,
+                            "away_team_name": away_team.name,
+                            "home_players": [p.name for p in home_team.players[:11]],
+                            "away_players": [p.name for p in away_team.players[:11]],
+                        })
+
+                    batch_results = runner.run_matchday(prepared)
+                    results = []
+                    for idx, res in enumerate(batch_results):
+                        home_team, away_team = fixtures_batch[idx]
+                        for team in [home_team, away_team]:
+                            for player in team.players:
+                                if getattr(player, "suspended_matches", 0) > 0:
+                                    player.serve_suspension(1)
+                                if getattr(player, "is_injured", False):
+                                    player.recover_from_injury(7)
+                        self.update_standings(home_team, away_team, res)
+                        res['home_team_id'] = home_team.team_id
+                        res['away_team_id'] = away_team.team_id
+                        results.append(res)
+                    return results
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Batch GRF execution error: {e}. Falling back to sequential.")
+
+        # Fallback to sequential play_match
+        return [self.play_match(home, away) for home, away in fixtures_batch]
+
+    def play_matchdays_concurrent(self, matchdays_batches, max_workers=2):
+        """
+        Play multiple matchdays (e.g. 2 matchdays = 20 fixtures) simultaneously
+        across independent parallel worker processes.
+        """
+        from config import ENGINE_MODE
+        if ENGINE_MODE in ["GRF", "AUTO"]:
+            try:
+                from logic.grf_batch_runner import GRFBatchRunner
+                runner = GRFBatchRunner()
+                if runner.is_available():
+                    all_prepared = []
+                    min_players = 11
+                    for fixtures_batch in matchdays_batches:
+                        for home_team, away_team in fixtures_batch:
+                            for team in [home_team, away_team]:
+                                team.generate_youth_players_weekly(count=3)
+                                team.check_and_reinforce_squad(self.transfer_market)
+                                self._ensure_minimum_squad(team, min_players=min_players)
+                                self._weekly_team_training(team)
+
+                        prepared = []
+                        for home_team, away_team in fixtures_batch:
+                            prepared.append({
+                                "match_id": f"match_{self.season_year}_{home_team.team_id}_{away_team.team_id}",
+                                "home_team": home_team,
+                                "away_team": away_team,
+                                "home_team_name": home_team.name,
+                                "away_team_name": away_team.name,
+                                "home_players": [p.name for p in home_team.players[:11]],
+                                "away_players": [p.name for p in away_team.players[:11]],
+                            })
+                        all_prepared.append(prepared)
+
+                    concurrent_results = runner.run_matchdays_concurrent(all_prepared, max_workers=max_workers)
+                    all_matchdays_results = []
+                    for md_idx, batch_results in enumerate(concurrent_results):
+                        fixtures_batch = matchdays_batches[md_idx]
+                        results = []
+                        for idx, res in enumerate(batch_results):
+                            home_team, away_team = fixtures_batch[idx]
+                            for team in [home_team, away_team]:
+                                for player in team.players:
+                                    if getattr(player, "suspended_matches", 0) > 0:
+                                        player.serve_suspension(1)
+                                    if getattr(player, "is_injured", False):
+                                        player.recover_from_injury(7)
+                            self.update_standings(home_team, away_team, res)
+                            res['home_team_id'] = home_team.team_id
+                            res['away_team_id'] = away_team.team_id
+                            results.append(res)
+                        all_matchdays_results.append(results)
+                    return all_matchdays_results
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Concurrent GRF execution error: {e}. Falling back.")
+
+        return [self.play_matchday(batch) for batch in matchdays_batches]
 
     def play_season(self):
         """Play all matches in the season and close the transfer log."""

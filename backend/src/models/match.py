@@ -1,9 +1,12 @@
+import logging
 import random
 import math
 import os
 from dataclasses import dataclass
 from typing import Any, List, Dict, Tuple, Optional
 from database.match_db import save_match_to_db
+
+logger = logging.getLogger("footy.models.match")
 
 # FAST_MODE: Set to True during RL training to use match predictor proxy
 # This speeds up training by ~100x by skipping minute-by-minute simulation
@@ -18,7 +21,13 @@ _grf_simulator = None
 _grf_simulator_attempted = False
 
 def get_grf_simulator():
-    """Get or initialize the Google Research Football & TiKick match simulator."""
+    """
+    Get or initialize the GRF + TiKick match simulator.
+    Returns a GRFNativeRunner which exposes .simulate() (compatible with play_match)
+    and .run_match() (used directly by the API for on-demand renders).
+    GRFNativeRunner.simulate() runs GRF via WSL with write_full_episode_dumps=True
+    so every match automatically saves a trace for consistent 3D replay later.
+    """
     global _grf_simulator, _grf_simulator_attempted
     if not _grf_simulator_attempted:
         _grf_simulator_attempted = True
@@ -28,7 +37,7 @@ def get_grf_simulator():
             if runner.is_available():
                 _grf_simulator = runner
         except Exception as e:
-            print(f"Notice: GRF simulator not available in current runtime: {e}")
+            logger.warning("GRF simulator not available in current runtime: %s", e)
     return _grf_simulator
 
 def get_match_predictor():
@@ -882,7 +891,7 @@ class Match:
 
                 return summary
             except Exception as e:
-                print(f"GRF Simulation error, falling back to heuristic engine: {e}")
+                logger.warning("GRF Simulation error, falling back to heuristic engine: %s", e)
         
         # Simulate 90 minutes + injury time
         injury_time = random.randint(1, 5)

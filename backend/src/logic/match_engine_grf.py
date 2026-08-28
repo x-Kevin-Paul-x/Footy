@@ -327,9 +327,9 @@ class FootyMatchSimulator:
         away_name = getattr(away_team, "name", "Away Team")
         match_id = match_id or f"match_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-        # Deterministic seed anchoring for exact match replay consistency
+        # Deterministic seed anchoring — MUST match grf_native_runner.py formula exactly
         import hashlib
-        seed_hash = int(hashlib.md5(match_id.encode('utf-8')).hexdigest()[:8], 16) % (2**31 - 1)
+        seed_hash = int(hashlib.md5(f"match_{match_id}".encode('utf-8')).hexdigest()[:8], 16) % 100000
         torch.manual_seed(seed_hash)
         np.random.seed(seed_hash)
         random.seed(seed_hash)
@@ -450,18 +450,33 @@ class FootyMatchSimulator:
             if video_writer is not None:
                 frame = env.render(mode="rgb_array")
                 if frame is not None:
-                    annotated = frame.copy()
-                    h, w, _ = annotated.shape
-                    # Top Score HUD
+                    # Modern Top-Left Floating TV Scoreboard HUD
+                    px, py = 32, 24
+                    pw, ph = 370, 38
                     overlay = annotated.copy()
-                    cv2.rectangle(overlay, (0, 0), (w, 80), (15, 15, 22), -1)
-                    cv2.addWeighted(overlay, 0.8, annotated, 0.2, 0, annotated)
+                    cv2.rectangle(overlay, (px, py), (px + pw, py + ph), (14, 18, 26), -1)
+                    cv2.addWeighted(overlay, 0.85, annotated, 0.15, 0, annotated)
+                    cv2.rectangle(annotated, (px, py), (px + pw, py + ph), (55, 68, 85), 1)
 
-                    score_str = f"{home_name}  {cur_score[0]} - {cur_score[1]}  {away_name}"
-                    cv2.putText(annotated, score_str, (w // 2 - 200, 36), cv2.FONT_HERSHEY_DUPLEX, 0.85, (255, 255, 255), 2, cv2.LINE_AA)
-                    
-                    time_str = f"Min {match_minute:02d}:00  (Step {step:04d}/{max_steps})"
-                    cv2.putText(annotated, time_str, (w // 2 - 120, 68), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 240, 255), 1, cv2.LINE_AA)
+                    h_abbr = (home_name[:3]).upper()
+                    a_abbr = (away_name[:3]).upper()
+
+                    # Home & Away team badges & scores
+                    cv2.rectangle(annotated, (px + 2, py + 2), (px + 62, py + ph - 2), (40, 40, 200), -1)
+                    cv2.putText(annotated, h_abbr, (px + 10, py + 26), cv2.FONT_HERSHEY_DUPLEX, 0.62, (255, 255, 255), 2, cv2.LINE_AA)
+                    cv2.putText(annotated, str(cur_score[0]), (px + 76, py + 28), cv2.FONT_HERSHEY_DUPLEX, 0.75, (255, 255, 255), 2, cv2.LINE_AA)
+                    cv2.putText(annotated, "-", (px + 100, py + 26), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (160, 175, 195), 1, cv2.LINE_AA)
+                    cv2.putText(annotated, str(cur_score[1]), (px + 120, py + 28), cv2.FONT_HERSHEY_DUPLEX, 0.75, (255, 255, 255), 2, cv2.LINE_AA)
+                    cv2.rectangle(annotated, (px + 144, py + 2), (px + 204, py + ph - 2), (200, 40, 40), -1)
+                    cv2.putText(annotated, a_abbr, (px + 152, py + 26), cv2.FONT_HERSHEY_DUPLEX, 0.62, (255, 255, 255), 2, cv2.LINE_AA)
+
+                    # Clock
+                    is_2nd = step > (max_steps // 2)
+                    half_str = "2ND" if is_2nd else "1ST"
+                    clock_str = f"{half_str}  {match_minute:02d}:00"
+                    cv2.rectangle(annotated, (px + 208, py + 2), (px + pw - 2, py + ph - 2), (24, 30, 42), -1)
+                    cv2.putText(annotated, clock_str, (px + 222, py + 26), cv2.FONT_HERSHEY_DUPLEX, 0.55, (0, 220, 255), 1, cv2.LINE_AA)
+
                     video_writer.write(cv2.cvtColor(annotated, cv2.COLOR_RGB2BGR))
 
             raw_obs = raw_next_obs
