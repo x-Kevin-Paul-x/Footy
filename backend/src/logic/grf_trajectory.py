@@ -98,14 +98,35 @@ class MatchTrajectory:
     manifest: MatchManifest
 
     def compute_trajectory_hash(self) -> str:
-        """Compute deterministic SHA256 checksum of trajectory physics arrays."""
+        """Compute deterministic SHA256 checksum of trajectory physics arrays and manifest."""
         h = hashlib.sha256()
         h.update(str(self.seed).encode('utf-8'))
         h.update(self.player_coords.tobytes())
+        h.update(self.player_dirs.tobytes())
         h.update(self.ball_coords.tobytes())
+        h.update(self.ball_dirs.tobytes())
         h.update(self.actions.tobytes())
         h.update(self.scores.tobytes())
+        if self.manifest:
+            manifest_summary = f"{self.manifest.home_score}:{self.manifest.away_score}:{len(self.manifest.events)}"
+            h.update(manifest_summary.encode('utf-8'))
         return h.hexdigest()
+
+    def get_frame_state(self, step: int) -> Dict[str, Any]:
+        """Retrieve complete O(1) state snapshot for a specific simulation step."""
+        idx = max(0, min(step, self.total_steps - 1))
+        match_min = max(1, min(90, int((idx / max(self.total_steps, 1)) * 90)))
+        return {
+            "step": idx,
+            "match_minute": match_min,
+            "player_coords": self.player_coords[idx],
+            "player_dirs": self.player_dirs[idx],
+            "ball_coords": self.ball_coords[idx],
+            "ball_dirs": self.ball_dirs[idx],
+            "actions": self.actions[idx] if idx < len(self.actions) else np.zeros(20, dtype=np.uint8),
+            "score": [int(self.scores[idx, 0]), int(self.scores[idx, 1])],
+            "is_second_half": idx > (self.total_steps // 2),
+        }
 
     def save_to_npz(self, filepath: Path) -> Path:
         """Save trajectory and manifest to compressed .npz archive."""

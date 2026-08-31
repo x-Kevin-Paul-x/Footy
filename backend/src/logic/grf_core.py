@@ -41,11 +41,13 @@ def compute_shot_xg(
     shooter_y: float,
     goal_x: float,
     defenders: np.ndarray,
-    shooting_attr: float = 70.0
+    shooting_attr: float = 70.0,
+    gk_pos: Optional[Tuple[float, float]] = None,
+    gk_save_coverage: float = 1.0
 ) -> float:
     """
-    Calculate Opta-calibrated Expected Goals (xG) based on shot geometry,
-    defender cone density, and player shooting rating.
+    Calculate physics-calibrated Expected Goals (xG) based on shot geometry,
+    defender cone density, shooter rating, and goalkeeper positioning & ability.
     """
     # Distance to goal line center (goal_x is +1.0 or -1.0)
     dx = abs(goal_x - shooter_x)
@@ -65,14 +67,79 @@ def compute_shot_xg(
             if d_dist < 0.15 and (abs(goal_x - d[0]) < dx):
                 def_count += 1
 
+    # Goalkeeper positioning & coverage influence
+    gk_factor = 1.0
+    if gk_pos is not None:
+        gx, gy = gk_pos
+        gk_dist_to_line = abs(goal_x - gx)
+        # GK standing in direct trajectory between shooter and goal center
+        gk_alignment = max(0.0, 1.0 - abs(gy - shooter_y * (gk_dist_to_line / max(dx, 1e-4))))
+        gk_factor = 1.0 - (0.25 * gk_alignment * max(0.70, min(1.30, gk_save_coverage)))
+
     # Logistic regression baseline
     logit = -0.85 - 3.2 * dist + 2.5 * angle - 0.35 * def_count
     base_prob = 1.0 / (1.0 + math.exp(-max(-6.0, min(6.0, logit))))
 
     # Attribute modifier
     attr_mod = 0.85 + (min(100.0, max(40.0, shooting_attr)) - 40.0) / 60.0 * 0.35
-    xg_val = float(base_prob * attr_mod)
+    xg_val = float(base_prob * attr_mod * gk_factor)
     return max(0.02, min(0.92, round(xg_val, 3)))
+
+
+def apply_tactical_action_bias(
+    actions_raw: List[int],
+    player_positions: np.ndarray,  # shape (10, 2)
+    formation_anchors: List[Tuple[float, float]],  # 10 field player anchors
+    tactics: Any,
+    team_side: str = "left",
+    ball_xy: Optional[np.ndarray] = None,
+    is_team_in_possession: bool = False
+) -> List[int]:
+    """
+    Modulates policy actions with managerial tactical preferences (offensive/defensive bias,
+    pressing intensity, and formation anchor gravity for off-ball shape retention).
+    """
+    modified_actions = list(actions_raw)
+    off_bias = float(getattr(tactics, "offensive_bias", 50.0)) / 100.0
+    def_bias = float(getattr(tactics, "defensive_bias", 50.0)) / 100.0
+    press_int = float(getattr(tactics, "pressing_intensity", 50.0)) / 100.0
+
+    forward_acts = [4, 5, 6] if team_side == "left" else [1, 2, 8]
+    backward_acts = [1, 2, 8] if team_side == "left" else [4, 5, 6]
+
+    for idx, act in enumerate(actions_raw):
+        if idx >= len(player_positions) or idx >= len(formation_anchors):
+            continue
+
+        pos = player_positions[idx]
+        anchor = formation_anchors[idx]
+        drift_dist = math.hypot(pos[0] - anchor[0], pos[1] - anchor[1])
+
+        # 1. Off-ball formation shape retention
+        if not is_team_in_possession and drift_dist > 0.38 and act == 0:
+            # Player is idle and far out of shape: guide back toward anchor zone
+            dx = anchor[0] - pos[0]
+            dy = anchor[1] - pos[1]
+            if abs(dx) > abs(dy):
+                modified_actions[idx] = 5 if dx > 0 else 1
+            else:
+                modified_actions[idx] = 7 if dy > 0 else 3
+
+        # 2. Tactical Pressing: close down ball aggressively when near ball
+        if not is_team_in_possession and ball_xy is not None and press_int > 0.65:
+            b_dist = math.hypot(pos[0] - ball_xy[0], pos[1] - ball_xy[1])
+            if b_dist < 0.18 and act in (1, 2, 3, 4, 5, 6, 7, 8):
+                # When closing down with high pressing, activate sprint
+                if np.random.rand() < (press_int - 0.50):
+                    modified_actions[idx] = 13  # sprint
+
+        # 3. Attacking / Defensive Intent Biasing
+        if is_team_in_possession and off_bias > 0.70 and act in backward_acts:
+            # Overriding overly conservative retreats when attacking
+            if np.random.rand() < (off_bias - 0.50) * 0.40:
+                modified_actions[idx] = forward_acts[1]  # forward move
+
+    return modified_actions
 
 
 def extract_canonical_features(

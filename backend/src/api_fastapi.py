@@ -1078,7 +1078,7 @@ async def simulate_grf_match(req: MatchSimulationRequest):
                     aid = existing_match.get("away_team_id")
                     if sy and hid and aid:
                         import hashlib
-                        seed_val = int(hashlib.md5(f"match_{sy}_{hid}_{aid}".encode()).hexdigest()[:8], 16) % 100000
+                        seed_val = int.from_bytes(hashlib.sha256(f"match_{sy}_{hid}_{aid}_{match_id_str}".encode()).digest()[:4], "little")
             except Exception:
                 pass
 
@@ -1124,7 +1124,7 @@ async def simulate_grf_match(req: MatchSimulationRequest):
 
         # Phase B - Standalone Video Rendering if requested
         if should_render_video:
-            trace_dump = str(RECORDINGS_DIR / f"trace_{match_id_str}.dump")
+            trace_npz = str(RECORDINGS_DIR / f"trace_{match_id_str}.npz")
             prog_file = RECORDINGS_DIR / f"progress_{match_id_str}.json"
             try:
                 with open(prog_file, "w") as pf:
@@ -1149,7 +1149,7 @@ async def simulate_grf_match(req: MatchSimulationRequest):
                         match_id=match_id_str,
                         home_team=h_team,
                         away_team=a_team,
-                        dump_file=trace_dump,
+                        trajectory_file=trace_npz,
                         home_players=h_players if len(h_players) >= 11 else None,
                         away_players=a_players if len(a_players) >= 11 else None,
                         home_formation=req.home_formation or "4-3-3",
@@ -1158,7 +1158,7 @@ async def simulate_grf_match(req: MatchSimulationRequest):
                         away_color=a_color,
                     )
                 except Exception as ex:
-                    logger.error("Background render error for %s: %s", match_id_str, ex)
+                    logger.error("Background video render failed for %s: %s", match_id_str, ex)
                     try:
                         with open(prog_file, "w") as pf:
                             json.dump({"status": "error", "message": str(ex), "completed": True}, pf)

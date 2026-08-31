@@ -83,6 +83,8 @@ class GRFNativeRunner:
         match_id: Optional[str] = None,
         seed_val: Optional[int] = None,
         render_video: bool = False,
+        home_tactics: Optional[Any] = None,
+        away_tactics: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
         Execute pure 11v11 MARL match simulation (Phase A).
@@ -100,14 +102,29 @@ class GRFNativeRunner:
         trace_npz_win = RECORDINGS_DIR / f"trace_{m_id}.npz"
         trace_dump_win = RECORDINGS_DIR / f"trace_{m_id}.dump"
 
+        # Build tactics and player profiles from Footy domain objects
+        from logic.footy_grf_adapter import FootyGRFAdapter
+        h_tac = home_tactics or FootyGRFAdapter.build_team_tactics(home_team, formation=home_formation)
+        a_tac = away_tactics or FootyGRFAdapter.build_team_tactics(away_team, formation=away_formation)
+
         payload = {
             "match_id": m_id,
             "home_team": h_name,
             "away_team": a_name,
-            "home_formation": home_formation,
-            "away_formation": away_formation,
-            "home_players": home_players,
-            "away_players": away_players,
+            "home_formation": home_formation or h_tac.formation,
+            "away_formation": away_formation or a_tac.formation,
+            "home_players": home_players or [p.name for p in h_tac.roster],
+            "away_players": away_players or [p.name for p in a_tac.roster],
+            "home_profiles": [p.to_dict() for p in h_tac.roster],
+            "away_profiles": [p.to_dict() for p in a_tac.roster],
+            "home_offensive_bias": h_tac.offensive_bias,
+            "home_defensive_bias": h_tac.defensive_bias,
+            "home_pressing_intensity": h_tac.pressing_intensity,
+            "home_tempo": h_tac.tempo,
+            "away_offensive_bias": a_tac.offensive_bias,
+            "away_defensive_bias": a_tac.defensive_bias,
+            "away_pressing_intensity": a_tac.pressing_intensity,
+            "away_tempo": a_tac.tempo,
             "home_color": _home_color,
             "away_color": _away_color,
             "max_steps": steps,
@@ -118,44 +135,72 @@ class GRFNativeRunner:
             "seed_val": seed_val,
         }
 
-        cmd = [
-            "wsl", "-u", "root", self.wsl_python,
-            self.sim_worker_wsl, json.dumps(payload)
-        ]
+        # 1. Try communicating with persistent daemon if active (fastest)
+        sim_res = self._try_daemon_simulate(payload)
+        if sim_res is None:
+            # 2. Fall back to one-shot worker command
+            cmd = [
+                "wsl", "-u", "root", self.wsl_python,
+                self.sim_worker_wsl, json.dumps(payload)
+            ]
+            logger.info("GRF Simulator: running one-shot simulation for match=%s", m_id)
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            if "MATCH_SIM_RESULT_JSON:" in res.stdout:
+                json_str = res.stdout.split("MATCH_SIM_RESULT_JSON:")[1].splitlines()[0]
+                sim_res = json.loads(json_str)
+            else:
+                logger.error("GRF Simulator error:\nSTDOUT: %s\nSTDERR: %s", res.stdout, res.stderr)
+                raise RuntimeError(f"GRF simulation execution failed: {res.stderr or res.stdout}")
 
-        logger.info("GRF Simulator: running match simulation for match=%s", m_id)
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if render_video:
+            self.render_replay(
+                match_id=m_id,
+                home_team=h_name,
+                away_team=a_name,
+                trajectory_file=str(trace_npz_win),
+                home_players=home_players,
+                away_players=away_players,
+                home_formation=home_formation,
+                away_formation=away_formation,
+                home_color=_home_color,
+                away_color=_away_color,
+            )
+            sim_res["video_url"] = f"/recordings/match_{m_id}.mp4"
 
-        if "MATCH_SIM_RESULT_JSON:" in res.stdout:
-            json_str = res.stdout.split("MATCH_SIM_RESULT_JSON:")[1].splitlines()[0]
-            result = json.loads(json_str)
+        return sim_res
 
-            # If video requested immediately, render replay
-            if render_video:
-                self.render_replay(
-                    match_id=m_id,
-                    home_team=h_name,
-                    away_team=a_name,
-                    dump_file=str(trace_dump_win),
-                    home_players=home_players,
-                    away_players=away_players,
-                    home_formation=home_formation,
-                    away_formation=away_formation,
-                    home_color=_home_color,
-                    away_color=_away_color,
-                )
-                result["video_url"] = f"/recordings/match_{m_id}.mp4"
+    def _try_daemon_simulate(self, payload: Dict[str, Any], port: int = 58210) -> Optional[Dict[str, Any]]:
+        """Attempt sending simulation payload to persistent daemon over local socket."""
+        import socket
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(2.0)
+                s.connect(("127.0.0.1", port))
+                s.settimeout(60.0)
+                req_bytes = json.dumps(payload).encode('utf-8') + b"\n"
+                s.sendall(req_bytes)
 
-            return result
+                resp_bytes = b""
+                while True:
+                    chunk = s.recv(65536)
+                    if not chunk:
+                        break
+                    resp_bytes += chunk
+                    if b"\n" in resp_bytes:
+                        break
 
-        logger.error("GRF Simulator error:\nSTDOUT: %s\nSTDERR: %s", res.stdout, res.stderr)
-        raise RuntimeError(f"GRF simulation execution failed: {res.stderr or res.stdout}")
+                if resp_bytes.strip():
+                    return json.loads(resp_bytes.decode('utf-8').strip())
+        except Exception:
+            return None
+        return None
 
     def render_replay(
         self,
         match_id: str,
         home_team: str,
         away_team: str,
+        trajectory_file: Optional[str] = None,
         dump_file: Optional[str] = None,
         home_players: Optional[List[str]] = None,
         away_players: Optional[List[str]] = None,
@@ -166,16 +211,64 @@ class GRFNativeRunner:
         output_mp4: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Execute standalone 3D TV broadcast video rendering from recorded trace (Phase B).
+        Execute standalone 3D TV broadcast video rendering from recorded MatchTrajectory (.npz) (Phase B).
+        Pure display pipe: never re-simulates physics or invokes neural networks.
         """
         RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
         m_id = str(match_id)
         out_win = Path(output_mp4) if output_mp4 else (RECORDINGS_DIR / f"match_{m_id}.mp4")
+        traj_win = Path(trajectory_file) if trajectory_file else (RECORDINGS_DIR / f"trace_{m_id}.npz")
         dump_win = Path(dump_file) if dump_file else (RECORDINGS_DIR / f"trace_{m_id}.dump")
         prog_win = RECORDINGS_DIR / f"progress_{m_id}.json"
 
+        # Prioritize pure .npz trajectory rendering
+        if traj_win.exists():
+            from logic.grf_trajectory import MatchTrajectory
+            from logic.grf_renderer import render_video_from_trajectory
+            logger.info("GRF Renderer: rendering pure broadcast from trajectory .npz for match=%s", m_id)
+
+            def _progress_cb(pct: int, step: int, total_steps: int, match_min: int):
+                try:
+                    tmp_p = prog_win.with_suffix(".json.tmp")
+                    with open(tmp_p, "w", encoding="utf-8") as pf:
+                        json.dump({
+                            "status": "rendering", "progress": pct, "step": step,
+                            "total_steps": total_steps, "match_minute": match_min,
+                            "stage": f"Replaying 3D Broadcast • {match_min}'/90'...",
+                            "completed": False
+                        }, pf)
+                    os.replace(tmp_p, prog_win)
+                except Exception:
+                    pass
+
+            traj = MatchTrajectory.load_from_npz(traj_win)
+            video_url = render_video_from_trajectory(traj, str(out_win), progress_callback=_progress_cb)
+
+            try:
+                with open(prog_win, "w", encoding="utf-8") as pf:
+                    json.dump({
+                        "status": "completed", "progress": 100, "step": traj.total_steps,
+                        "total_steps": traj.total_steps, "match_minute": 90,
+                        "stage": "3D Match Replay Complete!",
+                        "video_url": video_url, "score": list(traj.manifest.score), "completed": True
+                    }, pf)
+            except Exception:
+                pass
+
+            return {
+                "match_id": str(m_id),
+                "home_team": traj.manifest.home_team,
+                "away_team": traj.manifest.away_team,
+                "score": list(traj.manifest.score),
+                "possession": list(traj.manifest.possession),
+                "shots": list(traj.manifest.shots),
+                "events": traj.manifest.events,
+                "video_url": video_url,
+            }
+
+        # Fallback to WSL worker if only dump exists
         if not dump_win.exists():
-            raise FileNotFoundError(f"Trace dump file not found for match replay: {dump_win}")
+            raise FileNotFoundError(f"Neither trajectory .npz nor .dump file found for match replay: {m_id}")
 
         _home_color = home_color or team_color_from_name(home_team)
         _away_color = away_color or team_color_from_name(away_team)
@@ -200,7 +293,7 @@ class GRFNativeRunner:
             f'xvfb-run -a -s "-screen 0 1280x720x24" {self.wsl_python} {self.render_worker_wsl} \'{json.dumps(payload)}\''
         ]
 
-        logger.info("GRF Renderer: rendering 3D broadcast video for match=%s", m_id)
+        logger.info("GRF Renderer: rendering via WSL worker for match=%s", m_id)
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
 
         if "MATCH_RENDER_RESULT_JSON:" in res.stdout:
@@ -227,17 +320,17 @@ class GRFNativeRunner:
         seed_val: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
-        Unified entry point: if trace exists and render_video=True, renders replay directly.
+        Unified entry point: if trajectory .npz exists and render_video=True, renders replay directly.
         Otherwise simulates match and optionally renders video.
         """
-        trace_candidate = trace_file or str(RECORDINGS_DIR / f"trace_{match_id}.dump")
-        if render_video and os.path.exists(trace_candidate):
-            logger.info("Existing trace found for %s; rendering replay from trace.", match_id)
+        traj_candidate = RECORDINGS_DIR / f"trace_{match_id}.npz"
+        if render_video and traj_candidate.exists():
+            logger.info("Existing trajectory .npz found for %s; rendering replay from trajectory.", match_id)
             return self.render_replay(
                 match_id=match_id,
                 home_team=home_team,
                 away_team=away_team,
-                dump_file=trace_candidate,
+                trajectory_file=str(traj_candidate),
                 home_players=home_players,
                 away_players=away_players,
                 home_formation=home_formation,

@@ -27,7 +27,9 @@ from logic.grf_renderer import (
     draw_hud,
     draw_replay_frame,
     draw_pre_match_card,
-    draw_studio_stats_card
+    draw_studio_stats_card,
+    render_video_from_trajectory,
+    draw_pitch_frame_from_state
 )
 
 
@@ -44,10 +46,45 @@ def write_progress_atomic(progress_file: Optional[str], data: Dict[str, Any]):
         pass
 
 
-def open_writer(output_mp4: str, fps: int = 15):
-    os.makedirs(os.path.dirname(output_mp4) or '.', exist_ok=True)
-    return imageio.get_writer(output_mp4, fps=fps, codec='libx264',
-                               pixelformat='yuv420p', quality=8)
+def render_from_trajectory_npz(payload: Dict[str, Any]):
+    """Render broadcast MP4 directly from immutable MatchTrajectory (.npz) file."""
+    trajectory_file = payload["trajectory_file"]
+    output_mp4 = payload["output_mp4"]
+    progress_file = payload.get("progress_file")
+    match_id = str(payload.get("match_id", "match"))
+
+    traj = MatchTrajectory.load_from_npz(Path(trajectory_file))
+
+    def _progress_cb(pct: int, step: int, total_steps: int, match_min: int):
+        if progress_file:
+            write_progress_atomic(progress_file, {
+                "status": "rendering", "progress": pct, "step": step,
+                "total_steps": total_steps, "match_minute": match_min,
+                "stage": f"Replaying 3D Broadcast • {match_min}'/90'...",
+                "score": list(traj.manifest.score), "completed": False
+            })
+
+    video_url = render_video_from_trajectory(traj, output_mp4, progress_callback=_progress_cb)
+
+    if progress_file:
+        write_progress_atomic(progress_file, {
+            "status": "completed", "progress": 100, "step": traj.total_steps,
+            "total_steps": traj.total_steps, "match_minute": 90,
+            "stage": "3D Match Replay Complete!",
+            "video_url": video_url, "score": list(traj.manifest.score), "completed": True
+        })
+
+    result = {
+        "match_id": str(match_id),
+        "home_team": traj.manifest.home_team,
+        "away_team": traj.manifest.away_team,
+        "score": list(traj.manifest.score),
+        "possession": list(traj.manifest.possession),
+        "shots": list(traj.manifest.shots),
+        "events": traj.manifest.events,
+        "video_url": video_url,
+    }
+    print("MATCH_RENDER_RESULT_JSON:" + json.dumps(result))
 
 
 def render_from_dump(payload: Dict[str, Any]):
@@ -83,9 +120,10 @@ def render_from_dump(payload: Dict[str, Any]):
     env.render()
     env.reset()
 
-    writer = open_writer(output_mp4, fps=15)
+    os.makedirs(os.path.dirname(output_mp4) or '.', exist_ok=True)
+    writer = imageio.get_writer(output_mp4, fps=15, codec='libx264',
+                                pixelformat='yuv420p', quality=8)
 
-    # 1. Pre-Match Card (3 seconds = 45 frames)
     intro_card = draw_pre_match_card(
         w=1280, h=720, home_team=home_team, away_team=away_team,
         home_players=home_players, away_players=away_players,
@@ -128,8 +166,6 @@ def render_from_dump(payload: Dict[str, Any]):
         match_min = max(1, min(90, int((step / max(total_steps, 1)) * 90)))
         is_second_half = step > (total_steps // 2)
 
-        # Genuine goal detection
-        just_scored = False
         if curr_score[0] > last_score[0]:
             shots_h += 1
             scorer_idx = max(0, min(len(home_players) - 1, last_home_touch))
@@ -138,7 +174,6 @@ def render_from_dump(payload: Dict[str, Any]):
             goal_banner_cd = 30
             last_score = list(curr_score)
             last_scorer = scorer
-            just_scored = True
             events.append({
                 "minute": match_min, "type": "goal", "team": "home",
                 "player": scorer, "details": f"Goal! {scorer} scores for {home_team}!"
@@ -151,7 +186,6 @@ def render_from_dump(payload: Dict[str, Any]):
             goal_banner_cd = 30
             last_score = list(curr_score)
             last_scorer = scorer
-            just_scored = True
             events.append({
                 "minute": match_min, "type": "goal", "team": "away",
                 "player": scorer, "details": f"Goal! {scorer} scores for {away_team}!"
@@ -165,49 +199,11 @@ def render_from_dump(payload: Dict[str, Any]):
 
             banner = goal_banner if goal_banner_cd > 0 else None
             annotated = draw_hud(
-                frame, home_team, away_team, curr_score,
+                frame, home_team, away_team, (curr_score[0], curr_score[1]),
                 match_min, home_bgr, away_bgr, banner, is_second_half
             )
             writer.append_data(annotated)
 
-            if just_scored:
-                for _ in range(38):
-                    writer.append_data(annotated)
-                if len(raw_replay_buffer) >= 15:
-                    replay_slice = raw_replay_buffer[-25:]
-                    for rf in replay_slice:
-                        replay_annotated = draw_replay_frame(
-                            rf, home_team, away_team, curr_score, match_min,
-                            home_bgr, away_bgr, is_second_half, zoom_factor=1.35
-                        )
-                        writer.append_data(replay_annotated)
-                        writer.append_data(replay_annotated)
-                    final_replay = draw_replay_frame(
-                        replay_slice[-1], home_team, away_team, curr_score, match_min,
-                        home_bgr, away_bgr, is_second_half, zoom_factor=1.35
-                    )
-                    for _ in range(15):
-                        writer.append_data(final_replay)
-
-            if goal_banner_cd > 0:
-                goal_banner_cd -= 1
-                if goal_banner_cd == 0:
-                    goal_banner = None
-
-        # Half-Time Card
-        if step == (total_steps // 2):
-            tot_p = max(1, left_poss + right_poss)
-            ht_events = [e for e in events if e.get("minute", 0) <= 45]
-            ht_card = draw_studio_stats_card(
-                w=1280, h=720, title="HALF TIME", home_team=home_team, away_team=away_team,
-                score=curr_score, h_poss=(left_poss / tot_p) * 100, a_poss=(right_poss / tot_p) * 100,
-                h_shots=shots_h, a_shots=shots_a,
-                home_bgr=home_bgr, away_bgr=away_bgr, events=ht_events
-            )
-            for _ in range(60):
-                writer.append_data(ht_card)
-
-        # Throttled Atomic Progress updates
         if progress_file and (step % 50 == 0 or step == total_steps - 1):
             pct = min(98, 5 + int((step / max(total_steps - 1, 1)) * 93))
             write_progress_atomic(progress_file, {
@@ -220,12 +216,11 @@ def render_from_dump(payload: Dict[str, Any]):
         if done:
             break
 
-    # Full-Time Card
     tot_p = max(1, left_poss + right_poss)
     motm = last_scorer or (home_players[8] if curr_score[0] >= curr_score[1] else away_players[9])
     ft_card = draw_studio_stats_card(
         w=1280, h=720, title="FULL TIME", home_team=home_team, away_team=away_team,
-        score=curr_score, h_poss=(left_poss / tot_p) * 100, a_poss=(right_poss / tot_p) * 100,
+        score=(curr_score[0], curr_score[1]), h_poss=(left_poss / tot_p) * 100, a_poss=(right_poss / tot_p) * 100,
         h_shots=shots_h, a_shots=shots_a,
         home_bgr=home_bgr, away_bgr=away_bgr, events=events,
         motm_player=motm
@@ -237,14 +232,6 @@ def render_from_dump(payload: Dict[str, Any]):
     env.close()
 
     video_url = f"/recordings/{os.path.basename(output_mp4)}"
-    if progress_file:
-        write_progress_atomic(progress_file, {
-            "status": "completed", "progress": 100, "step": total_steps,
-            "total_steps": total_steps, "match_minute": 90,
-            "stage": "3D Match Replay Complete!",
-            "video_url": video_url, "score": curr_score, "completed": True
-        })
-
     result = {
         "match_id": str(match_id),
         "home_team": home_team, "away_team": away_team,
@@ -264,4 +251,10 @@ if __name__ == "__main__":
             args = json.load(f)
     else:
         args = json.loads(payload_str)
-    render_from_dump(args)
+
+    if args.get("trajectory_file") and os.path.exists(args["trajectory_file"]):
+        render_from_trajectory_npz(args)
+    elif args.get("dump_file") and os.path.exists(args["dump_file"]):
+        render_from_dump(args)
+    else:
+        raise ValueError("Neither trajectory_file nor dump_file found in render payload.")

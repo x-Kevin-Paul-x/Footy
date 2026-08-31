@@ -2,6 +2,7 @@
 WSL Dedicated Worker: Pure GRF + TiKick MARL Match Simulation.
 Executes 11v11 MARL physics at maximum throughput without rendering graphics or encoding video.
 Outputs compact .npz trajectory, raw .dump trace, and verified MatchManifest JSON.
+Supports both one-shot CLI execution and persistent daemon mode.
 """
 
 import os
@@ -9,7 +10,9 @@ import sys
 import json
 import time
 import hashlib
+import random
 from pathlib import Path
+from typing import Dict, List, Any, Optional, Tuple
 import numpy as np
 import torch
 
@@ -23,8 +26,8 @@ import gym
 import gfootball.env as football_env
 
 from logic.grf_trajectory import MatchTrajectory, MatchManifest
-from logic.grf_core import extract_canonical_features, compute_shot_xg, ACTION_MIRROR_MAP
-from logic.footy_grf_adapter import FORMATION_COORDINATES
+from logic.grf_core import extract_canonical_features, compute_shot_xg, apply_tactical_action_bias, ACTION_MIRROR_MAP
+from logic.footy_grf_adapter import FootyGRFAdapter, FORMATION_COORDINATES, GRFPlayerProfile, GRFTeamTactics
 
 
 class TiKickModelConfig:
@@ -45,7 +48,15 @@ class TiKickModelConfig:
     layer_N = 3
 
 
-def load_tikick_policy(ckpt_path: str, tikick_dir: str, device: torch.device):
+_GLOBAL_POLICY = None
+_GLOBAL_POLICY_PATH = None
+
+
+def get_or_load_policy(ckpt_path: str, tikick_dir: str, device: torch.device):
+    global _GLOBAL_POLICY, _GLOBAL_POLICY_PATH
+    if _GLOBAL_POLICY is not None and _GLOBAL_POLICY_PATH == ckpt_path:
+        return _GLOBAL_POLICY
+
     if tikick_dir and tikick_dir not in sys.path:
         sys.path.insert(0, tikick_dir)
     from tmarl.networks.policy_network import PolicyNetwork
@@ -55,10 +66,13 @@ def load_tikick_policy(ckpt_path: str, tikick_dir: str, device: torch.device):
     state_dict = torch.load(ckpt_path, map_location=device)
     policy.load_state_dict(state_dict)
     policy.eval()
+
+    _GLOBAL_POLICY = policy
+    _GLOBAL_POLICY_PATH = ckpt_path
     return policy
 
 
-def run_simulation(payload: Dict[str, Any]):
+def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
     match_id = str(payload["match_id"])
     home_team = payload.get("home_team", "Home Team")
     away_team = payload.get("away_team", "Away Team")
@@ -75,10 +89,14 @@ def run_simulation(payload: Dict[str, Any]):
     trace_dump_path = payload.get("trace_dump")
     seed_val = payload.get("seed_val")
 
+    # Full 32-bit Seed Space
     if seed_val is None:
-        seed_val = int(hashlib.sha256(f"match_{match_id}".encode()).hexdigest()[:8], 16) % 100000
+        seed_val = int.from_bytes(hashlib.sha256(f"match_{match_id}".encode()).digest()[:4], "little")
+    else:
+        seed_val = int(seed_val)
 
-    # Deterministic Seeding Protocol
+    # Deterministic Seeding Protocol across all PRNGs
+    random.seed(seed_val)
     np.random.seed(seed_val)
     torch.manual_seed(seed_val)
     if torch.cuda.is_available():
@@ -87,7 +105,49 @@ def run_simulation(payload: Dict[str, Any]):
         torch.backends.cudnn.benchmark = False
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    policy = load_tikick_policy(ckpt_path, tikick_dir, device)
+    policy = get_or_load_policy(ckpt_path, tikick_dir, device)
+
+    # Build Team Simulation Contexts & Rosters
+    raw_h_profiles = payload.get("home_profiles")
+    if raw_h_profiles and isinstance(raw_h_profiles, list):
+        home_roster = [GRFPlayerProfile(**p) if isinstance(p, dict) else p for p in raw_h_profiles]
+    else:
+        home_roster = [FootyGRFAdapter.extract_player_profile(p, assigned_pos="GK" if i == 0 else "CM")
+                       for i, p in enumerate(home_players[:11])]
+    while len(home_roster) < 11:
+        home_roster.append(GRFPlayerProfile(name=f"{home_team} Player {len(home_roster)+1}"))
+
+    raw_a_profiles = payload.get("away_profiles")
+    if raw_a_profiles and isinstance(raw_a_profiles, list):
+        away_roster = [GRFPlayerProfile(**p) if isinstance(p, dict) else p for p in raw_a_profiles]
+    else:
+        away_roster = [FootyGRFAdapter.extract_player_profile(p, assigned_pos="GK" if i == 0 else "CM")
+                       for i, p in enumerate(away_players[:11])]
+    while len(away_roster) < 11:
+        away_roster.append(GRFPlayerProfile(name=f"{away_team} Player {len(away_roster)+1}"))
+
+    home_tactics = GRFTeamTactics(
+        team_name=home_team,
+        formation=home_formation if home_formation in FORMATION_COORDINATES else "4-3-3",
+        offensive_bias=float(payload.get("home_offensive_bias", 50.0)),
+        defensive_bias=float(payload.get("home_defensive_bias", 50.0)),
+        pressing_intensity=float(payload.get("home_pressing_intensity", 50.0)),
+        tempo=float(payload.get("home_tempo", 50.0)),
+        roster=home_roster
+    )
+    away_tactics = GRFTeamTactics(
+        team_name=away_team,
+        formation=away_formation if away_formation in FORMATION_COORDINATES else "4-2-3-1",
+        offensive_bias=float(payload.get("away_offensive_bias", 50.0)),
+        defensive_bias=float(payload.get("away_defensive_bias", 50.0)),
+        pressing_intensity=float(payload.get("away_pressing_intensity", 50.0)),
+        tempo=float(payload.get("away_tempo", 50.0)),
+        roster=away_roster
+    )
+
+    # 10 field player anchors (excluding GK at idx 0)
+    home_anchors = home_tactics.get_formation_anchors(is_right_team=False)[1:]
+    away_anchors = away_tactics.get_formation_anchors(is_right_team=True)[1:]
 
     # Dumps directory for native GRF trace recording
     match_dump_dir = f"/tmp/dumps/tmp_{match_id}_{int(time.time()*1000)%100000}"
@@ -105,7 +165,7 @@ def run_simulation(payload: Dict[str, Any]):
         number_of_right_players_agent_controls=10,
         other_config_options={
             'action_set': 'full',
-            'random_seed': seed_val,
+            'random_seed': seed_val % (2**31 - 1),
             'tracesdir': match_dump_dir,
             'dump_full_episodes': True,
         }
@@ -153,6 +213,9 @@ def run_simulation(payload: Dict[str, Any]):
     passes_a_att = 0
     passes_a_cmp = 0
 
+    # Rigorous Event State Machine Trackers
+    active_pass: Optional[Dict[str, Any]] = None
+    active_shot: Optional[Dict[str, Any]] = None
     last_home_touch = 10
     last_away_touch = 10
     events = []
@@ -188,17 +251,33 @@ def run_simulation(payload: Dict[str, Any]):
         right_rnn_states = next_rnn_batch[num_agents:]
 
         actions_np = actions_batch.cpu().numpy().flatten().astype(np.int32)
-        left_act = actions_np[:num_agents].tolist()
+        left_act_raw = actions_np[:num_agents].tolist()
         right_act_raw = actions_np[num_agents:].tolist()
 
-        # 3. Action Mirror Inversion for Right Team
-        right_act_mapped = [ACTION_MIRROR_MAP.get(a, a) for a in right_act_raw]
+        # 3. Managerial Tactics & Action Modulation Layer
+        o_prev = raw_obs[0]
+        ball_xy = np.array(o_prev['ball'][:2], dtype=np.float32)
+        b_own_prev = o_prev.get('ball_owned_team', -1)
+        l_pos = np.array(o_prev['left_team'][1:], dtype=np.float32)
+        r_pos = np.array(o_prev['right_team'][1:], dtype=np.float32)
+
+        left_act = apply_tactical_action_bias(
+            left_act_raw, l_pos, home_anchors, home_tactics,
+            team_side="left", ball_xy=ball_xy, is_team_in_possession=(b_own_prev == 0)
+        )
+        right_act_tactical = apply_tactical_action_bias(
+            right_act_raw, -r_pos, [(-x, -y) for (x, y) in away_anchors], away_tactics,
+            team_side="right", ball_xy=-ball_xy, is_team_in_possession=(b_own_prev == 1)
+        )
+
+        # 4. Action Mirror Inversion for Right Team
+        right_act_mapped = [ACTION_MIRROR_MAP.get(a, a) for a in right_act_tactical]
         combined_actions = left_act + right_act_mapped
 
-        # 4. Step Environment
+        # 5. Step Environment
         raw_next_obs, _, done, _ = env.step(combined_actions)
 
-        # 5. Trajectory Recording
+        # 6. Trajectory Recording
         o0 = raw_next_obs[0]
         l_team = np.array(o0['left_team'], dtype=np.float32)
         r_team = np.array(o0['right_team'], dtype=np.float32)
@@ -215,7 +294,7 @@ def run_simulation(payload: Dict[str, Any]):
         curr_score = [int(o0['score'][0]), int(o0['score'][1])]
         recorded_scores[step] = np.array(curr_score, dtype=np.uint8)
 
-        # 6. Possession & True Ball-Touch Scorer Tracking
+        # 7. Possession & True Ball-Touch Scorer Tracking
         ball_owned = o0.get('ball_owned_team', -1)
         ball_player = o0.get('ball_owned_player', -1)
 
@@ -230,45 +309,79 @@ def run_simulation(payload: Dict[str, Any]):
 
         match_min = max(1, min(90, int((step / max(max_steps, 1)) * 90)))
 
-        # 7. Pass Tracking
-        for a in left_act:
-            if a in (9, 10, 11):
+        # 8. Rigorous Pass State Machine
+        if ball_owned == 0 and ball_player >= 1 and (ball_player - 1) < len(left_act):
+            p_act = left_act[ball_player - 1]
+            if p_act in (9, 10, 11):
                 passes_h_att += 1
-                if ball_owned == 0:
-                    passes_h_cmp += 1
-        for a in right_act_raw:
-            if a in (9, 10, 11):
+                active_pass = {"team": 0, "passer": ball_player, "step": step}
+        elif ball_owned == 1 and ball_player >= 1 and (ball_player - 1) < len(right_act_tactical):
+            p_act = right_act_tactical[ball_player - 1]
+            if p_act in (9, 10, 11):
                 passes_a_att += 1
-                if ball_owned == 1:
-                    passes_a_cmp += 1
+                active_pass = {"team": 1, "passer": ball_player, "step": step}
 
-        # 8. Shot & xG Tracking
+        if active_pass is not None:
+            if ball_owned == active_pass["team"]:
+                if ball_player != active_pass["passer"] and ball_player >= 0:
+                    if active_pass["team"] == 0:
+                        passes_h_cmp += 1
+                    else:
+                        passes_a_cmp += 1
+                    active_pass = None
+            elif ball_owned != -1 and ball_owned != active_pass["team"]:
+                # Intercepted by opposition
+                active_pass = None
+            elif step - active_pass["step"] > 35:
+                # Out of bounds / expired
+                active_pass = None
+
+        # 9. Rigorous Shot & GK-Aware xG State Machine
         ball_x, ball_y = o0['ball'][0], o0['ball'][1]
         ball_vx = o0['ball_direction'][0]
 
-        # Home team shot
-        if 12 in left_act or (ball_owned == 0 and ball_vx > 0.08 and ball_x > 0.3):
+        # Home team shot detection
+        if 12 in left_act or (ball_owned == 0 and ball_vx > 0.12 and ball_x > 0.35):
             shots_h += 1
-            p_idx = max(0, min(10, last_home_touch))
-            shot_xg = compute_shot_xg(ball_x, ball_y, goal_x=1.0, defenders=r_team, shooting_attr=75.0)
+            shooter_idx = max(0, min(10, ball_player if ball_player >= 0 else last_home_touch))
+            shooter_profile = home_roster[shooter_idx]
+            away_gk_profile = away_roster[0]
+            away_gk_pos = (float(r_team[0, 0]), float(r_team[0, 1]))
+
+            shot_xg = compute_shot_xg(
+                shooter_x=ball_x, shooter_y=ball_y, goal_x=1.0,
+                defenders=r_team, shooting_attr=shooter_profile.shooting,
+                gk_pos=away_gk_pos, gk_save_coverage=away_gk_profile.gk_save_coverage
+            )
             xg_h += shot_xg
-            if abs(ball_y) < 0.06:
+            if abs(ball_y) < 0.08:
                 sot_h += 1
+            active_shot = {"team": 0, "shooter": shooter_idx, "xg": shot_xg, "step": step}
 
-        # Away team shot
-        if 12 in right_act_raw or (ball_owned == 1 and ball_vx < -0.08 and ball_x < -0.3):
+        # Away team shot detection
+        if 12 in right_act_tactical or (ball_owned == 1 and ball_vx < -0.12 and ball_x < -0.35):
             shots_a += 1
-            p_idx = max(0, min(10, last_away_touch))
-            shot_xg = compute_shot_xg(ball_x, ball_y, goal_x=-1.0, defenders=l_team, shooting_attr=75.0)
-            xg_a += shot_xg
-            if abs(ball_y) < 0.06:
-                sot_a += 1
+            shooter_idx = max(0, min(10, ball_player if ball_player >= 0 else last_away_touch))
+            shooter_profile = away_roster[shooter_idx]
+            home_gk_profile = home_roster[0]
+            home_gk_pos = (float(l_team[0, 0]), float(l_team[0, 1]))
 
-        # 9. Goal Event Detection
+            shot_xg = compute_shot_xg(
+                shooter_x=ball_x, shooter_y=ball_y, goal_x=-1.0,
+                defenders=l_team, shooting_attr=shooter_profile.shooting,
+                gk_pos=home_gk_pos, gk_save_coverage=home_gk_profile.gk_save_coverage
+            )
+            xg_a += shot_xg
+            if abs(ball_y) < 0.08:
+                sot_a += 1
+            active_shot = {"team": 1, "shooter": shooter_idx, "xg": shot_xg, "step": step}
+
+        # 10. Goal Event Detection & Scorer Attribution
         if curr_score[0] > last_score[0]:
             shots_h = max(shots_h, curr_score[0])
             sot_h = max(sot_h, curr_score[0])
-            scorer_idx = max(0, min(len(home_players) - 1, last_home_touch))
+            scorer_idx = active_shot["shooter"] if (active_shot and active_shot["team"] == 0) else last_home_touch
+            scorer_idx = max(0, min(len(home_players) - 1, scorer_idx))
             scorer = home_players[scorer_idx].split('(')[0].strip()
             events.append({
                 "minute": match_min,
@@ -279,11 +392,13 @@ def run_simulation(payload: Dict[str, Any]):
                 "details": f"Goal! {scorer} scores for {home_team}!"
             })
             last_score = list(curr_score)
+            active_shot = None
 
         elif curr_score[1] > last_score[1]:
             shots_a = max(shots_a, curr_score[1])
             sot_a = max(sot_a, curr_score[1])
-            scorer_idx = max(0, min(len(away_players) - 1, last_away_touch))
+            scorer_idx = active_shot["shooter"] if (active_shot and active_shot["team"] == 1) else last_away_touch
+            scorer_idx = max(0, min(len(away_players) - 1, scorer_idx))
             scorer = away_players[scorer_idx].split('(')[0].strip()
             events.append({
                 "minute": match_min,
@@ -294,6 +409,7 @@ def run_simulation(payload: Dict[str, Any]):
                 "details": f"Goal! {scorer} scores for {away_team}!"
             })
             last_score = list(curr_score)
+            active_shot = None
 
         raw_obs = raw_next_obs
         step += 1
@@ -318,8 +434,8 @@ def run_simulation(payload: Dict[str, Any]):
     tot_poss = max(1, left_poss + right_poss)
     h_poss_pct = round((left_poss / tot_poss) * 100.0, 1)
     a_poss_pct = round(100.0 - h_poss_pct, 1)
-    xg_h = max(final_score[0] * 0.45, round(xg_h, 2))
-    xg_a = max(final_score[1] * 0.45, round(xg_a, 2))
+    xg_h = max(final_score[0] * 0.35, round(xg_h, 2))
+    xg_a = max(final_score[1] * 0.35, round(xg_a, 2))
 
     manifest = MatchManifest(
         match_id=match_id,
@@ -333,8 +449,8 @@ def run_simulation(payload: Dict[str, Any]):
         shots=(shots_h, shots_a),
         shots_on_target=(sot_h, sot_a),
         xg=(xg_h, xg_a),
-        passes_attempted=(max(passes_h_att, 45), max(passes_a_att, 45)),
-        passes_completed=(max(passes_h_cmp, 35), max(passes_a_cmp, 35)),
+        passes_attempted=(passes_h_att, passes_a_att),
+        passes_completed=(passes_h_cmp, passes_a_cmp),
         events=events,
         home_players=home_players,
         away_players=away_players,
@@ -344,7 +460,7 @@ def run_simulation(payload: Dict[str, Any]):
         away_color=away_color,
         engine_fingerprint={
             "engine": "GRF+TiKick",
-            "engine_version": "2.0.0",
+            "engine_version": "2.1.0",
             "seed": seed_val,
             "feature_schema": "canonical-268-v2",
             "determinism_level": 2,
@@ -371,14 +487,59 @@ def run_simulation(payload: Dict[str, Any]):
 
     result_json = manifest.to_dict()
     result_json["trajectory_hash"] = trajectory.compute_trajectory_hash()
-    print("MATCH_SIM_RESULT_JSON:" + json.dumps(result_json))
+    return result_json
+
+
+def run_daemon_server(port: int = 58210):
+    """
+    Persistent daemon mode: keeps TiKick PyTorch weights resident in memory
+    and processes match simulation requests over a local TCP socket.
+    """
+    import socket
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("127.0.0.1", port))
+    server.listen(5)
+    print(f"GRF_SIM_DAEMON_READY:{port}", flush=True)
+
+    while True:
+        try:
+            conn, _ = server.accept()
+            with conn:
+                data_bytes = b""
+                while True:
+                    chunk = conn.recv(65536)
+                    if not chunk:
+                        break
+                    data_bytes += chunk
+                    if b"\n" in data_bytes:
+                        break
+
+                if not data_bytes.strip():
+                    continue
+
+                payload = json.loads(data_bytes.decode('utf-8').strip())
+                if payload.get("command") == "shutdown":
+                    conn.sendall(b"OK\n")
+                    break
+
+                res = run_simulation(payload)
+                resp_bytes = json.dumps(res).encode('utf-8') + b"\n"
+                conn.sendall(resp_bytes)
+        except Exception as e:
+            sys.stderr.write(f"Daemon error: {e}\n")
 
 
 if __name__ == "__main__":
-    payload_str = sys.argv[1]
-    if os.path.exists(payload_str):
-        with open(payload_str, "r", encoding="utf-8") as f:
-            args = json.load(f)
+    if len(sys.argv) > 1 and sys.argv[1] == "--daemon":
+        port = int(sys.argv[2]) if len(sys.argv) > 2 else 58210
+        run_daemon_server(port)
     else:
-        args = json.loads(payload_str)
-    run_simulation(args)
+        payload_str = sys.argv[1]
+        if os.path.exists(payload_str):
+            with open(payload_str, "r", encoding="utf-8") as f:
+                args = json.load(f)
+        else:
+            args = json.loads(payload_str)
+        res = run_simulation(args)
+        print("MATCH_SIM_RESULT_JSON:" + json.dumps(res))

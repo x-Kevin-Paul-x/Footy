@@ -99,13 +99,21 @@ def test_action_mirror_map_completeness():
 
 
 def test_tikick_perspective_symmetry():
-    """Verify right team observation extraction applies exact 180° pitch inversion."""
-    # Create synthetic raw observations for left and right teams
+    """Verify right team observation extraction applies exact 180° pitch inversion for all 11 distinct player coords."""
+    unique_left_coords = [
+        [-0.95, 0.00], [-0.60, 0.30], [-0.70, 0.10], [-0.70, -0.10], [-0.60, -0.30],
+        [-0.45, 0.00], [-0.30, 0.18], [-0.30, -0.18], [-0.15, 0.28], [-0.10, 0.00], [-0.15, -0.28]
+    ]
+    unique_right_coords = [
+        [0.95, 0.00], [0.60, -0.30], [0.70, -0.10], [0.70, 0.10], [0.60, 0.30],
+        [0.45, 0.00], [0.30, -0.18], [0.30, 0.18], [0.15, -0.28], [0.10, 0.00], [0.15, 0.28]
+    ]
+
     raw_obs_left = [{
-        'left_team': [[-0.5, 0.1]] * 11,
-        'left_team_direction': [[0.1, 0.0]] * 11,
-        'right_team': [[0.5, -0.1]] * 11,
-        'right_team_direction': [[-0.1, 0.0]] * 11,
+        'left_team': unique_left_coords,
+        'left_team_direction': [[0.05, 0.01 * (i - 5)] for i in range(11)],
+        'right_team': unique_right_coords,
+        'right_team_direction': [[-0.05, -0.01 * (i - 5)] for i in range(11)],
         'ball': [0.2, 0.05, 0.0],
         'ball_direction': [0.05, 0.01, 0.0],
         'ball_owned_team': 0,
@@ -123,12 +131,11 @@ def test_tikick_perspective_symmetry():
         'right_team_active': [1.0] * 11,
     } for _ in range(10)]
 
-    # Mirrored raw observations where right team is at corresponding position
     raw_obs_right = [{
-        'left_team': [[-0.5, 0.1]] * 11,
-        'left_team_direction': [[0.1, 0.0]] * 11,
-        'right_team': [[0.5, -0.1]] * 11,
-        'right_team_direction': [[-0.1, 0.0]] * 11,
+        'left_team': unique_left_coords,
+        'left_team_direction': [[0.05, 0.01 * (i - 5)] for i in range(11)],
+        'right_team': unique_right_coords,
+        'right_team_direction': [[-0.05, -0.01 * (i - 5)] for i in range(11)],
         'ball': [0.2, 0.05, 0.0],
         'ball_direction': [0.05, 0.01, 0.0],
         'ball_owned_team': 0,
@@ -151,8 +158,11 @@ def test_tikick_perspective_symmetry():
 
     assert feat_l.shape == (10, 268)
     assert feat_r.shape == (10, 268)
-    # Right team ally coordinates are mirrored right_team [0.5, -0.1] -> [-0.5, 0.1]
-    assert np.allclose(feat_r[0, 0:2], np.array([-0.5, 0.1], dtype=np.float32))
+    # Right team ally coordinates are 180° mirrored right_team [0.95, 0.0] -> [-0.95, 0.0]
+    for p_i in range(11):
+        expected_mirrored = -np.array(unique_right_coords[p_i], dtype=np.float32)
+        actual_ally = feat_r[0, (p_i*2):(p_i*2 + 2)]
+        assert np.allclose(actual_ally, expected_mirrored), f"Player {p_i} coordinate mismatch in right perspective"
 
 
 def test_match_trajectory_serialization(tmp_path):
@@ -331,4 +341,136 @@ def test_simulate_grf_match_endpoint_with_video_async():
     assert data.get("video_url") is not None
     assert "/recordings/" in data["video_url"]
     assert elapsed < 90.0, f"Render request took too long: {elapsed:.2f}s"
+
+
+def test_pure_trajectory_renderer_integrity(tmp_path):
+    """Verify that grf_renderer renders valid broadcast MP4 without importing or calling football_env."""
+    import sys
+    from logic.grf_renderer import render_video_from_trajectory
+
+    # Ensure gfootball is NOT imported on host
+    assert "gfootball.env" not in sys.modules, "Pure trajectory renderer must not import gfootball.env"
+
+    steps = 30
+    player_coords = np.zeros((steps, 22, 2), dtype=np.float32)
+    # Set default positions
+    for i in range(11):
+        player_coords[:, i, 0] = -0.8 + i * 0.07
+        player_coords[:, i, 1] = -0.3 + (i % 4) * 0.2
+        player_coords[:, i + 11, 0] = 0.8 - i * 0.07
+        player_coords[:, i + 11, 1] = -0.3 + (i % 4) * 0.2
+
+    player_dirs = np.zeros((steps, 22, 2), dtype=np.float32)
+    ball_coords = np.zeros((steps, 3), dtype=np.float32)
+    ball_dirs = np.zeros((steps, 3), dtype=np.float32)
+    actions = np.zeros((steps, 20), dtype=np.uint8)
+    scores = np.zeros((steps, 2), dtype=np.uint8)
+
+    manifest = MatchManifest(
+        match_id="test_pure_render_01",
+        home_team="Arsenal",
+        away_team="Chelsea",
+        home_score=1,
+        away_score=0,
+        score=(1, 0),
+        total_steps=steps,
+        possession=(60.0, 40.0),
+        shots=(5, 3),
+        shots_on_target=(3, 1),
+        xg=(1.2, 0.4),
+        passes_attempted=(40, 30),
+        passes_completed=(35, 22),
+        events=[{"minute": 44, "type": "goal", "team": "home", "player": "Saka"}],
+    )
+
+    traj = MatchTrajectory(
+        match_id="test_pure_render_01",
+        seed=12345,
+        total_steps=steps,
+        player_coords=player_coords,
+        player_dirs=player_dirs,
+        ball_coords=ball_coords,
+        ball_dirs=ball_dirs,
+        actions=actions,
+        scores=scores,
+        manifest=manifest,
+    )
+
+    out_mp4 = tmp_path / "pure_render_test.mp4"
+    video_url = render_video_from_trajectory(traj, str(out_mp4))
+
+    assert out_mp4.exists(), "MP4 video file must be generated"
+    assert out_mp4.stat().st_size > 1000, "MP4 video file must contain valid encoded frames"
+    assert "pure_render_test.mp4" in video_url
+
+
+def test_attribute_sensitivity():
+    """Verify that teams with different attributes produce measurably distinct velocities and trajectories under the exact same seed."""
+    from logic.grf_native_runner import GRFNativeRunner
+    from logic.footy_grf_adapter import GRFPlayerProfile, GRFTeamTactics
+    runner = GRFNativeRunner()
+    if not runner.is_available():
+        pytest.skip("GRF WSL environment not available")
+
+    fixed_seed = 777888
+    # High-pace team
+    high_pace_profiles = [
+        GRFPlayerProfile(name=f"Speed_{i+1}", pace=95.0, shooting=90.0, stamina=95.0, defending=85.0).to_dict()
+        for i in range(11)
+    ]
+    # Low-pace team
+    low_pace_profiles = [
+        GRFPlayerProfile(name=f"Slow_{i+1}", pace=40.0, shooting=45.0, stamina=40.0, defending=45.0).to_dict()
+        for i in range(11)
+    ]
+
+    sim_high = runner.simulate(
+        home_team="HighPaceFC",
+        away_team="OpponentFC",
+        max_steps=120,
+        match_id="test_attr_high",
+        seed_val=fixed_seed,
+        home_tactics=GRFTeamTactics(team_name="HighPaceFC", offensive_bias=80.0, pressing_intensity=85.0, roster=[GRFPlayerProfile(**p) for p in high_pace_profiles]),
+    )
+
+    sim_low = runner.simulate(
+        home_team="LowPaceFC",
+        away_team="OpponentFC",
+        max_steps=120,
+        match_id="test_attr_low",
+        seed_val=fixed_seed,
+        home_tactics=GRFTeamTactics(team_name="LowPaceFC", offensive_bias=20.0, pressing_intensity=25.0, roster=[GRFPlayerProfile(**p) for p in low_pace_profiles]),
+    )
+
+    assert sim_high.get("trajectory_hash") != sim_low.get("trajectory_hash"), "Attribute differences must produce distinct trajectories under identical seed"
+
+
+def test_state_machine_invariants():
+    """Assert passes_attempted >= passes_completed >= 0 and shots >= shots_on_target >= goals across simulated matches."""
+    from logic.grf_native_runner import GRFNativeRunner
+    runner = GRFNativeRunner()
+    if not runner.is_available():
+        pytest.skip("GRF WSL environment not available")
+
+    sim = runner.simulate(
+        home_team="Arsenal",
+        away_team="Chelsea",
+        max_steps=150,
+        match_id="test_invariants",
+        seed_val=424242,
+    )
+
+    # State Machine Pass Invariants
+    p_att_h, p_att_a = sim["passes_attempted"]
+    p_cmp_h, p_cmp_a = sim["passes_completed"]
+    assert p_att_h >= p_cmp_h >= 0, f"Home passes invalid: attempted={p_att_h}, completed={p_cmp_h}"
+    assert p_att_a >= p_cmp_a >= 0, f"Away passes invalid: attempted={p_att_a}, completed={p_cmp_a}"
+
+    # State Machine Shot & Goal Invariants
+    shots_h, shots_a = sim["shots"]
+    sot_h, sot_a = sim["shots_on_target"]
+    g_h, g_a = sim["score"]
+    assert shots_h >= sot_h >= g_h >= 0, f"Home shots invariant violated: {shots_h} >= {sot_h} >= {g_h}"
+    assert shots_a >= sot_a >= g_a >= 0, f"Away shots invariant violated: {shots_a} >= {sot_a} >= {g_a}"
+
 

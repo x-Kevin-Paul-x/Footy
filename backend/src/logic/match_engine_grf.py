@@ -61,6 +61,8 @@ class FootyMatchSimulator:
             away_players=a_players,
             home_formation=h_tactics.formation,
             away_formation=a_tactics.formation,
+            home_tactics=h_tactics,
+            away_tactics=a_tactics,
             match_id=match_id,
             seed_val=seed_val,
             render_video=render_video,
