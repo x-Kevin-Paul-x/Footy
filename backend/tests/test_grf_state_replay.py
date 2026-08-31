@@ -396,6 +396,58 @@ def test_grf_state_archive_trajectory_pairing_mismatch(tmp_path):
         reader.validate(expected_steps=20)
 
 
+def test_trajectory_structural_validation(tmp_path):
+    """Verify that MatchTrajectory __post_init__ catches shape mismatches and NaNs."""
+    manifest = MatchManifest(
+        match_id="m_val", home_team="H", away_team="A", home_score=0, away_score=0,
+        score=(0, 0), total_steps=10, possession=(50.0, 50.0), shots=(0, 0),
+        shots_on_target=(0, 0), xg=(0.0, 0.0)
+    )
+
+    # Wrong shape
+    with pytest.raises(ValueError, match="shape mismatch"):
+        MatchTrajectory(
+            match_id="m_val", seed=1, total_steps=10,
+            player_coords=np.zeros((9, 22, 2), dtype=np.float32),  # 9 instead of 10
+            player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+            ball_coords=np.zeros((10, 3), dtype=np.float32),
+            ball_dirs=np.zeros((10, 3), dtype=np.float32),
+            actions=np.zeros((10, 20), dtype=np.uint8),
+            scores=np.zeros((10, 2), dtype=np.uint8),
+            manifest=manifest
+        )
+
+    # NaN in player_coords
+    bad_coords = np.zeros((10, 22, 2), dtype=np.float32)
+    bad_coords[0, 0, 0] = np.nan
+    with pytest.raises(ValueError, match="contains non-finite values"):
+        MatchTrajectory(
+            match_id="m_val", seed=1, total_steps=10,
+            player_coords=bad_coords,
+            player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+            ball_coords=np.zeros((10, 3), dtype=np.float32),
+            ball_dirs=np.zeros((10, 3), dtype=np.float32),
+            actions=np.zeros((10, 20), dtype=np.uint8),
+            scores=np.zeros((10, 2), dtype=np.uint8),
+            manifest=manifest
+        )
+
+
+def test_trajectory_matching_pairing_passes(tmp_path):
+    """Verify that matching Archive A and Trajectory A validate cleanly."""
+    archive_file = tmp_path / "match_pair.grfstate"
+    fake_states = [f"state_{i}".encode('utf-8') * 20 for i in range(10)]
+    with GRFStateArchiveWriter(str(archive_file), match_id="match_pair", chunk_size=5) as writer:
+        for s in fake_states:
+            writer.append(s)
+
+    reader = GRFStateArchiveReader(str(archive_file))
+    # Validate with matching step count and match_id passes without raising
+    reader.validate(expected_steps=10, expected_match_id="match_pair")
+    assert reader.total_steps == 10
+    assert reader.match_id == "match_pair"
+
+
 def test_grf_state_archive_cross_match_pairing_mismatch(tmp_path):
     """Verify that attempting to validate/pair Trajectory A with Archive B (different match_id) raises ReplayIntegrityError."""
     archive_file = tmp_path / "match_A.grfstate"

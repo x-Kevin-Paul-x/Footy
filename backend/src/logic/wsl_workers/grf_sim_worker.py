@@ -26,7 +26,7 @@ import gym
 import gfootball.env as football_env
 
 from logic.grf_trajectory import MatchTrajectory, MatchManifest
-from logic.grf_state_archive import GRFStateArchiveWriter
+from logic.grf_state_archive import GRFStateArchiveWriter, ReplayIntegrityError
 from logic.grf_core import extract_canonical_features, compute_shot_xg, apply_tactical_action_bias, ACTION_MIRROR_MAP
 from logic.footy_grf_adapter import FootyGRFAdapter, FORMATION_COORDINATES, GRFPlayerProfile, GRFTeamTactics
 
@@ -330,9 +330,13 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
 
             curr_score = [int(o0['score'][0]), int(o0['score'][1])]
             recorded_scores[step] = np.array(curr_score, dtype=np.uint8)
-            recorded_game_modes[step] = int(o0.get('game_mode', 0))
-            recorded_owned_teams[step] = int(o0.get('ball_owned_team', -1))
-            recorded_owned_players[step] = int(o0.get('ball_owned_player', -1))
+
+            if 'game_mode' not in o0 or 'ball_owned_team' not in o0 or 'ball_owned_player' not in o0:
+                raise ReplayIntegrityError("GRF observation missing required fields (game_mode, ball_owned_team, ball_owned_player)")
+
+            recorded_game_modes[step] = int(o0['game_mode'])
+            recorded_owned_teams[step] = int(o0['ball_owned_team'])
+            recorded_owned_players[step] = int(o0['ball_owned_player'])
 
             # 7. Possession & True Ball-Touch Scorer Tracking
             ball_owned = o0.get('ball_owned_team', -1)

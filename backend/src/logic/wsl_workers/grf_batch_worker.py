@@ -25,6 +25,7 @@ import gym
 import gfootball.env as football_env
 
 from logic.grf_trajectory import MatchTrajectory, MatchManifest
+from logic.grf_state_archive import ReplayIntegrityError
 from logic.grf_core import (
     extract_canonical_features,
     compute_shot_xg,
@@ -274,9 +275,13 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
 
             ms["curr_score"] = [int(o0['score'][0]), int(o0['score'][1])]
             ms["rec_scores"][step] = np.array(ms["curr_score"], dtype=np.uint8)
-            ms["rec_game_modes"][step] = int(o0.get('game_mode', 0))
-            ms["rec_owned_teams"][step] = int(o0.get('ball_owned_team', -1))
-            ms["rec_owned_players"][step] = int(o0.get('ball_owned_player', -1))
+
+            if 'game_mode' not in o0 or 'ball_owned_team' not in o0 or 'ball_owned_player' not in o0:
+                raise ReplayIntegrityError("GRF observation missing required fields (game_mode, ball_owned_team, ball_owned_player)")
+
+            ms["rec_game_modes"][step] = int(o0['game_mode'])
+            ms["rec_owned_teams"][step] = int(o0['ball_owned_team'])
+            ms["rec_owned_players"][step] = int(o0['ball_owned_player'])
 
             b_own = o0.get('ball_owned_team', -1)
             b_player = o0.get('ball_owned_player', -1)

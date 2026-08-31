@@ -8,6 +8,8 @@ from typing import Tuple, FrozenSet
 
 GRF_STATE_SCHEMA_VERSION = "grf_chunked_zlib_v2"
 REPLAY_FORMAT_VERSION = "FOOTY_GRF_STATE_V2"
+TRAJECTORY_SCHEMA_VERSION = "FOOTY_TRAJECTORY_V2"
+TRAJECTORY_SCHEMA_VERSION_V1 = "FOOTY_TRAJECTORY_V1"
 
 # Canonical ordered tuple of 16 observation fields required in every GRF observation for replay integrity.
 GRF_REQUIRED_OBS_FIELDS: Tuple[str, ...] = (

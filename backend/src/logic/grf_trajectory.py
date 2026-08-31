@@ -12,6 +12,8 @@ from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Any, Optional, Tuple
 import numpy as np
 
+from logic.replay_schema import TRAJECTORY_SCHEMA_VERSION, TRAJECTORY_SCHEMA_VERSION_V1
+
 
 @dataclass
 class MatchManifest:
@@ -100,8 +102,37 @@ class MatchTrajectory:
     ball_owned_team: Optional[np.ndarray] = None  # shape: (T,), int8
     ball_owned_player: Optional[np.ndarray] = None  # shape: (T,), int8
 
-    def compute_trajectory_hash(self) -> str:
-        """Compute deterministic SHA256 checksum of trajectory physics arrays and manifest."""
+    def __post_init__(self):
+        """Validate trajectory array dimensions, step counts, dtypes, and finite values."""
+        T = self.total_steps
+        if T <= 0:
+            raise ValueError(f"MatchTrajectory total_steps must be positive, got {T}")
+
+        expected_shapes = [
+            ("player_coords", self.player_coords, (T, 22, 2)),
+            ("player_dirs", self.player_dirs, (T, 22, 2)),
+            ("ball_coords", self.ball_coords, (T, 3)),
+            ("ball_dirs", self.ball_dirs, (T, 3)),
+            ("actions", self.actions, (T, 20)),
+            ("scores", self.scores, (T, 2)),
+        ]
+        if self.game_mode is not None:
+            expected_shapes.append(("game_mode", self.game_mode, (T,)))
+        if self.ball_owned_team is not None:
+            expected_shapes.append(("ball_owned_team", self.ball_owned_team, (T,)))
+        if self.ball_owned_player is not None:
+            expected_shapes.append(("ball_owned_player", self.ball_owned_player, (T,)))
+
+        for name, arr, expected in expected_shapes:
+            if arr is None or not isinstance(arr, np.ndarray):
+                raise ValueError(f"MatchTrajectory field '{name}' must be a numpy ndarray")
+            if arr.shape != expected:
+                raise ValueError(f"MatchTrajectory field '{name}' shape mismatch: expected {expected}, got {arr.shape}")
+            if np.issubdtype(arr.dtype, np.floating) and not np.all(np.isfinite(arr)):
+                raise ValueError(f"MatchTrajectory field '{name}' contains non-finite values (NaN or Inf)")
+
+    def compute_physics_hash(self) -> str:
+        """Compute deterministic SHA256 checksum of raw physics arrays."""
         h = hashlib.sha256()
         h.update(str(self.seed).encode('utf-8'))
         h.update(self.player_coords.tobytes())
@@ -116,8 +147,15 @@ class MatchTrajectory:
             h.update(self.ball_owned_team.tobytes())
         if self.ball_owned_player is not None:
             h.update(self.ball_owned_player.tobytes())
+        return h.hexdigest()
+
+    def compute_trajectory_hash(self) -> str:
+        """Compute complete artifact SHA256 checksum combining physics arrays, metadata, and manifest summary."""
+        h = hashlib.sha256()
+        h.update(self.compute_physics_hash().encode('utf-8'))
+        h.update(str(self.match_id).encode('utf-8'))
         if self.manifest:
-            manifest_summary = f"{self.manifest.home_score}:{self.manifest.away_score}:{len(self.manifest.events)}"
+            manifest_summary = f"{self.manifest.home_score}:{self.manifest.away_score}:{len(self.manifest.events)}:{self.manifest.home_team}:{self.manifest.away_team}"
             h.update(manifest_summary.encode('utf-8'))
         return h.hexdigest()
 
@@ -148,7 +186,11 @@ class MatchTrajectory:
         """Save trajectory and manifest to compressed .npz archive."""
         path = Path(filepath)
         path.parent.mkdir(parents=True, exist_ok=True)
-        manifest_json = json.dumps(self.manifest.to_dict())
+        manifest_dict = self.manifest.to_dict()
+        manifest_dict["trajectory_schema"] = (
+            TRAJECTORY_SCHEMA_VERSION if (self.game_mode is not None) else TRAJECTORY_SCHEMA_VERSION_V1
+        )
+        manifest_json = json.dumps(manifest_dict)
         payload = {
             "player_coords": self.player_coords.astype(np.float32),
             "player_dirs": self.player_dirs.astype(np.float32),
