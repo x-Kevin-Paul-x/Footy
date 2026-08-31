@@ -204,6 +204,9 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
     recorded_ball_dirs = np.empty((max_steps, 3), dtype=np.float32)
     recorded_actions = np.empty((max_steps, 20), dtype=np.uint8)
     recorded_scores = np.empty((max_steps, 2), dtype=np.uint8)
+    recorded_game_modes = np.empty(max_steps, dtype=np.int8)
+    recorded_owned_teams = np.empty(max_steps, dtype=np.int8)
+    recorded_owned_players = np.empty(max_steps, dtype=np.int8)
 
     # Streaming chunked GRF state writer (zero overhead if record_grf_states=False)
     state_writer = None
@@ -327,6 +330,9 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
 
             curr_score = [int(o0['score'][0]), int(o0['score'][1])]
             recorded_scores[step] = np.array(curr_score, dtype=np.uint8)
+            recorded_game_modes[step] = int(o0.get('game_mode', 0))
+            recorded_owned_teams[step] = int(o0.get('ball_owned_team', -1))
+            recorded_owned_players[step] = int(o0.get('ball_owned_player', -1))
 
             # 7. Possession & True Ball-Touch Scorer Tracking
             ball_owned = o0.get('ball_owned_team', -1)
@@ -526,6 +532,9 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
         actions=recorded_actions[:actual_steps],
         scores=recorded_scores[:actual_steps],
         manifest=manifest,
+        game_mode=recorded_game_modes[:actual_steps],
+        ball_owned_team=recorded_owned_teams[:actual_steps],
+        ball_owned_player=recorded_owned_players[:actual_steps],
     )
 
     if trace_npz_path:

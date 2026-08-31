@@ -84,7 +84,7 @@ class MatchTrajectory:
     """
     Compact binary representation of a complete match simulation.
     Contains time-series coordinates for all 22 players and the ball,
-    agent action records, step scores, and the verified match manifest.
+    agent action records, step scores, categorical game state, and verified match manifest.
     """
     match_id: str
     seed: int
@@ -96,6 +96,9 @@ class MatchTrajectory:
     actions: np.ndarray  # shape: (T, 20), uint8
     scores: np.ndarray  # shape: (T, 2), uint8
     manifest: MatchManifest
+    game_mode: Optional[np.ndarray] = None  # shape: (T,), int8
+    ball_owned_team: Optional[np.ndarray] = None  # shape: (T,), int8
+    ball_owned_player: Optional[np.ndarray] = None  # shape: (T,), int8
 
     def compute_trajectory_hash(self) -> str:
         """Compute deterministic SHA256 checksum of trajectory physics arrays and manifest."""
@@ -107,6 +110,12 @@ class MatchTrajectory:
         h.update(self.ball_dirs.tobytes())
         h.update(self.actions.tobytes())
         h.update(self.scores.tobytes())
+        if self.game_mode is not None:
+            h.update(self.game_mode.tobytes())
+        if self.ball_owned_team is not None:
+            h.update(self.ball_owned_team.tobytes())
+        if self.ball_owned_player is not None:
+            h.update(self.ball_owned_player.tobytes())
         if self.manifest:
             manifest_summary = f"{self.manifest.home_score}:{self.manifest.away_score}:{len(self.manifest.events)}"
             h.update(manifest_summary.encode('utf-8'))
@@ -116,7 +125,7 @@ class MatchTrajectory:
         """Retrieve complete O(1) state snapshot for a specific simulation step."""
         idx = max(0, min(step, self.total_steps - 1))
         match_min = max(1, min(90, int((idx / max(self.total_steps, 1)) * 90)))
-        return {
+        state = {
             "step": idx,
             "match_minute": match_min,
             "player_coords": self.player_coords[idx],
@@ -127,28 +136,42 @@ class MatchTrajectory:
             "score": [int(self.scores[idx, 0]), int(self.scores[idx, 1])],
             "is_second_half": idx > (self.total_steps // 2),
         }
+        if self.game_mode is not None:
+            state["game_mode"] = int(self.game_mode[idx])
+        if self.ball_owned_team is not None:
+            state["ball_owned_team"] = int(self.ball_owned_team[idx])
+        if self.ball_owned_player is not None:
+            state["ball_owned_player"] = int(self.ball_owned_player[idx])
+        return state
 
     def save_to_npz(self, filepath: Path) -> Path:
         """Save trajectory and manifest to compressed .npz archive."""
         path = Path(filepath)
         path.parent.mkdir(parents=True, exist_ok=True)
         manifest_json = json.dumps(self.manifest.to_dict())
-        np.savez_compressed(
-            str(path),
-            player_coords=self.player_coords.astype(np.float32),
-            player_dirs=self.player_dirs.astype(np.float32),
-            ball_coords=self.ball_coords.astype(np.float32),
-            ball_dirs=self.ball_dirs.astype(np.float32),
-            actions=self.actions.astype(np.uint8),
-            scores=self.scores.astype(np.uint8),
-            seed=np.array([self.seed], dtype=np.int64),
-            manifest=np.array([manifest_json], dtype=object),
-        )
+        payload = {
+            "player_coords": self.player_coords.astype(np.float32),
+            "player_dirs": self.player_dirs.astype(np.float32),
+            "ball_coords": self.ball_coords.astype(np.float32),
+            "ball_dirs": self.ball_dirs.astype(np.float32),
+            "actions": self.actions.astype(np.uint8),
+            "scores": self.scores.astype(np.uint8),
+            "seed": np.array([self.seed], dtype=np.int64),
+            "manifest": np.array([manifest_json], dtype=object),
+        }
+        if self.game_mode is not None:
+            payload["game_mode"] = self.game_mode.astype(np.int8)
+        if self.ball_owned_team is not None:
+            payload["ball_owned_team"] = self.ball_owned_team.astype(np.int8)
+        if self.ball_owned_player is not None:
+            payload["ball_owned_player"] = self.ball_owned_player.astype(np.int8)
+
+        np.savez_compressed(str(path), **payload)
         return path
 
     @classmethod
     def load_from_npz(cls, filepath: Path) -> "MatchTrajectory":
-        """Load trajectory and manifest from compressed .npz archive."""
+        """Load trajectory and manifest from compressed .npz archive with backward compatibility."""
         path = Path(filepath)
         if not path.exists():
             raise FileNotFoundError(f"Trajectory file not found: {path}")
@@ -159,6 +182,10 @@ class MatchTrajectory:
         seed = int(data["seed"][0]) if "seed" in data else 0
         player_coords = data["player_coords"]
         total_steps = player_coords.shape[0]
+
+        game_mode = data["game_mode"] if "game_mode" in data else None
+        ball_owned_team = data["ball_owned_team"] if "ball_owned_team" in data else None
+        ball_owned_player = data["ball_owned_player"] if "ball_owned_player" in data else None
 
         return cls(
             match_id=manifest.match_id,
@@ -171,4 +198,7 @@ class MatchTrajectory:
             actions=data["actions"],
             scores=data["scores"],
             manifest=manifest,
+            game_mode=game_mode,
+            ball_owned_team=ball_owned_team,
+            ball_owned_player=ball_owned_player,
         )

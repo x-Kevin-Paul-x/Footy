@@ -396,6 +396,66 @@ def test_grf_state_archive_trajectory_pairing_mismatch(tmp_path):
         reader.validate(expected_steps=20)
 
 
+def test_grf_state_archive_cross_match_pairing_mismatch(tmp_path):
+    """Verify that attempting to validate/pair Trajectory A with Archive B (different match_id) raises ReplayIntegrityError."""
+    archive_file = tmp_path / "match_A.grfstate"
+    traj_file = tmp_path / "match_B.npz"
+
+    fake_states = [f"state_{i}".encode('utf-8') * 20 for i in range(10)]
+    with GRFStateArchiveWriter(str(archive_file), match_id="match_A", chunk_size=5) as writer:
+        for s in fake_states:
+            writer.append(s)
+
+    manifest_B = MatchManifest(
+        match_id="match_B",
+        home_team="Team B1",
+        away_team="Team B2",
+        home_score=1,
+        away_score=0,
+        score=(1, 0),
+        total_steps=10,
+        possession=(50.0, 50.0),
+        shots=(2, 1),
+        shots_on_target=(1, 0),
+        xg=(0.5, 0.2),
+    )
+    traj_B = MatchTrajectory(
+        match_id="match_B",
+        seed=123,
+        total_steps=10,
+        player_coords=np.zeros((10, 22, 2), dtype=np.float32),
+        player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+        ball_coords=np.zeros((10, 3), dtype=np.float32),
+        ball_dirs=np.zeros((10, 3), dtype=np.float32),
+        actions=np.zeros((10, 20), dtype=np.uint8),
+        scores=np.zeros((10, 2), dtype=np.uint8),
+        manifest=manifest_B,
+    )
+    traj_B.save_to_npz(traj_file)
+
+    reader = GRFStateArchiveReader(str(archive_file))
+    loaded_traj = MatchTrajectory.load_from_npz(traj_file)
+
+    # Cross-match pairing validation must raise ReplayIntegrityError
+    with pytest.raises(ReplayIntegrityError, match="match ID mismatch"):
+        reader.validate(expected_steps=loaded_traj.total_steps, expected_match_id=loaded_traj.match_id)
+
+
+def test_obs_schema_validation():
+    """Verify that _assert_obs_schema passes for complete obs dict and raises ReplayIntegrityError for incomplete dict."""
+    from logic.wsl_workers.grf_equivalence_worker import _assert_obs_schema
+    from logic.replay_schema import GRF_REQUIRED_OBS_FIELDS
+
+    valid_obs = {k: 0 for k in GRF_REQUIRED_OBS_FIELDS}
+    # Valid obs schema must pass without error
+    _assert_obs_schema(valid_obs, "test_valid")
+
+    incomplete_obs = {k: 0 for k in list(GRF_REQUIRED_OBS_FIELDS)[:-1]}
+    # Incomplete obs schema must raise ReplayIntegrityError
+    with pytest.raises(ReplayIntegrityError, match="missing required fields"):
+        _assert_obs_schema(incomplete_obs, "test_incomplete")
+
+
 def test_grf_goal_replay_multiple_events_same_step(tmp_path):
     """Verify that the render path iterates over ALL goal events at the same step, not just the last.
 

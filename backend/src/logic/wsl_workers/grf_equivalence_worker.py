@@ -19,13 +19,13 @@ src_dir = str(Path(__file__).resolve().parent.parent.parent)
 if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
-from logic.replay_schema import GRF_REQUIRED_OBS_FIELDS
+from logic.replay_schema import GRF_REQUIRED_OBS_FIELD_SET
 from logic.grf_state_archive import ReplayIntegrityError
 
 
 def _assert_obs_schema(obs: dict, label: str) -> None:
     """Assert that the observation dict contains all replay-critical fields using ReplayIntegrityError."""
-    missing = GRF_REQUIRED_OBS_FIELDS - obs.keys()
+    missing = GRF_REQUIRED_OBS_FIELD_SET - obs.keys()
     if missing:
         raise ReplayIntegrityError(
             f"GRF observation '{label}' is missing required fields: {missing}. "
@@ -255,10 +255,21 @@ def run_end_to_end_archive_test(states_file: str, trajectory_file: str) -> dict:
         obs_score = list(obs['score'])
         score_match = (traj_score == obs_score)
 
-        # Additional replay-critical fields: game_mode and ownership validation
-        game_mode_valid = isinstance(obs['game_mode'], (int, np.integer))
-        owned_team_valid = obs['ball_owned_team'] in (-1, 0, 1)
-        owned_player_valid = isinstance(obs['ball_owned_player'], (int, np.integer)) and (-1 <= obs['ball_owned_player'] <= 10)
+        # Trajectory game_mode, ball_owned_team, ball_owned_player equivalence
+        if traj.game_mode is not None:
+            game_mode_match = bool(int(obs['game_mode']) == int(traj.game_mode[step]))
+        else:
+            game_mode_match = isinstance(obs['game_mode'], (int, np.integer))
+
+        if traj.ball_owned_team is not None:
+            owned_team_match = bool(int(obs['ball_owned_team']) == int(traj.ball_owned_team[step]))
+        else:
+            owned_team_match = obs['ball_owned_team'] in (-1, 0, 1)
+
+        if traj.ball_owned_player is not None:
+            owned_player_match = bool(int(obs['ball_owned_player']) == int(traj.ball_owned_player[step]))
+        else:
+            owned_player_match = isinstance(obs['ball_owned_player'], (int, np.integer)) and (-1 <= obs['ball_owned_player'] <= 10)
 
         step_passed = bool(
             p_diff < 1e-4
@@ -266,9 +277,9 @@ def run_end_to_end_archive_test(states_file: str, trajectory_file: str) -> dict:
             and b_diff < 1e-4
             and b_dir_diff < 1e-4
             and score_match
-            and game_mode_valid
-            and owned_team_valid
-            and owned_player_valid
+            and game_mode_match
+            and owned_team_match
+            and owned_player_match
         )
         if not step_passed:
             all_passed = False

@@ -189,6 +189,9 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
             "rec_ball_dirs": np.empty((max_steps, 3), dtype=np.float32),
             "rec_actions": np.empty((max_steps, 20), dtype=np.uint8),
             "rec_scores": np.empty((max_steps, 2), dtype=np.uint8),
+            "rec_game_modes": np.empty(max_steps, dtype=np.int8),
+            "rec_owned_teams": np.empty(max_steps, dtype=np.int8),
+            "rec_owned_players": np.empty(max_steps, dtype=np.int8),
         })
 
     total_agents = num_matches * 20
@@ -271,6 +274,9 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
 
             ms["curr_score"] = [int(o0['score'][0]), int(o0['score'][1])]
             ms["rec_scores"][step] = np.array(ms["curr_score"], dtype=np.uint8)
+            ms["rec_game_modes"][step] = int(o0.get('game_mode', 0))
+            ms["rec_owned_teams"][step] = int(o0.get('ball_owned_team', -1))
+            ms["rec_owned_players"][step] = int(o0.get('ball_owned_player', -1))
 
             b_own = o0.get('ball_owned_team', -1)
             b_player = o0.get('ball_owned_player', -1)
@@ -424,6 +430,9 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
             actions=ms["rec_actions"][:actual_steps],
             scores=ms["rec_scores"][:actual_steps],
             manifest=manifest,
+            game_mode=ms["rec_game_modes"][:actual_steps],
+            ball_owned_team=ms["rec_owned_teams"][:actual_steps],
+            ball_owned_player=ms["rec_owned_players"][:actual_steps],
         )
 
         if ms.get("trace_npz"):

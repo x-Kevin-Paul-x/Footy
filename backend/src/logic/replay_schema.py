@@ -4,13 +4,13 @@ Provides single-source-of-truth constants for observation fields, archive schema
 and format identifiers across simulation, archive storage, and replay workers.
 """
 
-from typing import Set
+from typing import Tuple, FrozenSet
 
 GRF_STATE_SCHEMA_VERSION = "grf_chunked_zlib_v2"
 REPLAY_FORMAT_VERSION = "FOOTY_GRF_STATE_V2"
 
-# Canonical set of 16 observation fields required in every GRF observation for replay integrity.
-GRF_REQUIRED_OBS_FIELDS: Set[str] = {
+# Canonical ordered tuple of 16 observation fields required in every GRF observation for replay integrity.
+GRF_REQUIRED_OBS_FIELDS: Tuple[str, ...] = (
     "left_team",
     "right_team",
     "left_team_direction",
@@ -27,4 +27,7 @@ GRF_REQUIRED_OBS_FIELDS: Set[str] = {
     "ball_owned_team",
     "ball_owned_player",
     "game_mode",
-}
+)
+
+# Immutable set for fast schema validation lookups
+GRF_REQUIRED_OBS_FIELD_SET: FrozenSet[str] = frozenset(GRF_REQUIRED_OBS_FIELDS)
