@@ -478,6 +478,31 @@ def test_trajectory_structural_validation(tmp_path):
         )
 
 
+def test_trajectory_game_mode_domain_validation(tmp_path):
+    """Verify that MatchTrajectory __post_init__ rejects game_mode values outside [0, 6]."""
+    manifest = MatchManifest(
+        match_id="m_gm", home_team="H", away_team="A", home_score=0, away_score=0,
+        score=(0, 0), total_steps=10, possession=(50.0, 50.0), shots=(0, 0),
+        shots_on_target=(0, 0), xg=(0.0, 0.0)
+    )
+    bad_modes = np.zeros(10, dtype=np.int8)
+    bad_modes[0] = 99
+    with pytest.raises(ValueError, match="invalid game_mode values"):
+        MatchTrajectory(
+            match_id="m_gm", seed=1, total_steps=10,
+            player_coords=np.zeros((10, 22, 2), dtype=np.float32),
+            player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+            ball_coords=np.zeros((10, 3), dtype=np.float32),
+            ball_dirs=np.zeros((10, 3), dtype=np.float32),
+            actions=np.zeros((10, 20), dtype=np.uint8),
+            scores=np.zeros((10, 2), dtype=np.uint8),
+            manifest=manifest,
+            game_mode=bad_modes,
+            ball_owned_team=np.zeros(10, dtype=np.int8),
+            ball_owned_player=np.zeros(10, dtype=np.int8)
+        )
+
+
 def test_trajectory_schema_on_load_enforcement(tmp_path):
     """Verify that load_from_npz raises ReplayIntegrityError when declared schema is V2 but arrays are missing."""
     traj_file = tmp_path / "declared_v2_missing_arrays.npz"
@@ -499,6 +524,57 @@ def test_trajectory_schema_on_load_enforcement(tmp_path):
     )
 
     with pytest.raises(ReplayIntegrityError, match="declared schema 'FOOTY_TRAJECTORY_V2'"):
+        MatchTrajectory.load_from_npz(traj_file)
+
+
+def test_trajectory_schema_on_load_rejects_v1_with_v2_arrays(tmp_path):
+    """Verify that load_from_npz raises ReplayIntegrityError when manifest declares V1 but V2 arrays are present."""
+    traj_file = tmp_path / "declared_v1_has_v2_arrays.npz"
+    manifest_dict = {
+        "match_id": "m_declared_v1", "home_team": "H", "away_team": "A",
+        "home_score": 0, "away_score": 0, "total_steps": 10,
+        "trajectory_schema": "FOOTY_TRAJECTORY_V1"
+    }
+    np.savez_compressed(
+        str(traj_file),
+        player_coords=np.zeros((10, 22, 2), dtype=np.float32),
+        player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+        ball_coords=np.zeros((10, 3), dtype=np.float32),
+        ball_dirs=np.zeros((10, 3), dtype=np.float32),
+        actions=np.zeros((10, 20), dtype=np.uint8),
+        scores=np.zeros((10, 2), dtype=np.uint8),
+        seed=np.array([42], dtype=np.int64),
+        manifest=np.array([json.dumps(manifest_dict)], dtype=object),
+        game_mode=np.zeros(10, dtype=np.int8),
+        ball_owned_team=np.zeros(10, dtype=np.int8),
+        ball_owned_player=np.zeros(10, dtype=np.int8),
+    )
+
+    with pytest.raises(ReplayIntegrityError, match="declared legacy schema 'FOOTY_TRAJECTORY_V1'"):
+        MatchTrajectory.load_from_npz(traj_file)
+
+
+def test_trajectory_schema_on_load_rejects_unknown_schema(tmp_path):
+    """Verify that load_from_npz raises ReplayIntegrityError when trajectory_schema is unknown/unsupported."""
+    traj_file = tmp_path / "unknown_schema.npz"
+    manifest_dict = {
+        "match_id": "m_unknown", "home_team": "H", "away_team": "A",
+        "home_score": 0, "away_score": 0, "total_steps": 10,
+        "trajectory_schema": "FOOTY_TRAJECTORY_V999"
+    }
+    np.savez_compressed(
+        str(traj_file),
+        player_coords=np.zeros((10, 22, 2), dtype=np.float32),
+        player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+        ball_coords=np.zeros((10, 3), dtype=np.float32),
+        ball_dirs=np.zeros((10, 3), dtype=np.float32),
+        actions=np.zeros((10, 20), dtype=np.uint8),
+        scores=np.zeros((10, 2), dtype=np.uint8),
+        seed=np.array([42], dtype=np.int64),
+        manifest=np.array([json.dumps(manifest_dict)], dtype=object)
+    )
+
+    with pytest.raises(ReplayIntegrityError, match="Unsupported trajectory schema version: 'FOOTY_TRAJECTORY_V999'"):
         MatchTrajectory.load_from_npz(traj_file)
 
 

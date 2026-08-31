@@ -145,20 +145,26 @@ class MatchTrajectory:
 
         # Categorical domain validations
         if has_all_v2:
-            assert self.ball_owned_team is not None
-            assert self.ball_owned_player is not None
-            invalid_teams = set(np.unique(self.ball_owned_team)) - {-1, 0, 1}
-            if invalid_teams:
-                raise ValueError(f"MatchTrajectory field 'ball_owned_team' contains invalid team values: {invalid_teams}")
+            if self.game_mode is not None:
+                invalid_modes = set(np.unique(self.game_mode)) - set(range(7))
+                if invalid_modes:
+                    raise ValueError(f"MatchTrajectory field 'game_mode' contains invalid game_mode values: {invalid_modes}")
 
-            min_player = int(np.min(self.ball_owned_player))
-            max_player = int(np.max(self.ball_owned_player))
-            if min_player < -1 or max_player > 10:
-                raise ValueError(f"MatchTrajectory field 'ball_owned_player' values out of range [-1, 10]: min={min_player}, max={max_player}")
+            if self.ball_owned_team is not None:
+                invalid_teams = set(np.unique(self.ball_owned_team)) - {-1, 0, 1}
+                if invalid_teams:
+                    raise ValueError(f"MatchTrajectory field 'ball_owned_team' contains invalid team values: {invalid_teams}")
+
+            if self.ball_owned_player is not None:
+                min_player = int(np.min(self.ball_owned_player))
+                max_player = int(np.max(self.ball_owned_player))
+                if min_player < -1 or max_player > 10:
+                    raise ValueError(f"MatchTrajectory field 'ball_owned_player' values out of range [-1, 10]: min={min_player}, max={max_player}")
 
     def compute_physics_hash(self) -> str:
         """Compute schema-aware deterministic SHA256 checksum of raw physics arrays."""
         h = hashlib.sha256()
+        h.update(str(TRAJECTORY_SCHEMA_VERSION if (self.game_mode is not None) else TRAJECTORY_SCHEMA_VERSION_V1).encode('utf-8'))
         h.update(str(self.seed).encode('utf-8'))
         fields = [
             ("player_coords", self.player_coords),
@@ -262,12 +268,22 @@ class MatchTrajectory:
         ball_owned_team = data["ball_owned_team"] if "ball_owned_team" in data else None
         ball_owned_player = data["ball_owned_player"] if "ball_owned_player" in data else None
 
+        has_v2_data = (game_mode is not None or ball_owned_team is not None or ball_owned_player is not None)
+
         if declared_schema == TRAJECTORY_SCHEMA_VERSION:
             if game_mode is None or ball_owned_team is None or ball_owned_player is None:
                 raise ReplayIntegrityError(
                     f"Trajectory manifest declared schema '{TRAJECTORY_SCHEMA_VERSION}' "
                     "but required V2 state arrays (game_mode, ball_owned_team, ball_owned_player) are missing."
                 )
+        elif declared_schema == TRAJECTORY_SCHEMA_VERSION_V1:
+            if has_v2_data:
+                raise ReplayIntegrityError(
+                    f"Trajectory manifest declared legacy schema '{TRAJECTORY_SCHEMA_VERSION_V1}' "
+                    "but V2 state arrays are present in file."
+                )
+        else:
+            raise ReplayIntegrityError(f"Unsupported trajectory schema version: '{declared_schema}'")
 
         return cls(
             match_id=manifest.match_id,
