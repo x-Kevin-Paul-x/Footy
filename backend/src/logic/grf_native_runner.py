@@ -209,10 +209,11 @@ class GRFNativeRunner:
         home_color: Optional[str] = None,
         away_color: Optional[str] = None,
         output_mp4: Optional[str] = None,
+        mode: str = "3d",
     ) -> Dict[str, Any]:
         """
-        Execute standalone 3D TV broadcast video rendering from recorded MatchTrajectory (.npz) (Phase B).
-        Pure display pipe: never re-simulates physics or invokes neural networks.
+        Execute standalone TV broadcast video rendering from recorded trace (Phase B).
+        Supports mode='3d' (authentic photorealistic 3D GRF engine) and mode='2d' (fast tactical radar).
         """
         RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
         m_id = str(match_id)
@@ -221,11 +222,11 @@ class GRFNativeRunner:
         dump_win = Path(dump_file) if dump_file else (RECORDINGS_DIR / f"trace_{m_id}.dump")
         prog_win = RECORDINGS_DIR / f"progress_{m_id}.json"
 
-        # Prioritize pure .npz trajectory rendering
-        if traj_win.exists():
+        # 2D Tactical Replay Mode
+        if mode == "2d" and traj_win.exists():
             from logic.grf_trajectory import MatchTrajectory
             from logic.grf_renderer import render_video_from_trajectory
-            logger.info("GRF Renderer: rendering pure broadcast from trajectory .npz for match=%s", m_id)
+            logger.info("GRF Renderer: rendering 2D tactical broadcast for match=%s", m_id)
 
             def _progress_cb(pct: int, step: int, total_steps: int, match_min: int):
                 try:
@@ -234,7 +235,7 @@ class GRFNativeRunner:
                         json.dump({
                             "status": "rendering", "progress": pct, "step": step,
                             "total_steps": total_steps, "match_minute": match_min,
-                            "stage": f"Replaying 3D Broadcast • {match_min}'/90'...",
+                            "stage": f"Replaying 2D Broadcast • {match_min}'/90'...",
                             "completed": False
                         }, pf)
                     os.replace(tmp_p, prog_win)
@@ -249,7 +250,7 @@ class GRFNativeRunner:
                     json.dump({
                         "status": "completed", "progress": 100, "step": traj.total_steps,
                         "total_steps": traj.total_steps, "match_minute": 90,
-                        "stage": "3D Match Replay Complete!",
+                        "stage": "2D Match Replay Complete!",
                         "video_url": video_url, "score": list(traj.manifest.score), "completed": True
                     }, pf)
             except Exception:
@@ -266,9 +267,19 @@ class GRFNativeRunner:
                 "video_url": video_url,
             }
 
-        # Fallback to WSL worker if only dump exists
+        # 3D Photorealistic GRF Engine Replay Mode
+        if not dump_win.exists() and traj_win.exists():
+            # If dump missing, fallback to 2D
+            return self.render_replay(
+                match_id=match_id, home_team=home_team, away_team=away_team,
+                trajectory_file=trajectory_file, home_players=home_players,
+                away_players=away_players, home_formation=home_formation,
+                away_formation=away_formation, home_color=home_color,
+                away_color=away_color, output_mp4=output_mp4, mode="2d"
+            )
+
         if not dump_win.exists():
-            raise FileNotFoundError(f"Neither trajectory .npz nor .dump file found for match replay: {m_id}")
+            raise FileNotFoundError(f"Neither trace dump nor trajectory found for match replay: {m_id}")
 
         _home_color = home_color or team_color_from_name(home_team)
         _away_color = away_color or team_color_from_name(away_team)
@@ -293,7 +304,7 @@ class GRFNativeRunner:
             f'xvfb-run -a -s "-screen 0 1280x720x24" {self.wsl_python} {self.render_worker_wsl} \'{json.dumps(payload)}\''
         ]
 
-        logger.info("GRF Renderer: rendering via WSL worker for match=%s", m_id)
+        logger.info("GRF Renderer: rendering authentic 3D broadcast via WSL worker for match=%s", m_id)
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
 
         if "MATCH_RENDER_RESULT_JSON:" in res.stdout:
