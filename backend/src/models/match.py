@@ -805,27 +805,33 @@ class Match:
         # High-Fidelity GRF + TiKick MARL simulation
         if grf_sim is not None:
             try:
+                from config import FOOTY_GRF_MAX_STEPS
                 grf_res = grf_sim.simulate(
                     home_team=self.home_team,
                     away_team=self.away_team,
-                    max_steps=3000,
+                    max_steps=FOOTY_GRF_MAX_STEPS,
                     render_video=render_video,
-                    match_id=match_id
+                    match_id=match_id,
+                    home_lineup=self.home_lineup,
+                    away_lineup=self.away_lineup,
                 )
                 self.score = grf_res["score"]
                 self.xg = grf_res.get("xg", [0.0, 0.0])
                 self.possession = grf_res.get("possession", [50.0, 50.0])
                 self.shots = grf_res.get("shots", [self.score[0], self.score[1]])
                 self.shots_on_target = grf_res.get("shots_on_target", [self.score[0], self.score[1]])
+                self.passes_attempted = grf_res.get("passes_attempted", [0, 0])
+                self.passes_completed = grf_res.get("passes_completed", [0, 0])
                 
                 # Ingest timeline events
-                for ev in grf_res.get("timeline", []):
+                raw_events = grf_res.get("events") or grf_res.get("timeline", [])
+                for ev in raw_events:
                     self.events.append(MatchEvent(
                         minute=ev.get("minute", 0),
-                        type=ev.get("event", "GOAL"),
+                        type=ev.get("type") or ev.get("event", "GOAL"),
                         player=ev.get("player", ""),
                         team=ev.get("team", "home"),
-                        details=f"Score: {ev.get('score', '')}"
+                        details=ev.get("details", f"Score: {ev.get('score', '')}")
                     ))
                 
                 total_minutes = 90
@@ -846,8 +852,8 @@ class Match:
                     "possession": self.possession,
                     "shots": self.shots,
                     "shots_on_target": self.shots_on_target,
-                    "passes_attempted": [350, 350],
-                    "passes_completed": [295, 295],
+                    "passes_attempted": self.passes_attempted,
+                    "passes_completed": self.passes_completed,
                     "fouls": self.fouls,
                     "corners": self.corners,
                     "offsides": self.offsides,
@@ -862,7 +868,9 @@ class Match:
                     },
                     "injuries": 0,
                     "total_minutes": total_minutes,
-                    "video_url": grf_res.get("video_url")
+                    "video_url": grf_res.get("video_url"),
+                    "simulation_engine": "GRF+TiKick",
+                    "engine_fingerprint": grf_res.get("engine_fingerprint", {}),
                 }
 
                 # Learn from match

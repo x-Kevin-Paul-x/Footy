@@ -994,19 +994,29 @@ async def get_match_render_status(match_id: str):
 
         prog_file = RECORDINGS_DIR / f"progress_{clean_id}.json"
         if prog_file.exists():
-            try:
-                with open(prog_file, "r", encoding="utf-8") as pf:
-                    data = json.load(pf)
-                    if v_target and data.get("completed"):
-                        data["video_url"] = f"/recordings/{v_target.name}"
-                        # Clean up temporary progress JSON file once complete
-                        try:
-                            prog_file.unlink()
-                        except Exception:
-                            pass
-                    return JSONResponse(status_code=200, content=data)
-            except Exception:
-                pass
+            # Robust read with micro-retry in case WSL is writing atomically
+            for _ in range(3):
+                try:
+                    with open(prog_file, "r", encoding="utf-8") as pf:
+                        data = json.load(pf)
+                        if v_target and data.get("completed"):
+                            data["video_url"] = f"/recordings/{v_target.name}"
+                            try:
+                                prog_file.unlink()
+                            except Exception:
+                                pass
+                        return JSONResponse(status_code=200, content=data)
+                except Exception:
+                    await asyncio.sleep(0.05)
+
+            # If prog_file exists but is temporarily locked, report in-progress rather than resetting to idle
+            return JSONResponse(status_code=200, content={
+                "status": "rendering",
+                "progress": 50,
+                "stage": "Rendering 3D Match Broadcast...",
+                "video_url": f"/recordings/{v_target.name}" if v_target else None,
+                "completed": False
+            })
 
         if v_target:
             if prog_file.exists():
@@ -1054,11 +1064,21 @@ async def simulate_grf_match(req: MatchSimulationRequest):
 
         match_id_str = str(req.match_id) if req.match_id else f"match_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-        # Fetch existing match context (team names, rosters, colours)
+        # Fetch existing match context (team names, rosters, colours, trace)
         existing_match = None
+        seed_val = None
+        trace_file = None
         if req.match_id:
             try:
                 existing_match = get_match_details(int(req.match_id) if str(req.match_id).isdigit() else req.match_id)
+                if existing_match:
+                    trace_file = existing_match.get("trace_file")
+                    sy = existing_match.get("season_year")
+                    hid = existing_match.get("home_team_id")
+                    aid = existing_match.get("away_team_id")
+                    if sy and hid and aid:
+                        import hashlib
+                        seed_val = int(hashlib.md5(f"match_{sy}_{hid}_{aid}".encode()).hexdigest()[:8], 16) % 100000
             except Exception:
                 pass
 
@@ -1073,19 +1093,25 @@ async def simulate_grf_match(req: MatchSimulationRequest):
         h_color = team_color_from_name(h_team)
         a_color = team_color_from_name(a_team)
 
-        # Execute authentic GRF simulation / replay-from-trace
+        steps = min(max(req.max_steps, 100), 5000) if req.max_steps else 1200
+        should_render_video = bool(req.generate_video)
+
+        # Execute authentic GRF simulation (Phase A - pure physics, fast)
         native_runner = GRFNativeRunner()
         grf_out = await asyncio.to_thread(
-            native_runner.run_match,
-            match_id=match_id_str,
+            native_runner.simulate,
             home_team=h_team,
             away_team=a_team,
-            render_video=True,
-            max_steps=3000,
+            max_steps=steps,
             home_players=h_players if len(h_players) >= 11 else None,
             away_players=a_players if len(a_players) >= 11 else None,
+            home_formation=req.home_formation or "4-3-3",
+            away_formation=req.away_formation or "4-2-3-1",
             home_color=h_color,
             away_color=a_color,
+            match_id=match_id_str,
+            seed_val=seed_val,
+            render_video=False,
         )
 
         h_score    = int(grf_out.get("score", [0, 0])[0])
@@ -1093,7 +1119,54 @@ async def simulate_grf_match(req: MatchSimulationRequest):
         real_events= grf_out.get("events", [])
         real_poss  = grf_out.get("possession", [50.0, 50.0])
         real_shots = grf_out.get("shots", [h_score, a_score])
-        video_url  = grf_out.get("video_url")
+        real_xg    = grf_out.get("xg", [round(h_score * 0.45, 2), round(a_score * 0.45, 2)])
+        video_url  = None
+
+        # Phase B - Standalone Video Rendering if requested
+        if should_render_video:
+            trace_dump = str(RECORDINGS_DIR / f"trace_{match_id_str}.dump")
+            prog_file = RECORDINGS_DIR / f"progress_{match_id_str}.json"
+            try:
+                with open(prog_file, "w") as pf:
+                    json.dump({
+                        "status": "rendering",
+                        "progress": 5,
+                        "step": 0,
+                        "total_steps": steps,
+                        "match_minute": 0,
+                        "stage": "Rendering 3D Match Broadcast...",
+                        "score": [h_score, a_score],
+                        "completed": False
+                    }, pf)
+            except Exception:
+                pass
+
+            # Start video render as background task so HTTP request returns quickly
+            async def _bg_render():
+                try:
+                    await asyncio.to_thread(
+                        native_runner.render_replay,
+                        match_id=match_id_str,
+                        home_team=h_team,
+                        away_team=a_team,
+                        dump_file=trace_dump,
+                        home_players=h_players if len(h_players) >= 11 else None,
+                        away_players=a_players if len(a_players) >= 11 else None,
+                        home_formation=req.home_formation or "4-3-3",
+                        away_formation=req.away_formation or "4-2-3-1",
+                        home_color=h_color,
+                        away_color=a_color,
+                    )
+                except Exception as ex:
+                    logger.error("Background render error for %s: %s", match_id_str, ex)
+                    try:
+                        with open(prog_file, "w") as pf:
+                            json.dump({"status": "error", "message": str(ex), "completed": True}, pf)
+                    except Exception:
+                        pass
+
+            asyncio.create_task(_bg_render())
+            video_url = f"/recordings/match_{match_id_str}.mp4"
 
         return MatchSimulationResponse(
             match_id=match_id_str,
@@ -1103,7 +1176,7 @@ async def simulate_grf_match(req: MatchSimulationRequest):
             away_score=a_score,
             possession={"home": float(real_poss[0]), "away": float(real_poss[1])},
             shots={"home": int(real_shots[0]), "away": int(real_shots[1])},
-            xg={"home": float(h_score * 0.75), "away": float(a_score * 0.75)},
+            xg={"home": float(real_xg[0]), "away": float(real_xg[1])},
             timeline=real_events,
             video_url=video_url,
         )

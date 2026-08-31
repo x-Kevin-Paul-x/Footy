@@ -1,11 +1,25 @@
+"""
+Comprehensive Test Suite for GRF & TiKick 3D Simulation Engine.
+Tests canonical architecture, perspective symmetry, trajectory serialization,
+attribute mapping, truthful statistics invariants, and FastAPI endpoints.
+"""
+
+import math
+import numpy as np
 import pytest
+from pathlib import Path
 from fastapi.testclient import TestClient
+
 from api_fastapi import app
-from logic.match_engine_grf import FORMATION_COORDINATES
+from logic.grf_trajectory import MatchTrajectory, MatchManifest
+from logic.footy_grf_adapter import FootyGRFAdapter, FORMATION_COORDINATES, GRFPlayerProfile
+from logic.grf_core import extract_canonical_features, compute_shot_xg, ACTION_MIRROR_MAP
 
 client = TestClient(app)
 
+
 def test_engine_status_endpoint():
+    """Test engine status reporting."""
     response = client.get("/api/v1/engine/status")
     assert response.status_code == 200
     data = response.json()
@@ -14,23 +28,213 @@ def test_engine_status_endpoint():
     assert "checkpoint_found" in data
     assert "baller_dir" in data
 
+
 def test_match_video_endpoint_missing():
-    response = client.get("/api/v1/match/nonexistent_match/video")
+    """Test nonexistent video query returns available=False."""
+    response = client.get("/api/v1/match/nonexistent_match_99999/video")
     assert response.status_code == 200
     data = response.json()
-    assert data["match_id"] == "nonexistent_match"
+    assert data["match_id"] == "nonexistent_match_99999"
     assert data["available"] is False
 
-def test_simulate_grf_match_endpoint():
+
+def test_formation_coordinates_bounds():
+    """Verify all formation coordinate presets have 11 positions within pitch bounds."""
+    for form_name, coords in FORMATION_COORDINATES.items():
+        assert len(coords) == 11, f"Formation {form_name} must have 11 player coordinates"
+        for x, y in coords:
+            assert -1.0 <= x <= 1.0, f"Coordinate x={x} out of range in {form_name}"
+            assert -0.45 <= y <= 0.45, f"Coordinate y={y} out of range in {form_name}"
+
+
+def test_footy_grf_adapter_attribute_mapping():
+    """Test mapping of Footy player attributes to simulation multipliers."""
+    fast_player = {
+        "id": 1,
+        "name": "Speedster",
+        "position": "RW",
+        "potential": 90,
+        "attributes": {
+            "physical": {"pace": 95, "acceleration": 95, "stamina": 90},
+            "technical": {"shooting": 88, "passing": 82, "finishing": 89}
+        }
+    }
+    profile_fast = FootyGRFAdapter.extract_player_profile(fast_player, assigned_pos="RW")
+    assert profile_fast.name == "Speedster"
+    assert profile_fast.speed_multiplier > 1.05
+    assert profile_fast.stamina_decay_rate < 0.90
+    assert profile_fast.shot_quality_modifier > 1.10
+
+    slow_player = {
+        "id": 2,
+        "name": "TargetMan",
+        "position": "ST",
+        "potential": 60,
+        "attributes": {
+            "physical": {"pace": 45, "stamina": 50},
+            "technical": {"shooting": 65, "passing": 50}
+        }
+    }
+    profile_slow = FootyGRFAdapter.extract_player_profile(slow_player, assigned_pos="ST")
+    assert profile_slow.speed_multiplier < 1.0
+    assert profile_slow.stamina_decay_rate > 0.95
+    assert profile_fast.speed_multiplier > profile_slow.speed_multiplier
+
+
+def test_action_mirror_map_completeness():
+    """Verify dual-team action mirroring map covers directional actions symmetrically."""
+    # 180° spatial symmetry pairs
+    assert ACTION_MIRROR_MAP[1] == 5  # left <-> right
+    assert ACTION_MIRROR_MAP[5] == 1
+    assert ACTION_MIRROR_MAP[2] == 6  # top_left <-> bottom_right
+    assert ACTION_MIRROR_MAP[6] == 2
+    assert ACTION_MIRROR_MAP[3] == 7  # top <-> bottom
+    assert ACTION_MIRROR_MAP[7] == 3
+    assert ACTION_MIRROR_MAP[4] == 8  # top_right <-> bottom_left
+    assert ACTION_MIRROR_MAP[8] == 4
+
+    # Non-directional actions are invariant
+    for act in [0, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]:
+        assert ACTION_MIRROR_MAP[act] == act
+
+
+def test_tikick_perspective_symmetry():
+    """Verify right team observation extraction applies exact 180° pitch inversion."""
+    # Create synthetic raw observations for left and right teams
+    raw_obs_left = [{
+        'left_team': [[-0.5, 0.1]] * 11,
+        'left_team_direction': [[0.1, 0.0]] * 11,
+        'right_team': [[0.5, -0.1]] * 11,
+        'right_team_direction': [[-0.1, 0.0]] * 11,
+        'ball': [0.2, 0.05, 0.0],
+        'ball_direction': [0.05, 0.01, 0.0],
+        'ball_owned_team': 0,
+        'ball_owned_player': 8,
+        'active': 8,
+        'game_mode': 0,
+        'steps_left': 2000,
+        'score': [2, 1],
+        'sticky_actions': [0] * 10,
+        'left_team_tired_factor': [0.0] * 11,
+        'left_team_yellow_card': [0.0] * 11,
+        'left_team_active': [1.0] * 11,
+        'right_team_tired_factor': [0.0] * 11,
+        'right_team_yellow_card': [0.0] * 11,
+        'right_team_active': [1.0] * 11,
+    } for _ in range(10)]
+
+    # Mirrored raw observations where right team is at corresponding position
+    raw_obs_right = [{
+        'left_team': [[-0.5, 0.1]] * 11,
+        'left_team_direction': [[0.1, 0.0]] * 11,
+        'right_team': [[0.5, -0.1]] * 11,
+        'right_team_direction': [[-0.1, 0.0]] * 11,
+        'ball': [0.2, 0.05, 0.0],
+        'ball_direction': [0.05, 0.01, 0.0],
+        'ball_owned_team': 0,
+        'ball_owned_player': 8,
+        'active': 8,
+        'game_mode': 0,
+        'steps_left': 2000,
+        'score': [2, 1],
+        'sticky_actions': [0] * 10,
+        'left_team_tired_factor': [0.0] * 11,
+        'left_team_yellow_card': [0.0] * 11,
+        'left_team_active': [1.0] * 11,
+        'right_team_tired_factor': [0.0] * 11,
+        'right_team_yellow_card': [0.0] * 11,
+        'right_team_active': [1.0] * 11,
+    } for _ in range(10)]
+
+    feat_l, _, _ = extract_canonical_features(raw_obs_left, team_side="left", num_agents=10)
+    feat_r, _, _ = extract_canonical_features(raw_obs_right, team_side="right", num_agents=10)
+
+    assert feat_l.shape == (10, 268)
+    assert feat_r.shape == (10, 268)
+    # Right team ally coordinates are mirrored right_team [0.5, -0.1] -> [-0.5, 0.1]
+    assert np.allclose(feat_r[0, 0:2], np.array([-0.5, 0.1], dtype=np.float32))
+
+
+def test_match_trajectory_serialization(tmp_path):
+    """Test MatchTrajectory save to .npz and load roundtrip with checksum validation."""
+    steps = 100
+    player_coords = np.random.randn(steps, 22, 2).astype(np.float32)
+    player_dirs = np.random.randn(steps, 22, 2).astype(np.float32)
+    ball_coords = np.random.randn(steps, 3).astype(np.float32)
+    ball_dirs = np.random.randn(steps, 3).astype(np.float32)
+    actions = np.random.randint(0, 19, size=(steps, 20), dtype=np.uint8)
+    scores = np.zeros((steps, 2), dtype=np.uint8)
+
+    manifest = MatchManifest(
+        match_id="test_traj_001",
+        home_team="Arsenal",
+        away_team="Chelsea",
+        home_score=2,
+        away_score=1,
+        score=(2, 1),
+        total_steps=steps,
+        possession=(55.0, 45.0),
+        shots=(8, 6),
+        shots_on_target=(4, 3),
+        xg=(1.85, 1.10),
+        passes_attempted=(240, 190),
+        passes_completed=(210, 160),
+        events=[{"minute": 23, "type": "goal", "team": "home", "player": "Saka"}],
+    )
+
+    traj = MatchTrajectory(
+        match_id="test_traj_001",
+        seed=424242,
+        total_steps=steps,
+        player_coords=player_coords,
+        player_dirs=player_dirs,
+        ball_coords=ball_coords,
+        ball_dirs=ball_dirs,
+        actions=actions,
+        scores=scores,
+        manifest=manifest,
+    )
+
+    original_hash = traj.compute_trajectory_hash()
+    npz_file = tmp_path / "test_traj_001.npz"
+    traj.save_to_npz(npz_file)
+
+    loaded_traj = MatchTrajectory.load_from_npz(npz_file)
+    assert loaded_traj.match_id == "test_traj_001"
+    assert loaded_traj.seed == 424242
+    assert loaded_traj.manifest.home_score == 2
+    assert loaded_traj.compute_trajectory_hash() == original_hash
+    assert np.array_equal(loaded_traj.player_coords, player_coords)
+
+
+def test_opta_xg_model():
+    """Test physics & geometry based xG calculation monotonicity and bounds."""
+    # Close-range shot directly in front of goal (dist ~ 0.10)
+    defenders_empty = np.empty((0, 2))
+    xg_close = compute_shot_xg(shooter_x=0.90, shooter_y=0.0, goal_x=1.0, defenders=defenders_empty, shooting_attr=85.0)
+    assert 0.40 <= xg_close <= 0.92
+
+    # Long-range shot from midfield (dist ~ 0.50)
+    xg_far = compute_shot_xg(shooter_x=0.50, shooter_y=0.20, goal_x=1.0, defenders=defenders_empty, shooting_attr=85.0)
+    assert xg_far < xg_close
+    assert 0.02 <= xg_far <= 0.35
+
+
+def test_simulate_grf_match_endpoint_fast_mode():
+    """Test /api/v1/match/simulate-grf with generate_video=False executes fast Phase A simulation."""
+    import time
+    t0 = time.time()
     payload = {
         "home_team_name": "Arsenal",
         "away_team_name": "Chelsea",
         "home_formation": "4-3-3",
         "away_formation": "4-2-3-1",
         "generate_video": False,
-        "max_steps": 500
+        "max_steps": 300
     }
     response = client.post("/api/v1/match/simulate-grf", json=payload)
+    elapsed = time.time() - t0
+
     assert response.status_code == 200
     data = response.json()
     assert data["home_team"] == "Arsenal"
@@ -42,9 +246,89 @@ def test_simulate_grf_match_endpoint():
     assert "xg" in data
     assert "timeline" in data
 
-def test_formation_coordinates_bounds():
-    for form_name, coords in FORMATION_COORDINATES.items():
-        assert len(coords) == 11, f"Formation {form_name} must have 11 player coordinates"
-        for x, y in coords:
-            assert -1.0 <= x <= 1.0, f"Coordinate x={x} out of range in {form_name}"
-            assert -0.45 <= y <= 0.45, f"Coordinate y={y} out of range in {form_name}"
+    # Verify statistical invariants
+    h_s = data["shots"]["home"]
+    a_s = data["shots"]["away"]
+    assert h_s >= data["home_score"], "Shots must be >= goals"
+    assert a_s >= data["away_score"], "Shots must be >= goals"
+    assert 95.0 <= (data["possession"]["home"] + data["possession"]["away"]) <= 105.0
+
+    # Video URL must be None since generate_video was False
+    assert data.get("video_url") is None
+    # Fast simulation should complete in seconds
+    assert elapsed < 30.0, f"Fast mode simulation took too long: {elapsed:.2f}s"
+
+
+def test_simulation_determinism_level_2():
+    """Verify trajectory replay fidelity: trajectory save/load reproduces 100% identical hash and manifest."""
+    from logic.grf_native_runner import GRFNativeRunner
+    runner = GRFNativeRunner()
+    if not runner.is_available():
+        pytest.skip("GRF WSL environment not available")
+
+    fixed_seed = 338822
+    sim1 = runner.simulate(
+        home_team="Arsenal",
+        away_team="Chelsea",
+        max_steps=150,
+        match_id="test_det_fidelity",
+        seed_val=fixed_seed,
+    )
+
+    npz_path = Path(f"backend/reports/recordings/trace_test_det_fidelity.npz")
+    assert npz_path.exists(), "Trajectory .npz file must be persisted"
+
+    traj = MatchTrajectory.load_from_npz(npz_path)
+    assert traj.manifest.score == tuple(sim1["score"]), "Loaded trajectory score must match simulation"
+    assert traj.compute_trajectory_hash() == sim1.get("trajectory_hash"), "Trajectory hash must be 100% bit-for-bit identical"
+    assert len(traj.manifest.events) == len(sim1.get("events", [])), "Events list must be identical"
+
+
+def test_simulation_seed_variation():
+    """Verify different seeds produce different match outcomes / trajectories."""
+    from logic.grf_native_runner import GRFNativeRunner
+    runner = GRFNativeRunner()
+    if not runner.is_available():
+        pytest.skip("GRF WSL environment not available")
+
+    sim_a = runner.simulate(
+        home_team="Liverpool",
+        away_team="ManCity",
+        max_steps=150,
+        match_id="test_var_a",
+        seed_val=11111,
+    )
+    sim_b = runner.simulate(
+        home_team="Liverpool",
+        away_team="ManCity",
+        max_steps=150,
+        match_id="test_var_b",
+        seed_val=99999,
+    )
+
+    assert sim_a.get("trajectory_hash") != sim_b.get("trajectory_hash"), "Different seeds must produce different trajectories"
+
+
+def test_simulate_grf_match_endpoint_with_video_async():
+    """Test /api/v1/match/simulate-grf with generate_video=True returns video_url."""
+    import time
+    t0 = time.time()
+    payload = {
+        "home_team_name": "Liverpool",
+        "away_team_name": "ManCity",
+        "home_formation": "4-3-3",
+        "away_formation": "4-2-3-1",
+        "generate_video": True,
+        "max_steps": 150
+    }
+    response = client.post("/api/v1/match/simulate-grf", json=payload)
+    elapsed = time.time() - t0
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["home_team"] == "Liverpool"
+    assert data["away_team"] == "ManCity"
+    assert data.get("video_url") is not None
+    assert "/recordings/" in data["video_url"]
+    assert elapsed < 90.0, f"Render request took too long: {elapsed:.2f}s"
+

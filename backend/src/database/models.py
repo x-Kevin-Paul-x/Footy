@@ -184,6 +184,7 @@ class Match(Base):
     away_red_cards = Column(Integer, nullable=False, default=0)
     home_injuries = Column(Integer, nullable=False, default=0)
     away_injuries = Column(Integer, nullable=False, default=0)
+    trace_file = Column(String, nullable=True)
 
 class SeasonReport(Base):
     __tablename__ = 'SeasonReport'

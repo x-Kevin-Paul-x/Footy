@@ -20,9 +20,12 @@ def run():
         pythonpaths.append(existing_pp)
     sys.path.insert(0, str(BACKEND_SRC))
     try:
-        from config import API_PORT
-    except Exception:
-        API_PORT = 5001
+        from backend.src.config import API_PORT
+    except ImportError:
+        try:
+            from config import API_PORT
+        except Exception:
+            API_PORT = 5001
 
     cmd = [
         sys.executable,

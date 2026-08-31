@@ -300,6 +300,8 @@ class League:
                             self.update_standings(home_team, away_team, res)
                             res['home_team_id'] = home_team.team_id
                             res['away_team_id'] = away_team.team_id
+                            res['home_lineup'] = [{"name": p.name, "position": getattr(p, "position", "ST")} for p in home_team.players[:11]]
+                            res['away_lineup'] = [{"name": p.name, "position": getattr(p, "position", "ST")} for p in away_team.players[:11]]
                             results.append(res)
                         all_matchdays_results.append(results)
                     return all_matchdays_results

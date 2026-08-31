@@ -76,6 +76,7 @@ def save_match_to_db(match_data: Dict[str, Any], season_year: int, match_number:
                     away_corners=a_corners,
                     home_offsides=h_offsides,
                     away_offsides=a_offsides,
+                    trace_file=match_data.get("trace_file") or match_data.get("recorded_trace") or match_data.get("trace_dump"),
                 )
                 db.add(match_obj)
                 db.flush()
@@ -99,6 +100,8 @@ def save_match_to_db(match_data: Dict[str, Any], season_year: int, match_number:
                 match_obj.away_corners = a_corners
                 match_obj.home_offsides = h_offsides
                 match_obj.away_offsides = a_offsides
+                if match_data.get("trace_file") or match_data.get("recorded_trace") or match_data.get("trace_dump"):
+                    match_obj.trace_file = match_data.get("trace_file") or match_data.get("recorded_trace") or match_data.get("trace_dump")
                 db.flush()
                 db.query(MatchShots).filter(MatchShots.match_id == match_obj.match_id).delete()
                 db.query(MatchEvent).filter(MatchEvent.match_id == match_obj.match_id).delete()
@@ -275,6 +278,7 @@ def get_match_details(match_id: Any) -> Optional[Dict[str, Any]]:
             "away_corners": m.away_corners,
             "home_offsides": m.home_offsides,
             "away_offsides": m.away_offsides,
+            "trace_file": m.trace_file,
             "home_lineup": [],
             "away_lineup": [],
             "home_bench": [],

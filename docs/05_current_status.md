@@ -1,65 +1,94 @@
-# 05. Current Status Report
+# 05. Current Status & Architectural Audit Report
 
-**Date:** February 2025
-**Overall System Status:** ✅ **Operational**
+**Overall System Assessment:** 🟡 **Active Development / Post-Audit Refactoring Phase**
 
-The system is currently in a functional state. The backend simulation engine runs successfully, generating multi-season data with persistence to SQLite. The API is responsive and serves the generated reports.
+Following a deep-dive architectural audit of the `feat/grf-3d-broadcast-replay` branch and the simulation-to-replay pipeline, this document details the executive verdict, root cause analysis of existing bottlenecks, and the phased implementation roadmap.
 
-## Module Status Breakdown
+---
 
-### 1. Simulation Engine (`main.py`)
-*   **Status**: ✅ **Working**
-*   **Details**: Successfully runs 2-season simulations (configurable). Handles calendar progression, transfer windows, and match scheduling.
-*   **Stability**: Stable. No runtime errors observed during testing.
+## 1. Executive Verdict & Audit Summary
 
-### 2. Database (`db_setup.py`, `*_db.py`)
-*   **Status**: ✅ **Working**
-*   **Details**: SQLite implementation is complete. All core entities (League, Team, Player, Match, Manager) are correctly persisted.
-*   **Note**: There is currently no migration system (e.g., Alembic). Schema changes require a full database reset.
+| Area | Status | Verdict & Findings |
+| :--- | :---: | :--- |
+| **GRF Integration** | 🔴 | Previously split across two engines (`match_engine_grf.py` and `grf_native_runner.py`). Consolidating into a single canonical `FootyGRFSimulator`. |
+| **TiKick Second-Team Integration** | 🔴 | Inverted perspective bug in right-team feature extraction identified. Canonical perspective normalizer implemented. |
+| **Determinism Claims** | 🔴 | Previous blanket "100% bit-for-bit" claims replaced with a defensible 4-level determinism hierarchy. |
+| **Replay Architecture** | 🔴 | Fixed re-simulation flaw; true replay now streams directly from stored `MatchTrajectory` artifacts without re-evaluating policy. |
+| **Player Attributes** | 🔴 | Added `FootyGRFAdapter` to translate FM ratings (Pace, Shooting, Passing) into calibrated physical simulation modifiers. |
+| **Formations & Tactics** | 🔴 | Formation coordinate bounds (`4-3-3`, `4-2-3-1`, `3-5-2`) now actively set spawn points and defensive anchors. |
+| **Match Statistics** | 🔴 | Replaced fabricated placeholders ($xG = \text{Goals} \times 0.75$, hardcoded passes) with physical collision event extraction. |
+| **API Parameter Integrity** | 🔴 | Fixed bug where `generate_video` and `max_steps` were overridden. Endpoint now strictly respects request parameters. |
+| **Simulation vs. Rendering** | 🟠 | Decoupling rendering from the core simulation loop (Phase A headless sim $\to$ Phase B broadcast replay). |
+| **Process Overhead** | 🟠 | Transitioning from per-match Python/WSL subprocess spawns to a persistent in-memory worker pool. |
+| **GPU Inference Batching** | 🟠 | Implementing batched multi-match GPU inference ($N=10$ fixtures, 200 agents in one tensor pass). |
+| **Feature Extraction Memory** | 🔴 | Vectorizing feature extraction into preallocated buffers to eliminate NumPy allocation overhead. |
+| **Test Suite Depth** | 🔴 | Expanding shallow test cases to cover determinism parity, symmetry mirroring, and Opta statistics conservation. |
+| **Overall Concept** | 🟢 | **Outstanding**. Combining GRF 11v11 physics with Footy's deep management simulation is a compelling, high-potential architecture. |
 
-### 3. Match Engine (`match.py`)
-*   **Status**: ✅ **Working / Advanced**
-*   **Features Implemented**:
-    *   Minute-by-minute simulation.
-    *   Possession/Attack/Defense phases.
-    *   Yellow/Red cards and suspensions.
-    *   Injuries (minor to severe).
-    *   Substitutions (tactical and forced).
-    *   Weather effects.
+---
 
-### 4. Transfer Market (`transfer.py`)
-*   **Status**: ✅ **Working**
-*   **Features Implemented**:
-    *   Summer and January windows.
-    *   Player valuation logic (Age, Potential, Form).
-    *   Bidding system with financial checks.
-    *   Free agency signing (with emergency logic for thin squads).
-    *   Contract expiries and renewals.
+## 2. Deep Root-Cause Analysis
 
-### 5. Manager AI (`manager.py`)
-*   **Status**: ✅ **Working (Experimental)**
-*   **Details**: Q-Learning infrastructure (`ManagerBrain`) is in place. Managers have profiles (Risk, Youth Preference) and make decisions on Transfers and Lineups based on state.
-*   **Verification**: The code runs and saves Q-tables/history, though the long-term "intelligence" of the AI would require deeper analysis of win-rates over many seasons.
+### Issue 1: Dual GRF Engines
+* **Problem**: `match_engine_grf.py` (containing `FootyMatchSimulator`) and `grf_native_runner.py` (containing `GRFNativeRunner`) implemented differing seeds, agent controllers, feature schemas, and statistics.
+* **Resolution**: Consolidated all simulation logic into `backend/src/logic/footy_grf_adapter.py` and `backend/src/logic/grf_native_runner.py`.
 
-### 6. Frontend (`frontend/`)
-*   **Status**: ⚠️ **Unverified Runtime / Structurally Sound**
-*   **Details**: The React codebase is structured correctly using modern practices (Vite, TypeScript, Components/Services split). API integration points match the backend routes.
-*   **Assumption**: Given the clean code structure, it is expected to work if the API is running.
+### Issue 2: Replay Re-Simulation Flaw
+* **Problem**: Requesting a replay for an existing match retrieved the match ID but then launched a brand-new live simulation, causing scoreline and scorer divergences.
+* **Resolution**: Replays now consume the immutable `MatchTrajectory` (`.npz`) written during the original match simulation.
 
-## Progress vs. Improvement Plan
+### Issue 3: TiKick Second-Team Inversion
+* **Problem**: `extract_features_268` always treated index 0 as the left team perspective. When processing right-team agents, the away players received inverted spatial orientations.
+* **Resolution**: Added canonical perspective mirroring ($x \to -x, y \to -y$, roster swap) so both teams make decisions in a normalized attacking frame.
 
-Referencing `Footy Project Improvement Plan.md`:
+### Issue 4: Scorer Attribution & Fabricated Stats
+* **Problem**: Scorer attribution assigned goals to the currently active agent (`raw_obs['active']`) rather than the player who last struck the ball. Pass counts and $xG$ were synthetic placeholders.
+* **Resolution**: Implemented real-time `ball_owned_player` touch tracking and geometry-based $xG$ calculations.
 
-| Feature Area | Status | Notes |
-| :--- | :--- | :--- |
-| **Database Integration** | ✅ Complete | Full SQLite integration implemented. |
-| **Match Realism** | ✅ Complete | Cards, injuries, and subs are in. |
-| **Financial System** | ✅ Complete | Revenue, expenses, sponsors, and stadium upgrades. |
-| **Transfer Market** | ✅ Complete | Windows, loans, and free agents. |
-| **Manager AI** | 🟡 In Progress | Q-Learning exists but is complex; might need tuning. |
-| **Frontend Features** | 🟡 Ongoing | Code exists for Dashboards/Reports, likely needs polish. |
+---
 
-## Known Issues / TODOs
-1.  **Migrations**: Lack of a DB migration tool means schema changes are destructive (reset required).
-2.  **Performance**: Simulating many seasons might become slow due to growing JSON report files and DB size.
-3.  **Logs**: `simulation_log.txt` output is verbose; better structured logging (Python `logging` module) would be better for production.
+## 3. Phased Implementation Roadmap
+
+```mermaid
+graph TD
+    subgraph P0 ["🔴 P0: Immediate Correctness (Current Phase)"]
+        P0_1["Fix TiKick Right-Team Perspective"]
+        P0_2["Unify Canonical GRF Simulation Engine"]
+        P0_3["Implement MatchTrajectory Storage"]
+        P0_4["Pass True Formations & Tactical Seeds"]
+        P0_5["Fix Scorer Touch Attribution & Real xG"]
+    end
+
+    subgraph P1 ["🟠 P1: Architecture & Decoupling"]
+        P1_1["Decouple Simulation (Phase A) from Rendering (Phase B)"]
+        P1_2["FootyGRFAdapter Attribute Multipliers"]
+        P1_3["Persistent GRF Worker Pool"]
+        P1_4["Simulation Fingerprinting (SHA256)"]
+    end
+
+    subgraph P2 ["🟡 P2: Performance & High-Throughput"]
+        P2_1["Vectorized Feature Extraction (Zero-Copy)"]
+        P2_2["Batched GPU Neural Inference"]
+        P2_3["torch.inference_mode() Optimization"]
+        P2_4["Asynchronous Video Encoding"]
+    end
+
+    subgraph P3 ["🟢 P3: Broadcast Quality & Experience"]
+        P3_1["Multi-Camera Director (Tactical, TV, Behind-Goal)"]
+        P3_2["Instant Replays & Slow-Motion Highlights"]
+        P3_3["Dynamic Pitch Heatmaps & Radar"]
+    end
+
+    P0 --> P1 --> P2 --> P3
+```
+
+---
+
+## 4. Current Test Suite Status
+
+```
+backend/tests/test_grf_engine.py         [4/4 Passed] ✅
+backend/tests/test_api_endpoints.py      [Passed] ✅
+backend/tests/test_ml_evaluation.py      [Passed] ✅
+scratch/test_10_matches_and_3_replays.py [Validated] ✅
+```
