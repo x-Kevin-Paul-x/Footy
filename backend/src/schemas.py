@@ -64,6 +64,9 @@ class MatchSimulationRequest(BaseModel):
     away_formation: str = "4-2-3-1"
     generate_video: bool = False
     max_steps: int = 3000
+    record_grf_states: Optional[bool] = None
+    record_dump: bool = False
+    render_mode: str = "auto"
 
 
 class MatchSimulationResponse(BaseModel):

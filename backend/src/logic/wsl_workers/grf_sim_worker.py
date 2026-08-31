@@ -26,6 +26,7 @@ import gym
 import gfootball.env as football_env
 
 from logic.grf_trajectory import MatchTrajectory, MatchManifest
+from logic.grf_state_archive import GRFStateArchiveWriter
 from logic.grf_core import extract_canonical_features, compute_shot_xg, apply_tactical_action_bias, ACTION_MIRROR_MAP
 from logic.footy_grf_adapter import FootyGRFAdapter, FORMATION_COORDINATES, GRFPlayerProfile, GRFTeamTactics
 
@@ -88,6 +89,9 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
     trace_npz_path = payload.get("trace_npz")
     trace_dump_path = payload.get("trace_dump")
     seed_val = payload.get("seed_val")
+    record_grf_states = bool(payload.get("record_grf_states", False))
+    record_dump = bool(payload.get("record_dump", False))
+    states_file_path = payload.get("states_file")
 
     # Full 32-bit Seed Space
     if seed_val is None:
@@ -149,9 +153,18 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
     home_anchors = home_tactics.get_formation_anchors(is_right_team=False)[1:]
     away_anchors = away_tactics.get_formation_anchors(is_right_team=True)[1:]
 
-    # Dumps directory for native GRF trace recording
+    # Dumps directory for native GRF trace recording (only if debug/record_dump requested)
     match_dump_dir = f"/tmp/dumps/tmp_{match_id}_{int(time.time()*1000)%100000}"
-    os.makedirs(match_dump_dir, exist_ok=True)
+    if record_dump:
+        os.makedirs(match_dump_dir, exist_ok=True)
+
+    other_opts = {
+        'action_set': 'full',
+        'random_seed': seed_val % (2**31 - 1),
+    }
+    if record_dump:
+        other_opts['tracesdir'] = match_dump_dir
+        other_opts['dump_full_episodes'] = True
 
     env = football_env.create_environment(
         env_name="11_vs_11_kaggle",
@@ -159,16 +172,11 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
         representation='raw',
         rewards='scoring',
         write_goal_dumps=False,
-        write_full_episode_dumps=True,
+        write_full_episode_dumps=record_dump,
         render=False,
         number_of_left_players_agent_controls=10,
         number_of_right_players_agent_controls=10,
-        other_config_options={
-            'action_set': 'full',
-            'random_seed': seed_val % (2**31 - 1),
-            'tracesdir': match_dump_dir,
-            'dump_full_episodes': True,
-        }
+        other_config_options=other_opts
     )
 
     raw_obs = env.reset()
@@ -196,7 +204,15 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
     recorded_ball_dirs = np.empty((max_steps, 3), dtype=np.float32)
     recorded_actions = np.empty((max_steps, 20), dtype=np.uint8)
     recorded_scores = np.empty((max_steps, 2), dtype=np.uint8)
-    recorded_grf_states: List[bytes] = []
+
+    # Streaming chunked GRF state writer (zero overhead if record_grf_states=False)
+    state_writer = None
+    if record_grf_states:
+        resolved_states_path = states_file_path or (
+            str(trace_npz_path).replace('.npz', '.grfstate') if trace_npz_path
+            else f"/tmp/states_{match_id}.grfstate"
+        )
+        state_writer = GRFStateArchiveWriter(resolved_states_path, match_id=match_id, chunk_size=50)
 
     # Match state & statistics
     curr_score = [0, 0]
@@ -277,7 +293,8 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
 
         # 5. Step Environment & Record State
         raw_next_obs, _, done, _ = env.step(combined_actions)
-        recorded_grf_states.append(env.get_state())
+        if state_writer is not None:
+            state_writer.append(env.get_state())
 
         # 6. Trajectory Recording
         o0 = raw_next_obs[0]
@@ -378,7 +395,7 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
                 sot_a += 1
             active_shot = {"team": 1, "shooter": shooter_idx, "xg": shot_xg, "step": step}
 
-        # 10. Goal Event Detection & Scorer Attribution
+        # 10. Goal Event Detection & Scorer Attribution (Frame-Accurate)
         if curr_score[0] > last_score[0]:
             shots_h = max(shots_h, curr_score[0])
             sot_h = max(sot_h, curr_score[0])
@@ -386,6 +403,8 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
             scorer_idx = max(0, min(len(home_players) - 1, scorer_idx))
             scorer = home_players[scorer_idx].split('(')[0].strip()
             events.append({
+                "step": step,
+                "sim_time": round(step * 0.1, 2),
                 "minute": match_min,
                 "type": "goal",
                 "team": "home",
@@ -403,6 +422,8 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
             scorer_idx = max(0, min(len(away_players) - 1, scorer_idx))
             scorer = away_players[scorer_idx].split('(')[0].strip()
             events.append({
+                "step": step,
+                "sim_time": round(step * 0.1, 2),
                 "minute": match_min,
                 "type": "goal",
                 "team": "away",
@@ -419,22 +440,18 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
     actual_steps = step
     env.close()
 
-    # Locate generated native dump and move to target destination
-    import glob, shutil, pickle
-    dump_files = sorted(glob.glob(f"{match_dump_dir}/episode_done_*.dump"))
-    if dump_files and trace_dump_path:
-        os.makedirs(os.path.dirname(trace_dump_path), exist_ok=True)
-        shutil.move(dump_files[-1], trace_dump_path)
-    shutil.rmtree(match_dump_dir, ignore_errors=True)
+    # Finalize state writer with explicit fsync flush if active
+    if state_writer is not None:
+        state_writer.close()
 
-    # Save recorded GRF engine states for 100% bit-exact 3D replay
-    if trace_npz_path:
-        states_path = str(trace_npz_path).replace('.npz', '_states.pkl')
-        try:
-            with open(states_path, 'wb') as sf:
-                pickle.dump(recorded_grf_states[:actual_steps], sf, protocol=pickle.HIGHEST_PROTOCOL)
-        except Exception as e:
-            sys.stderr.write(f"Warning: Failed to save GRF states archive: {e}\n")
+    # Locate generated native dump and move to target destination if debug/record_dump was requested
+    import glob, shutil
+    if record_dump:
+        dump_files = sorted(glob.glob(f"{match_dump_dir}/episode_done_*.dump"))
+        if dump_files and trace_dump_path:
+            os.makedirs(os.path.dirname(trace_dump_path), exist_ok=True)
+            shutil.move(dump_files[-1], trace_dump_path)
+        shutil.rmtree(match_dump_dir, ignore_errors=True)
 
     # Invariant guarantees
     final_score = [int(curr_score[0]), int(curr_score[1])]
@@ -471,10 +488,15 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
         away_color=away_color,
         engine_fingerprint={
             "engine": "GRF+TiKick",
-            "engine_version": "2.1.0",
+            "engine_version": "2.2.0",
             "seed": seed_val,
             "feature_schema": "canonical-268-v2",
-            "determinism_level": 2,
+            "determinism_level": 3,
+            "sim_fps": 10.0,
+            "sim_step_seconds": 0.1,
+            "scenario": "11_vs_11_kaggle",
+            "action_set": "full",
+            "state_schema": "grf_chunked_zlib_v1" if state_writer else "none",
         },
         video_url=f"/recordings/match_{match_id}.mp4",
         created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

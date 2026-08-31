@@ -83,12 +83,14 @@ class GRFNativeRunner:
         match_id: Optional[str] = None,
         seed_val: Optional[int] = None,
         render_video: bool = False,
+        record_grf_states: Optional[bool] = None,
+        record_dump: bool = False,
         home_tactics: Optional[Any] = None,
         away_tactics: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
         Execute pure 11v11 MARL match simulation (Phase A).
-        Fast, zero-rendering. Records .npz trajectory and .dump trace.
+        Fast, zero-rendering. Records .npz trajectory and optionally .grfstate / .dump.
         """
         RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
         h_name = getattr(home_team, "name", str(home_team))
@@ -101,11 +103,14 @@ class GRFNativeRunner:
 
         trace_npz_win = RECORDINGS_DIR / f"trace_{m_id}.npz"
         trace_dump_win = RECORDINGS_DIR / f"trace_{m_id}.dump"
+        trace_grfstate_win = RECORDINGS_DIR / f"trace_{m_id}.grfstate"
 
         # Build tactics and player profiles from Footy domain objects
         from logic.footy_grf_adapter import FootyGRFAdapter
         h_tac = home_tactics or FootyGRFAdapter.build_team_tactics(home_team, formation=home_formation)
         a_tac = away_tactics or FootyGRFAdapter.build_team_tactics(away_team, formation=away_formation)
+
+        should_record_states = render_video if record_grf_states is None else bool(record_grf_states)
 
         payload = {
             "match_id": m_id,
@@ -131,7 +136,10 @@ class GRFNativeRunner:
             "ckpt_path": to_wsl_path(self.local_ckpt),
             "tikick_dir": to_wsl_path(self.local_tikick),
             "trace_npz": to_wsl_path(trace_npz_win),
-            "trace_dump": to_wsl_path(trace_dump_win),
+            "trace_dump": to_wsl_path(trace_dump_win) if record_dump else None,
+            "states_file": to_wsl_path(trace_grfstate_win) if should_record_states else None,
+            "record_grf_states": should_record_states,
+            "record_dump": bool(record_dump),
             "seed_val": seed_val,
         }
 
@@ -164,6 +172,7 @@ class GRFNativeRunner:
                 away_formation=away_formation,
                 home_color=_home_color,
                 away_color=_away_color,
+                mode="3d",
             )
             sim_res["video_url"] = f"/recordings/match_{m_id}.mp4"
 
@@ -202,6 +211,7 @@ class GRFNativeRunner:
         away_team: str,
         trajectory_file: Optional[str] = None,
         dump_file: Optional[str] = None,
+        states_file: Optional[str] = None,
         home_players: Optional[List[str]] = None,
         away_players: Optional[List[str]] = None,
         home_formation: str = "4-3-3",
@@ -213,7 +223,8 @@ class GRFNativeRunner:
     ) -> Dict[str, Any]:
         """
         Execute standalone TV broadcast video rendering from recorded trace (Phase B).
-        Supports mode='3d' (authentic photorealistic 3D GRF engine) and mode='2d' (fast tactical radar).
+        Supports mode='3d' (authentic photorealistic 3D GRF engine), mode='2d' (fast tactical radar),
+        and mode='auto' (resilient fallback hierarchy).
         """
         RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
         m_id = str(match_id)
@@ -222,8 +233,21 @@ class GRFNativeRunner:
         dump_win = Path(dump_file) if dump_file else (RECORDINGS_DIR / f"trace_{m_id}.dump")
         prog_win = RECORDINGS_DIR / f"progress_{m_id}.json"
 
+        # Resolve candidate states file
+        states_win = None
+        if states_file and Path(states_file).exists():
+            states_win = Path(states_file)
+        else:
+            for ext in [".grfstate", "_states.grfstate", "_states.pkl"]:
+                candidate = Path(str(traj_win).replace(".npz", ext))
+                if candidate.exists():
+                    states_win = candidate
+                    break
+
         # 2D Tactical Replay Mode
-        if mode == "2d" and traj_win.exists():
+        if mode == "2d":
+            if not traj_win.exists():
+                raise FileNotFoundError(f"2D replay requested (mode='2d'), but trajectory file not found: {traj_win}")
             from logic.grf_trajectory import MatchTrajectory
             from logic.grf_renderer import render_video_from_trajectory
             logger.info("GRF Renderer: rendering 2D tactical broadcast for match=%s", m_id)
@@ -267,12 +291,20 @@ class GRFNativeRunner:
                 "video_url": video_url,
             }
 
-        # 3D Photorealistic GRF Engine Replay Mode
-        if not dump_win.exists() and traj_win.exists():
-            # If dump missing, fallback to 2D
+        # 3D Mode Check: Fail fast if explicit 3D mode was requested without valid 3D sources
+        has_3d_source = (states_win is not None and states_win.exists()) or dump_win.exists()
+        if mode == "3d" and not has_3d_source:
+            raise RuntimeError(
+                f"Explicit 3D replay requested (mode='3d'), but neither GRF state archive "
+                f"({states_win or 'trace_' + m_id + '.grfstate'}) nor native dump ({dump_win}) was found. "
+                f"To allow graceful fallback to 2D tactical replay, specify mode='auto'."
+            )
+
+        # Fallback to 2D if in auto mode and no 3D source is present
+        if mode == "auto" and not has_3d_source and traj_win.exists():
             return self.render_replay(
                 match_id=match_id, home_team=home_team, away_team=away_team,
-                trajectory_file=trajectory_file, home_players=home_players,
+                trajectory_file=str(traj_win), home_players=home_players,
                 away_players=away_players, home_formation=home_formation,
                 away_formation=away_formation, home_color=home_color,
                 away_color=away_color, output_mp4=output_mp4, mode="2d"
@@ -281,12 +313,12 @@ class GRFNativeRunner:
         _home_color = home_color or team_color_from_name(home_team)
         _away_color = away_color or team_color_from_name(away_team)
 
-        states_win = Path(str(traj_win).replace(".npz", "_states.pkl"))
         payload = {
             "match_id": m_id,
+            "mode": mode,
             "home_team": home_team,
             "away_team": away_team,
-            "states_file": to_wsl_path(states_win) if states_win.exists() else None,
+            "states_file": to_wsl_path(states_win) if states_win else None,
             "trajectory_file": to_wsl_path(traj_win) if traj_win.exists() else None,
             "dump_file": to_wsl_path(dump_win) if dump_win.exists() else None,
             "output_mp4": to_wsl_path(out_win),

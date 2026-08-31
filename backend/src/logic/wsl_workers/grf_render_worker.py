@@ -21,6 +21,7 @@ if backend_src not in sys.path:
 import cv2
 import imageio
 from logic.grf_trajectory import MatchTrajectory, MatchManifest
+from logic.grf_state_archive import GRFStateArchiveReader, ReplayIntegrityError, SIM_STEP_SECONDS, SIM_FPS
 from logic.grf_renderer import (
     hex_to_bgr,
     team_color_from_name,
@@ -250,7 +251,6 @@ def render_from_grf_states(payload: Dict[str, Any]):
     Authentic 3D graphics (stadium, grass, lighting, player models, shadows, 3D ball)
     with TV broadcast scoreboard HUD, goal celebration banners, and studio cards.
     """
-    import pickle
     import gfootball.env as football_env
 
     match_id = str(payload.get("match_id", "match"))
@@ -258,14 +258,21 @@ def render_from_grf_states(payload: Dict[str, Any]):
     output_mp4 = payload["output_mp4"]
     progress_file = payload.get("progress_file")
     trajectory_file = payload.get("trajectory_file")
+    broadcast_fps = int(payload.get("fps", 10))
+
+    if not states_file or not os.path.exists(states_file):
+        raise FileNotFoundError(f"GRF state archive not found: {states_file}")
+
+    archive = GRFStateArchiveReader(states_file)
+    total_steps = archive.total_steps
 
     traj = None
     if trajectory_file and os.path.exists(trajectory_file):
         traj = MatchTrajectory.load_from_npz(Path(trajectory_file))
-
-    with open(states_file, 'rb') as sf:
-        states = pickle.load(sf)
-    total_steps = len(states)
+        if total_steps != traj.total_steps:
+            raise ReplayIntegrityError(
+                f"State archive length ({total_steps}) != trajectory total steps ({traj.total_steps})"
+            )
 
     home_team = traj.manifest.home_team if traj else payload.get("home_team", "Home Team")
     away_team = traj.manifest.away_team if traj else payload.get("away_team", "Away Team")
@@ -292,35 +299,47 @@ def render_from_grf_states(payload: Dict[str, Any]):
     env.reset()
 
     os.makedirs(os.path.dirname(output_mp4) or '.', exist_ok=True)
-    writer = imageio.get_writer(output_mp4, fps=15, codec='libx264',
+    writer = imageio.get_writer(output_mp4, fps=broadcast_fps, codec='libx264',
                                 pixelformat='yuv420p', quality=8)
 
-    # 1. Pre-Match Card (3 seconds = 45 frames)
+    # 1. Pre-Match Card (3 seconds = 3 * broadcast_fps frames)
     intro_card = draw_pre_match_card(
         w=1280, h=720, home_team=home_team, away_team=away_team,
         home_players=home_players, away_players=away_players,
         home_formation=home_formation, away_formation=away_formation,
         home_bgr=home_bgr, away_bgr=away_bgr
     )
-    for _ in range(45):
+    intro_frames = max(10, int(3.0 * broadcast_fps))
+    for _ in range(intro_frames):
         writer.append_data(intro_card)
 
     goal_events_by_step = {}
     if traj:
         for ev in traj.manifest.events:
             if ev.get("type") == "goal":
-                g_min = ev.get("minute", 0)
-                approx_step = int((g_min / 90.0) * total_steps)
-                goal_events_by_step[approx_step] = ev
+                step_idx = ev.get("step")
+                if step_idx is None:
+                    g_min = ev.get("minute", 0)
+                    step_idx = int((g_min / 90.0) * total_steps)
+                goal_events_by_step.setdefault(step_idx, []).append(ev)
 
     goal_banner = None
     goal_banner_cd = 0
     replay_buffer = []
 
     for step in range(total_steps):
-        env.set_state(states[step])
-        frame = env.render(mode='rgb_array')
+        state_bytes = archive.get_state(step)
+        env.set_state(state_bytes)
 
+        # First-Frame Camera Synchronization:
+        # Force C++ GFootball to evaluate observation and initialize OpenGL camera view matrix
+        if step == 0:
+            try:
+                env.observation()
+            except Exception:
+                pass
+
+        frame = env.render(mode='rgb_array')
         if frame is None:
             continue
 
@@ -338,11 +357,12 @@ def render_from_grf_states(payload: Dict[str, Any]):
             is_second_half = step > (total_steps // 2)
 
         if step in goal_events_by_step:
-            gev = goal_events_by_step[step]
+            gevs = goal_events_by_step[step]
+            gev = gevs[-1]
             scorer = gev.get("player", "Player")
             team_str = gev.get("team", "").upper()
             goal_banner = f"GOAL!  {scorer} ({team_str})  {match_min}'"
-            goal_banner_cd = 30
+            goal_banner_cd = max(15, int(2.0 * broadcast_fps))
 
         banner = goal_banner if goal_banner_cd > 0 else None
         annotated = draw_hud(
@@ -352,14 +372,15 @@ def render_from_grf_states(payload: Dict[str, Any]):
         writer.append_data(annotated)
 
         replay_buffer.append(annotated)
-        if len(replay_buffer) > 30:
+        if len(replay_buffer) > (2 * broadcast_fps):
             replay_buffer.pop(0)
 
         # Slow-mo Zoom Action Replay on Goals
-        if step in goal_events_by_step and len(replay_buffer) >= 15:
-            for _ in range(30):
+        if step in goal_events_by_step and len(replay_buffer) >= (broadcast_fps // 2):
+            for _ in range(broadcast_fps * 2):
                 writer.append_data(annotated)
-            for rf in replay_buffer[-20:]:
+            replay_slice = replay_buffer[-int(1.5 * broadcast_fps):]
+            for rf in replay_slice:
                 replay_annotated = draw_replay_frame(
                     rf, home_team, away_team, (curr_score[0], curr_score[1]),
                     match_min, home_bgr, away_bgr, is_second_half, zoom_factor=1.35
@@ -388,7 +409,7 @@ def render_from_grf_states(payload: Dict[str, Any]):
                 home_bgr=home_bgr, away_bgr=away_bgr,
                 events=[e for e in (traj.manifest.events if traj else []) if e.get("minute", 0) <= 45]
             )
-            for _ in range(60):
+            for _ in range(int(3.0 * broadcast_fps)):
                 writer.append_data(ht_card)
 
         if progress_file and (step % 50 == 0 or step == total_steps - 1):
@@ -424,7 +445,7 @@ def render_from_grf_states(payload: Dict[str, Any]):
         events=traj.manifest.events if traj else [],
         motm_player=motm
     )
-    for _ in range(75):
+    for _ in range(int(4.0 * broadcast_fps)):
         writer.append_data(ft_card)
 
     writer.close()
@@ -459,18 +480,44 @@ if __name__ == "__main__":
     else:
         args = json.loads(payload_str)
 
+    mode = args.get("mode", "auto")
+
+    # Discover candidate states file
     states_candidate = args.get("states_file")
     if not states_candidate and args.get("trajectory_file"):
-        auto_states = args["trajectory_file"].replace(".npz", "_states.pkl")
-        if os.path.exists(auto_states):
-            states_candidate = auto_states
-            args["states_file"] = states_candidate
+        for ext in [".grfstate", "_states.grfstate", "_states.pkl"]:
+            candidate = args["trajectory_file"].replace(".npz", ext)
+            if os.path.exists(candidate):
+                states_candidate = candidate
+                args["states_file"] = states_candidate
+                break
 
-    if states_candidate and os.path.exists(states_candidate):
-        render_from_grf_states(args)
-    elif args.get("trajectory_file") and os.path.exists(args["trajectory_file"]):
-        render_from_trajectory_npz(args)
-    elif args.get("dump_file") and os.path.exists(args["dump_file"]):
-        render_from_dump(args)
+    # Explicit Mode Dispatch
+    if mode == "3d":
+        if states_candidate and os.path.exists(states_candidate):
+            render_from_grf_states(args)
+        elif args.get("dump_file") and os.path.exists(args["dump_file"]):
+            render_from_dump(args)
+        else:
+            raise ReplayIntegrityError(
+                f"Explicit 3D replay requested (mode='3d'), but neither valid states_file nor dump_file was found: {args}"
+            )
+    elif mode == "2d":
+        if args.get("trajectory_file") and os.path.exists(args["trajectory_file"]):
+            render_from_trajectory_npz(args)
+        else:
+            raise ReplayIntegrityError(
+                f"Explicit 2D replay requested (mode='2d'), but trajectory_file was not found: {args}"
+            )
     else:
-        raise ValueError("Neither states_file, trajectory_file, nor dump_file found in render payload.")
+        # mode == "auto" (fallback hierarchy: 3D state -> 3D dump -> 2D trajectory)
+        if states_candidate and os.path.exists(states_candidate):
+            render_from_grf_states(args)
+        elif args.get("dump_file") and os.path.exists(args["dump_file"]):
+            render_from_dump(args)
+        elif args.get("trajectory_file") and os.path.exists(args["trajectory_file"]):
+            render_from_trajectory_npz(args)
+        else:
+            raise ReplayIntegrityError(
+                f"No playable replay sources found in payload: {args}"
+            )

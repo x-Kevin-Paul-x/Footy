@@ -1098,6 +1098,7 @@ async def simulate_grf_match(req: MatchSimulationRequest):
 
         # Execute authentic GRF simulation (Phase A - pure physics, fast)
         native_runner = GRFNativeRunner()
+        rec_states = should_render_video if req.record_grf_states is None else bool(req.record_grf_states)
         grf_out = await asyncio.to_thread(
             native_runner.simulate,
             home_team=h_team,
@@ -1112,6 +1113,8 @@ async def simulate_grf_match(req: MatchSimulationRequest):
             match_id=match_id_str,
             seed_val=seed_val,
             render_video=False,
+            record_grf_states=rec_states,
+            record_dump=req.record_dump,
         )
 
         h_score    = int(grf_out.get("score", [0, 0])[0])
@@ -1156,6 +1159,7 @@ async def simulate_grf_match(req: MatchSimulationRequest):
                         away_formation=req.away_formation or "4-2-3-1",
                         home_color=h_color,
                         away_color=a_color,
+                        mode=req.render_mode or "auto",
                     )
                 except Exception as ex:
                     logger.error("Background video render failed for %s: %s", match_id_str, ex)
