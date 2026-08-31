@@ -187,20 +187,20 @@ class GRFStateArchiveReader:
         self._legacy_states: Optional[List[bytes]] = None
         self._cached_chunk_idx: Optional[int] = None
         self._cached_chunk_states: List[bytes] = []
+        self._file = open(self.filepath, "rb")
 
-        with open(self.filepath, "rb") as f:
-            magic_candidate = f.read(len(MAGIC_HEADER_V2))
-            if magic_candidate == MAGIC_HEADER_V2:
-                header_raw = f.read(16384).decode("utf-8").strip()
-                self.header = json.loads(header_raw)
-                self.version = 2
-            elif magic_candidate == MAGIC_HEADER_V1:
-                header_raw = f.read(8192).decode("utf-8").strip()
-                self.header = json.loads(header_raw)
-                self.version = 1
-            else:
-                # Legacy pickle format fallback
-                self._is_legacy_pickle = True
+        magic_candidate = self._file.read(len(MAGIC_HEADER_V2))
+        if magic_candidate == MAGIC_HEADER_V2:
+            header_raw = self._file.read(16384).decode("utf-8").strip()
+            self.header = json.loads(header_raw)
+            self.version = 2
+        elif magic_candidate == MAGIC_HEADER_V1:
+            header_raw = self._file.read(8192).decode("utf-8").strip()
+            self.header = json.loads(header_raw)
+            self.version = 1
+        else:
+            # Legacy pickle format fallback
+            self._is_legacy_pickle = True
 
         if not self._is_legacy_pickle:
             self.match_id = self.header.get("match_id", "")
@@ -209,8 +209,8 @@ class GRFStateArchiveReader:
             self.sha256 = self.header.get("sha256", "")
             self.chunk_offsets = self.header.get("chunk_offsets", [])
         else:
-            with open(self.filepath, "rb") as f:
-                self._legacy_states = pickle.load(f)
+            self._file.seek(0)
+            self._legacy_states = pickle.load(self._file)
             self.total_steps = len(self._legacy_states)
             self.match_id = ""
             self.version = 0
@@ -222,6 +222,20 @@ class GRFStateArchiveReader:
                 "format": "legacy_pickle",
                 "total_steps": self.total_steps
             }
+
+    def close(self) -> None:
+        """Close internal open file handle."""
+        if hasattr(self, "_file") and self._file is not None and not self._file.closed:
+            self._file.close()
+
+    def __enter__(self) -> "GRFStateArchiveReader":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def __del__(self):
+        self.close()
 
     def get_state(self, step: int) -> bytes:
         """Retrieve the raw GRF state bytes at step index (0-indexed) with chunk caching and validation."""
@@ -244,10 +258,8 @@ class GRFStateArchiveReader:
             comp_len = chunk_entry[1]
             chunk_sha = chunk_entry[3] if len(chunk_entry) > 3 else None
 
-            with open(self.filepath, "rb") as f:
-                f.seek(file_off)
-                comp_data = f.read(comp_len)
-
+            self._file.seek(file_off)
+            comp_data = self._file.read(comp_len)
             decomp_data = zlib.decompress(comp_data)
 
             # Per-chunk integrity verification
@@ -271,24 +283,23 @@ class GRFStateArchiveReader:
                 yield s
             return
 
-        with open(self.filepath, "rb") as f:
-            for chunk_idx, chunk_entry in enumerate(self.chunk_offsets):
-                file_off = chunk_entry[0]
-                comp_len = chunk_entry[1]
-                chunk_sha = chunk_entry[3] if len(chunk_entry) > 3 else None
+        for chunk_idx, chunk_entry in enumerate(self.chunk_offsets):
+            file_off = chunk_entry[0]
+            comp_len = chunk_entry[1]
+            chunk_sha = chunk_entry[3] if len(chunk_entry) > 3 else None
 
-                f.seek(file_off)
-                comp_data = f.read(comp_len)
-                decomp_data = zlib.decompress(comp_data)
+            self._file.seek(file_off)
+            comp_data = self._file.read(comp_len)
+            decomp_data = zlib.decompress(comp_data)
 
-                if chunk_sha:
-                    calc_sha = hashlib.sha256(decomp_data).hexdigest()
-                    if calc_sha != chunk_sha:
-                        raise ReplayIntegrityError(f"Chunk {chunk_idx} SHA256 checksum mismatch")
+            if chunk_sha:
+                calc_sha = hashlib.sha256(decomp_data).hexdigest()
+                if calc_sha != chunk_sha:
+                    raise ReplayIntegrityError(f"Chunk {chunk_idx} SHA256 checksum mismatch")
 
-                states = pickle.loads(decomp_data)
-                for s in states:
-                    yield s
+            states = pickle.loads(decomp_data)
+            for s in states:
+                yield s
 
     def extract_all(self) -> List[bytes]:
         """Extract all states into a single Python list."""

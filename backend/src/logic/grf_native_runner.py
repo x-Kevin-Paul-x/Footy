@@ -287,7 +287,9 @@ class GRFNativeRunner:
 
             return {
                 "match_id": str(m_id),
+                "requested_render_mode": mode,
                 "render_mode_used": "2d",
+                "render_source": "trajectory_npz",
                 "home_team": traj.manifest.home_team,
                 "away_team": traj.manifest.away_team,
                 "score": list(traj.manifest.score),

@@ -81,4 +81,5 @@ class MatchSimulationResponse(BaseModel):
     timeline: List[Dict[str, Any]]
     video_url: Optional[str] = None
     render_mode_used: Optional[str] = None
+    render_source: Optional[str] = None
 

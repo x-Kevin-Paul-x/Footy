@@ -173,3 +173,70 @@ def test_strict_render_modes():
             away_team="TeamB",
             mode="3d"
         )
+
+
+def test_grf_state_archive_per_chunk_checksum_corruption(tmp_path):
+    """Verify that corruption inside a specific chunk triggers ReplayIntegrityError upon reading that chunk."""
+    test_file = tmp_path / "test_chunk_corrupt.grfstate"
+    num_states = 100
+    chunk_size = 20  # 5 chunks: 0..19, 20..39, 40..59, 60..79, 80..99
+    fake_states = [f"state_chunk_payload_{i}_{'z'*100}".encode('utf-8') for i in range(num_states)]
+
+    with GRFStateArchiveWriter(str(test_file), match_id="match_chk_corrupt", chunk_size=chunk_size) as writer:
+        for s in fake_states:
+            writer.append(s)
+
+    reader = GRFStateArchiveReader(str(test_file))
+    # Uncorrupted chunk 0 reads cleanly
+    assert reader.get_state(0) == fake_states[0]
+    assert reader.get_state(15) == fake_states[15]
+
+    # Find the byte offset of chunk 2 (states 40..59)
+    chunk_2_entry = reader.chunk_offsets[2]
+    c2_offset = chunk_2_entry[0]
+    reader.close()
+
+    # Mutate a byte inside chunk 2 in the file
+    raw_data = bytearray(test_file.read_bytes())
+    raw_data[c2_offset + 5] = (raw_data[c2_offset + 5] ^ 0xFF)
+    test_file.write_bytes(raw_data)
+
+    corrupt_reader = GRFStateArchiveReader(str(test_file))
+    # Chunk 0 (step 0) and Chunk 1 (step 25) still succeed
+    assert corrupt_reader.get_state(5) == fake_states[5]
+    assert corrupt_reader.get_state(25) == fake_states[25]
+
+    # Accessing Chunk 2 (step 45) must raise ReplayIntegrityError or zlib decompression error
+    with pytest.raises((ReplayIntegrityError, zlib.error)):
+        corrupt_reader.get_state(45)
+    corrupt_reader.close()
+
+
+def test_grf_state_archive_atomic_writer_exception_cleanup(tmp_path):
+    """Verify that if an exception occurs during simulation, .tmp file is removed and target file is not created."""
+    test_file = tmp_path / "failed_simulation.grfstate"
+
+    with pytest.raises(ValueError, match="Simulation crashed unexpectedly"):
+        with GRFStateArchiveWriter(str(test_file), match_id="crashed_sim") as writer:
+            writer.append(b"state_step_0")
+            writer.append(b"state_step_1")
+            tmp_path_check = writer.tmp_filepath
+            assert os.path.exists(tmp_path_check), "Temporary file must exist during active writing"
+            raise ValueError("Simulation crashed unexpectedly")
+
+    # After exception, target file must NOT exist, and .tmp file must be cleaned up
+    assert not test_file.exists(), "Target archive must not exist after crashed simulation"
+    assert not os.path.exists(tmp_path_check), "Temporary archive must be cleanly unlinked"
+
+
+def test_grf_state_archive_successful_creation_cleans_tmp(tmp_path):
+    """Verify that upon successful writer close, .tmp is replaced by the target file and does not linger."""
+    test_file = tmp_path / "valid_simulation.grfstate"
+
+    with GRFStateArchiveWriter(str(test_file), match_id="valid_sim") as writer:
+        writer.append(b"state_valid_0")
+        tmp_check = writer.tmp_filepath
+
+    assert test_file.exists(), "Target file must exist after successful write"
+    assert not os.path.exists(tmp_check), "Temporary file must be cleanly replaced"
+

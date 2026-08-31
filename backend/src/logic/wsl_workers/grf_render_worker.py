@@ -77,6 +77,9 @@ def render_from_trajectory_npz(payload: Dict[str, Any]):
 
     result = {
         "match_id": str(match_id),
+        "requested_render_mode": payload.get("mode", "2d"),
+        "render_mode_used": "2d",
+        "render_source": "trajectory_npz",
         "home_team": traj.manifest.home_team,
         "away_team": traj.manifest.away_team,
         "score": list(traj.manifest.score),
@@ -235,7 +238,9 @@ def render_from_dump(payload: Dict[str, Any]):
     video_url = f"/recordings/{os.path.basename(output_mp4)}"
     result = {
         "match_id": str(match_id),
+        "requested_render_mode": payload.get("mode", "3d"),
         "render_mode_used": "dump_3d",
+        "render_source": "native_dump",
         "home_team": home_team, "away_team": away_team,
         "score": curr_score,
         "possession": [round((left_poss / tot_p) * 100, 1), round((right_poss / tot_p) * 100, 1)],
@@ -484,7 +489,9 @@ def render_from_grf_states(payload: Dict[str, Any]):
 
     result = {
         "match_id": str(match_id),
+        "requested_render_mode": payload.get("mode", "3d"),
         "render_mode_used": "3d",
+        "render_source": "grf_state_archive",
         "home_team": home_team, "away_team": away_team,
         "score": curr_score,
         "possession": list(traj.manifest.possession) if traj else [50.0, 50.0],

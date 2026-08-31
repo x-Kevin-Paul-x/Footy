@@ -509,7 +509,7 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
             "sim_step_seconds": 0.1,
             "scenario": "11_vs_11_kaggle",
             "action_set": "full",
-            "state_schema": "grf_chunked_zlib_v1" if state_writer else "none",
+            "state_schema": "grf_chunked_zlib_v2" if state_writer else "none",
         },
         video_url=f"/recordings/match_{match_id}.mp4",
         created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
