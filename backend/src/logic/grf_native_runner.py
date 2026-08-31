@@ -85,6 +85,7 @@ class GRFNativeRunner:
         render_video: bool = False,
         record_grf_states: Optional[bool] = None,
         record_dump: bool = False,
+        render_mode: str = "auto",
         home_tactics: Optional[Any] = None,
         away_tactics: Optional[Any] = None,
     ) -> Dict[str, Any]:
@@ -110,7 +111,10 @@ class GRFNativeRunner:
         h_tac = home_tactics or FootyGRFAdapter.build_team_tactics(home_team, formation=home_formation)
         a_tac = away_tactics or FootyGRFAdapter.build_team_tactics(away_team, formation=away_formation)
 
-        should_record_states = render_video if record_grf_states is None else bool(record_grf_states)
+        if record_grf_states is None:
+            should_record_states = bool(render_video and render_mode != "2d")
+        else:
+            should_record_states = bool(record_grf_states)
 
         payload = {
             "match_id": m_id,
@@ -161,7 +165,7 @@ class GRFNativeRunner:
                 raise RuntimeError(f"GRF simulation execution failed: {res.stderr or res.stdout}")
 
         if render_video:
-            self.render_replay(
+            render_out = self.render_replay(
                 match_id=m_id,
                 home_team=h_name,
                 away_team=a_name,
@@ -172,9 +176,10 @@ class GRFNativeRunner:
                 away_formation=away_formation,
                 home_color=_home_color,
                 away_color=_away_color,
-                mode="3d",
+                mode=render_mode,
             )
-            sim_res["video_url"] = f"/recordings/match_{m_id}.mp4"
+            sim_res["video_url"] = render_out.get("video_url", f"/recordings/match_{m_id}.mp4")
+            sim_res["render_mode_used"] = render_out.get("render_mode_used", render_mode)
 
         return sim_res
 
@@ -282,6 +287,7 @@ class GRFNativeRunner:
 
             return {
                 "match_id": str(m_id),
+                "render_mode_used": "2d",
                 "home_team": traj.manifest.home_team,
                 "away_team": traj.manifest.away_team,
                 "score": list(traj.manifest.score),

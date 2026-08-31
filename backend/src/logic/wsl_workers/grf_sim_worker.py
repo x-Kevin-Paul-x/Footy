@@ -236,213 +236,226 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
     last_home_touch = 10
     last_away_touch = 10
     events = []
+    half_time_recorded = False
+    half_time_step = max_steps // 2
 
     step = 0
     done = False
 
-    while not done and step < max_steps:
-        # 1. Canonical perspective feature extraction
-        obs_l, left_loff, left_roff = extract_canonical_features(
-            raw_obs[0:num_agents], team_side="left", num_agents=num_agents,
-            last_loff=left_loff, last_roff=left_roff
-        )
-        obs_r, right_loff, right_roff = extract_canonical_features(
-            raw_obs[num_agents:num_agents*2], team_side="right", num_agents=num_agents,
-            last_loff=right_loff, last_roff=right_roff
-        )
+    try:
+        while not done and step < max_steps:
+            # Check for Half-Time transition
+            if step == half_time_step and not half_time_recorded:
+                half_time_recorded = True
+                events.append({
+                    "step": step,
+                    "sim_time": round(step * 0.1, 2),
+                    "minute": 45,
+                    "type": "half_time",
+                    "score": f"{curr_score[0]}-{curr_score[1]}",
+                    "details": f"Half Time • {home_team} {curr_score[0]} - {curr_score[1]} {away_team}"
+                })
 
-        obs_batch_np = np.concatenate([obs_l, obs_r], axis=0)
-        obs_batch_t = torch.from_numpy(obs_batch_np).to(device)
-
-        rnn_batch = torch.cat([left_rnn_states, right_rnn_states], dim=0)
-        masks_batch = torch.cat([left_masks, right_masks], dim=0)
-        avail_batch = torch.cat([left_avail, right_avail], dim=0)
-
-        # 2. TiKick Neural Policy Inference
-        with torch.inference_mode():
-            actions_batch, _, next_rnn_batch = policy(
-                obs_batch_t, rnn_batch, masks_batch, avail_batch, deterministic=True
+            # 1. Canonical perspective feature extraction
+            obs_l, left_loff, left_roff = extract_canonical_features(
+                raw_obs[0:num_agents], team_side="left", num_agents=num_agents,
+                last_loff=left_loff, last_roff=left_roff
+            )
+            obs_r, right_loff, right_roff = extract_canonical_features(
+                raw_obs[num_agents:num_agents*2], team_side="right", num_agents=num_agents,
+                last_loff=right_loff, last_roff=right_roff
             )
 
-        left_rnn_states = next_rnn_batch[:num_agents]
-        right_rnn_states = next_rnn_batch[num_agents:]
+            obs_batch_np = np.concatenate([obs_l, obs_r], axis=0)
+            obs_batch_t = torch.from_numpy(obs_batch_np).to(device)
 
-        actions_np = actions_batch.cpu().numpy().flatten().astype(np.int32)
-        left_act_raw = actions_np[:num_agents].tolist()
-        right_act_raw = actions_np[num_agents:].tolist()
+            rnn_batch = torch.cat([left_rnn_states, right_rnn_states], dim=0)
+            masks_batch = torch.cat([left_masks, right_masks], dim=0)
+            avail_batch = torch.cat([left_avail, right_avail], dim=0)
 
-        # 3. Managerial Tactics & Action Modulation Layer
-        o_prev = raw_obs[0]
-        ball_xy = np.array(o_prev['ball'][:2], dtype=np.float32)
-        b_own_prev = o_prev.get('ball_owned_team', -1)
-        l_pos = np.array(o_prev['left_team'][1:], dtype=np.float32)
-        r_pos = np.array(o_prev['right_team'][1:], dtype=np.float32)
+            # 2. TiKick Neural Policy Inference
+            with torch.inference_mode():
+                actions_batch, _, next_rnn_batch = policy(
+                    obs_batch_t, rnn_batch, masks_batch, avail_batch, deterministic=True
+                )
 
-        left_act = apply_tactical_action_bias(
-            left_act_raw, l_pos, home_anchors, home_tactics,
-            team_side="left", ball_xy=ball_xy, is_team_in_possession=(b_own_prev == 0)
-        )
-        right_act_tactical = apply_tactical_action_bias(
-            right_act_raw, -r_pos, [(-x, -y) for (x, y) in away_anchors], away_tactics,
-            team_side="right", ball_xy=-ball_xy, is_team_in_possession=(b_own_prev == 1)
-        )
+            left_rnn_states = next_rnn_batch[:num_agents]
+            right_rnn_states = next_rnn_batch[num_agents:]
 
-        # 4. Action Mirror Inversion for Right Team
-        right_act_mapped = [ACTION_MIRROR_MAP.get(a, a) for a in right_act_tactical]
-        combined_actions = left_act + right_act_mapped
+            actions_np = actions_batch.cpu().numpy().flatten().astype(np.int32)
+            left_act_raw = actions_np[:num_agents].tolist()
+            right_act_raw = actions_np[num_agents:].tolist()
 
-        # 5. Step Environment & Record State
-        raw_next_obs, _, done, _ = env.step(combined_actions)
-        if state_writer is not None:
-            state_writer.append(env.get_state())
+            # 3. Managerial Tactics & Action Modulation Layer
+            o_prev = raw_obs[0]
+            ball_xy = np.array(o_prev['ball'][:2], dtype=np.float32)
+            b_own_prev = o_prev.get('ball_owned_team', -1)
+            l_pos = np.array(o_prev['left_team'][1:], dtype=np.float32)
+            r_pos = np.array(o_prev['right_team'][1:], dtype=np.float32)
 
-        # 6. Trajectory Recording
-        o0 = raw_next_obs[0]
-        l_team = np.array(o0['left_team'], dtype=np.float32)
-        r_team = np.array(o0['right_team'], dtype=np.float32)
-        recorded_players[step] = np.concatenate([l_team, r_team], axis=0)
+            left_act = apply_tactical_action_bias(
+                left_act_raw, l_pos, home_anchors, home_tactics,
+                team_side="left", ball_xy=ball_xy, is_team_in_possession=(b_own_prev == 0)
+            )
+            right_act_tactical = apply_tactical_action_bias(
+                right_act_raw, -r_pos, [(-x, -y) for (x, y) in away_anchors], away_tactics,
+                team_side="right", ball_xy=-ball_xy, is_team_in_possession=(b_own_prev == 1)
+            )
 
-        l_team_d = np.array(o0['left_team_direction'], dtype=np.float32)
-        r_team_d = np.array(o0['right_team_direction'], dtype=np.float32)
-        recorded_player_dirs[step] = np.concatenate([l_team_d, r_team_d], axis=0)
+            # 4. Action Mirror Inversion for Right Team
+            right_act_mapped = [ACTION_MIRROR_MAP.get(a, a) for a in right_act_tactical]
+            combined_actions = left_act + right_act_mapped
 
-        recorded_balls[step] = np.array(o0['ball'], dtype=np.float32)
-        recorded_ball_dirs[step] = np.array(o0['ball_direction'], dtype=np.float32)
-        recorded_actions[step] = np.array(combined_actions, dtype=np.uint8)
+            # 5. Step Environment & Record State
+            raw_next_obs, _, done, _ = env.step(combined_actions)
+            if state_writer is not None:
+                state_writer.append(env.get_state())
 
-        curr_score = [int(o0['score'][0]), int(o0['score'][1])]
-        recorded_scores[step] = np.array(curr_score, dtype=np.uint8)
+            # 6. Trajectory Recording
+            o0 = raw_next_obs[0]
+            l_team = np.array(o0['left_team'], dtype=np.float32)
+            r_team = np.array(o0['right_team'], dtype=np.float32)
+            recorded_players[step] = np.concatenate([l_team, r_team], axis=0)
 
-        # 7. Possession & True Ball-Touch Scorer Tracking
-        ball_owned = o0.get('ball_owned_team', -1)
-        ball_player = o0.get('ball_owned_player', -1)
+            l_team_d = np.array(o0['left_team_direction'], dtype=np.float32)
+            r_team_d = np.array(o0['right_team_direction'], dtype=np.float32)
+            recorded_player_dirs[step] = np.concatenate([l_team_d, r_team_d], axis=0)
 
-        if ball_owned == 0:
-            left_poss += 1
-            if ball_player >= 0:
-                last_home_touch = ball_player
-        elif ball_owned == 1:
-            right_poss += 1
-            if ball_player >= 0:
-                last_away_touch = ball_player
+            recorded_balls[step] = np.array(o0['ball'], dtype=np.float32)
+            recorded_ball_dirs[step] = np.array(o0['ball_direction'], dtype=np.float32)
+            recorded_actions[step] = np.array(combined_actions, dtype=np.uint8)
 
-        match_min = max(1, min(90, int((step / max(max_steps, 1)) * 90)))
+            curr_score = [int(o0['score'][0]), int(o0['score'][1])]
+            recorded_scores[step] = np.array(curr_score, dtype=np.uint8)
 
-        # 8. Rigorous Pass State Machine
-        if ball_owned == 0 and ball_player >= 1 and (ball_player - 1) < len(left_act):
-            p_act = left_act[ball_player - 1]
-            if p_act in (9, 10, 11):
-                passes_h_att += 1
-                active_pass = {"team": 0, "passer": ball_player, "step": step}
-        elif ball_owned == 1 and ball_player >= 1 and (ball_player - 1) < len(right_act_tactical):
-            p_act = right_act_tactical[ball_player - 1]
-            if p_act in (9, 10, 11):
-                passes_a_att += 1
-                active_pass = {"team": 1, "passer": ball_player, "step": step}
+            # 7. Possession & True Ball-Touch Scorer Tracking
+            ball_owned = o0.get('ball_owned_team', -1)
+            ball_player = o0.get('ball_owned_player', -1)
 
-        if active_pass is not None:
-            if ball_owned == active_pass["team"]:
-                if ball_player != active_pass["passer"] and ball_player >= 0:
-                    if active_pass["team"] == 0:
-                        passes_h_cmp += 1
-                    else:
-                        passes_a_cmp += 1
+            if ball_owned == 0:
+                left_poss += 1
+                if ball_player >= 0:
+                    last_home_touch = ball_player
+            elif ball_owned == 1:
+                right_poss += 1
+                if ball_player >= 0:
+                    last_away_touch = ball_player
+
+            match_min = max(1, min(90, int((step / max(max_steps, 1)) * 90)))
+
+            # 8. Rigorous Pass State Machine
+            if ball_owned == 0 and ball_player >= 1 and (ball_player - 1) < len(left_act):
+                p_act = left_act[ball_player - 1]
+                if p_act in (9, 10, 11):
+                    passes_h_att += 1
+                    active_pass = {"team": 0, "passer": ball_player, "step": step}
+            elif ball_owned == 1 and ball_player >= 1 and (ball_player - 1) < len(right_act_tactical):
+                p_act = right_act_tactical[ball_player - 1]
+                if p_act in (9, 10, 11):
+                    passes_a_att += 1
+                    active_pass = {"team": 1, "passer": ball_player, "step": step}
+
+            if active_pass is not None:
+                if ball_owned == active_pass["team"]:
+                    if ball_player != active_pass["passer"] and ball_player >= 0:
+                        if active_pass["team"] == 0:
+                            passes_h_cmp += 1
+                        else:
+                            passes_a_cmp += 1
+                        active_pass = None
+                elif ball_owned != -1 and ball_owned != active_pass["team"]:
+                    # Intercepted by opposition
                     active_pass = None
-            elif ball_owned != -1 and ball_owned != active_pass["team"]:
-                # Intercepted by opposition
-                active_pass = None
-            elif step - active_pass["step"] > 35:
-                # Out of bounds / expired
-                active_pass = None
+                elif step - active_pass["step"] > 35:
+                    # Out of bounds / expired
+                    active_pass = None
 
-        # 9. Rigorous Shot & GK-Aware xG State Machine
-        ball_x, ball_y = o0['ball'][0], o0['ball'][1]
-        ball_vx = o0['ball_direction'][0]
+            # 9. Rigorous Shot & GK-Aware xG State Machine
+            ball_x, ball_y = o0['ball'][0], o0['ball'][1]
+            ball_vx = o0['ball_direction'][0]
 
-        # Home team shot detection
-        if 12 in left_act or (ball_owned == 0 and ball_vx > 0.12 and ball_x > 0.35):
-            shots_h += 1
-            shooter_idx = max(0, min(10, ball_player if ball_player >= 0 else last_home_touch))
-            shooter_profile = home_roster[shooter_idx]
-            away_gk_profile = away_roster[0]
-            away_gk_pos = (float(r_team[0, 0]), float(r_team[0, 1]))
+            # Home team shot detection
+            if 12 in left_act or (ball_owned == 0 and ball_vx > 0.12 and ball_x > 0.35):
+                shots_h += 1
+                shooter_idx = max(0, min(10, ball_player if ball_player >= 0 else last_home_touch))
+                shooter_profile = home_roster[shooter_idx]
+                away_gk_profile = away_roster[0]
+                away_gk_pos = (float(r_team[0, 0]), float(r_team[0, 1]))
 
-            shot_xg = compute_shot_xg(
-                shooter_x=ball_x, shooter_y=ball_y, goal_x=1.0,
-                defenders=r_team, shooting_attr=shooter_profile.shooting,
-                gk_pos=away_gk_pos, gk_save_coverage=away_gk_profile.gk_save_coverage
-            )
-            xg_h += shot_xg
-            if abs(ball_y) < 0.08:
-                sot_h += 1
-            active_shot = {"team": 0, "shooter": shooter_idx, "xg": shot_xg, "step": step}
+                shot_xg = compute_shot_xg(
+                    shooter_x=ball_x, shooter_y=ball_y, goal_x=1.0,
+                    defenders=r_team, shooting_attr=shooter_profile.shooting,
+                    gk_pos=away_gk_pos, gk_save_coverage=away_gk_profile.gk_save_coverage
+                )
+                xg_h += shot_xg
+                if abs(ball_y) < 0.08:
+                    sot_h += 1
+                active_shot = {"team": 0, "shooter": shooter_idx, "xg": shot_xg, "step": step}
 
-        # Away team shot detection
-        if 12 in right_act_tactical or (ball_owned == 1 and ball_vx < -0.12 and ball_x < -0.35):
-            shots_a += 1
-            shooter_idx = max(0, min(10, ball_player if ball_player >= 0 else last_away_touch))
-            shooter_profile = away_roster[shooter_idx]
-            home_gk_profile = home_roster[0]
-            home_gk_pos = (float(l_team[0, 0]), float(l_team[0, 1]))
+            # Away team shot detection
+            if 12 in right_act_tactical or (ball_owned == 1 and ball_vx < -0.12 and ball_x < -0.35):
+                shots_a += 1
+                shooter_idx = max(0, min(10, ball_player if ball_player >= 0 else last_away_touch))
+                shooter_profile = away_roster[shooter_idx]
+                home_gk_profile = home_roster[0]
+                home_gk_pos = (float(l_team[0, 0]), float(l_team[0, 1]))
 
-            shot_xg = compute_shot_xg(
-                shooter_x=ball_x, shooter_y=ball_y, goal_x=-1.0,
-                defenders=l_team, shooting_attr=shooter_profile.shooting,
-                gk_pos=home_gk_pos, gk_save_coverage=home_gk_profile.gk_save_coverage
-            )
-            xg_a += shot_xg
-            if abs(ball_y) < 0.08:
-                sot_a += 1
-            active_shot = {"team": 1, "shooter": shooter_idx, "xg": shot_xg, "step": step}
+                shot_xg = compute_shot_xg(
+                    shooter_x=ball_x, shooter_y=ball_y, goal_x=-1.0,
+                    defenders=l_team, shooting_attr=shooter_profile.shooting,
+                    gk_pos=home_gk_pos, gk_save_coverage=home_gk_profile.gk_save_coverage
+                )
+                xg_a += shot_xg
+                if abs(ball_y) < 0.08:
+                    sot_a += 1
+                active_shot = {"team": 1, "shooter": shooter_idx, "xg": shot_xg, "step": step}
 
-        # 10. Goal Event Detection & Scorer Attribution (Frame-Accurate)
-        if curr_score[0] > last_score[0]:
-            shots_h = max(shots_h, curr_score[0])
-            sot_h = max(sot_h, curr_score[0])
-            scorer_idx = active_shot["shooter"] if (active_shot and active_shot["team"] == 0) else last_home_touch
-            scorer_idx = max(0, min(len(home_players) - 1, scorer_idx))
-            scorer = home_players[scorer_idx].split('(')[0].strip()
-            events.append({
-                "step": step,
-                "sim_time": round(step * 0.1, 2),
-                "minute": match_min,
-                "type": "goal",
-                "team": "home",
-                "player": scorer,
-                "score": f"{curr_score[0]}-{curr_score[1]}",
-                "details": f"Goal! {scorer} scores for {home_team}!"
-            })
-            last_score = list(curr_score)
-            active_shot = None
+            # 10. Goal Event Detection & Scorer Attribution (Frame-Accurate)
+            if curr_score[0] > last_score[0]:
+                shots_h = max(shots_h, curr_score[0])
+                sot_h = max(sot_h, curr_score[0])
+                scorer_idx = active_shot["shooter"] if (active_shot and active_shot["team"] == 0) else last_home_touch
+                scorer_idx = max(0, min(len(home_players) - 1, scorer_idx))
+                scorer = home_players[scorer_idx].split('(')[0].strip()
+                events.append({
+                    "step": step,
+                    "sim_time": round(step * 0.1, 2),
+                    "minute": match_min,
+                    "type": "goal",
+                    "team": "home",
+                    "player": scorer,
+                    "score": f"{curr_score[0]}-{curr_score[1]}",
+                    "details": f"Goal! {scorer} scores for {home_team}!"
+                })
+                last_score = list(curr_score)
+                active_shot = None
 
-        elif curr_score[1] > last_score[1]:
-            shots_a = max(shots_a, curr_score[1])
-            sot_a = max(sot_a, curr_score[1])
-            scorer_idx = active_shot["shooter"] if (active_shot and active_shot["team"] == 1) else last_away_touch
-            scorer_idx = max(0, min(len(away_players) - 1, scorer_idx))
-            scorer = away_players[scorer_idx].split('(')[0].strip()
-            events.append({
-                "step": step,
-                "sim_time": round(step * 0.1, 2),
-                "minute": match_min,
-                "type": "goal",
-                "team": "away",
-                "player": scorer,
-                "score": f"{curr_score[0]}-{curr_score[1]}",
-                "details": f"Goal! {scorer} scores for {away_team}!"
-            })
-            last_score = list(curr_score)
-            active_shot = None
+            elif curr_score[1] > last_score[1]:
+                shots_a = max(shots_a, curr_score[1])
+                sot_a = max(sot_a, curr_score[1])
+                scorer_idx = active_shot["shooter"] if (active_shot and active_shot["team"] == 1) else last_away_touch
+                scorer_idx = max(0, min(len(away_players) - 1, scorer_idx))
+                scorer = away_players[scorer_idx].split('(')[0].strip()
+                events.append({
+                    "step": step,
+                    "sim_time": round(step * 0.1, 2),
+                    "minute": match_min,
+                    "type": "goal",
+                    "team": "away",
+                    "player": scorer,
+                    "score": f"{curr_score[0]}-{curr_score[1]}",
+                    "details": f"Goal! {scorer} scores for {away_team}!"
+                })
+                last_score = list(curr_score)
+                active_shot = None
 
-        raw_obs = raw_next_obs
-        step += 1
-
-    actual_steps = step
-    env.close()
-
-    # Finalize state writer with explicit fsync flush if active
-    if state_writer is not None:
-        state_writer.close()
+            raw_obs = raw_next_obs
+            step += 1
+    finally:
+        actual_steps = step
+        env.close()
+        if state_writer is not None:
+            state_writer.close()
 
     # Locate generated native dump and move to target destination if debug/record_dump was requested
     import glob, shutil

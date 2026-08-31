@@ -235,6 +235,7 @@ def render_from_dump(payload: Dict[str, Any]):
     video_url = f"/recordings/{os.path.basename(output_mp4)}"
     result = {
         "match_id": str(match_id),
+        "render_mode_used": "dump_3d",
         "home_team": home_team, "away_team": away_team,
         "score": curr_score,
         "possession": [round((left_poss / tot_p) * 100, 1), round((right_poss / tot_p) * 100, 1)],
@@ -274,6 +275,12 @@ def render_from_grf_states(payload: Dict[str, Any]):
                 f"State archive length ({total_steps}) != trajectory total steps ({traj.total_steps})"
             )
 
+    # Validate archive integrity and checksum
+    archive.validate(
+        expected_steps=traj.total_steps if traj else None,
+        expected_match_id=match_id if match_id and match_id != "match" else None
+    )
+
     home_team = traj.manifest.home_team if traj else payload.get("home_team", "Home Team")
     away_team = traj.manifest.away_team if traj else payload.get("away_team", "Away Team")
     home_players = traj.manifest.home_players if traj else (payload.get("home_players") or [f"{home_team} Player {i+1}" for i in range(11)])
@@ -284,6 +291,14 @@ def render_from_grf_states(payload: Dict[str, Any]):
     away_color = (traj.manifest.away_color if traj else payload.get("away_color")) or team_color_from_name(away_team)
     home_bgr = hex_to_bgr(home_color)
     away_bgr = hex_to_bgr(away_color)
+
+    # Detect exact half-time step from events if available
+    half_time_step = total_steps // 2
+    if traj:
+        for ev in traj.manifest.events:
+            if ev.get("type") == "half_time" and "step" in ev:
+                half_time_step = int(ev["step"])
+                break
 
     env = football_env.create_environment(
         env_name="11_vs_11_kaggle",
@@ -325,7 +340,6 @@ def render_from_grf_states(payload: Dict[str, Any]):
 
     goal_banner = None
     goal_banner_cd = 0
-    replay_buffer = []
 
     for step in range(total_steps):
         state_bytes = archive.get_state(step)
@@ -354,15 +368,15 @@ def render_from_grf_states(payload: Dict[str, Any]):
             obs = env.observation()[0]
             curr_score = [int(obs['score'][0]), int(obs['score'][1])]
             match_min = max(1, min(90, int((step / max(total_steps, 1)) * 90)))
-            is_second_half = step > (total_steps // 2)
+            is_second_half = step > half_time_step
 
         if step in goal_events_by_step:
             gevs = goal_events_by_step[step]
-            gev = gevs[-1]
-            scorer = gev.get("player", "Player")
-            team_str = gev.get("team", "").upper()
-            goal_banner = f"GOAL!  {scorer} ({team_str})  {match_min}'"
-            goal_banner_cd = max(15, int(2.0 * broadcast_fps))
+            for gev in gevs:
+                scorer = gev.get("player", "Player")
+                team_str = gev.get("team", "").upper()
+                goal_banner = f"GOAL!  {scorer} ({team_str})  {match_min}'"
+                goal_banner_cd = max(15, int(2.0 * broadcast_fps))
 
         banner = goal_banner if goal_banner_cd > 0 else None
         annotated = draw_hud(
@@ -371,22 +385,30 @@ def render_from_grf_states(payload: Dict[str, Any]):
         )
         writer.append_data(annotated)
 
-        replay_buffer.append(annotated)
-        if len(replay_buffer) > (2 * broadcast_fps):
-            replay_buffer.pop(0)
-
-        # Slow-mo Zoom Action Replay on Goals
-        if step in goal_events_by_step and len(replay_buffer) >= (broadcast_fps // 2):
-            for _ in range(broadcast_fps * 2):
+        # Authentic State-Rewind 3D Action Replay on Goals
+        if step in goal_events_by_step:
+            # Hold live celebration frame for 1.5 seconds
+            for _ in range(int(1.5 * broadcast_fps)):
                 writer.append_data(annotated)
-            replay_slice = replay_buffer[-int(1.5 * broadcast_fps):]
-            for rf in replay_slice:
-                replay_annotated = draw_replay_frame(
-                    rf, home_team, away_team, (curr_score[0], curr_score[1]),
-                    match_min, home_bgr, away_bgr, is_second_half, zoom_factor=1.35
-                )
-                writer.append_data(replay_annotated)
-                writer.append_data(replay_annotated)
+
+            # Rewind and render actual GRF engine states leading up to the goal
+            rewind_steps = min(step, int(1.5 * broadcast_fps))
+            for r_step in range(step - rewind_steps, step + 1):
+                r_state = archive.get_state(r_step)
+                env.set_state(r_state)
+                r_frame = env.render(mode='rgb_array')
+                if r_frame is not None:
+                    r_bgr = cv2.cvtColor(r_frame, cv2.COLOR_RGB2BGR) if r_frame.ndim == 3 else r_frame
+                    r_annotated = draw_replay_frame(
+                        r_bgr, home_team, away_team, (curr_score[0], curr_score[1]),
+                        match_min, home_bgr, away_bgr, is_second_half, zoom_factor=1.25
+                    )
+                    # 2x slow motion frame pacing
+                    writer.append_data(r_annotated)
+                    writer.append_data(r_annotated)
+
+            # Re-restore current state after replay rewind sequence
+            env.set_state(state_bytes)
 
         if goal_banner_cd > 0:
             goal_banner_cd -= 1
@@ -394,7 +416,7 @@ def render_from_grf_states(payload: Dict[str, Any]):
                 goal_banner = None
 
         # Half-Time Studio Recap Card
-        if step == (total_steps // 2):
+        if step == half_time_step:
             ht_card = draw_studio_stats_card(
                 w=1280, h=720, title="HALF TIME", home_team=home_team, away_team=away_team,
                 score=(curr_score[0], curr_score[1]),
@@ -462,6 +484,7 @@ def render_from_grf_states(payload: Dict[str, Any]):
 
     result = {
         "match_id": str(match_id),
+        "render_mode_used": "3d",
         "home_team": home_team, "away_team": away_team,
         "score": curr_score,
         "possession": list(traj.manifest.possession) if traj else [50.0, 50.0],

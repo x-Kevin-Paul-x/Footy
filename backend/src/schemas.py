@@ -80,4 +80,5 @@ class MatchSimulationResponse(BaseModel):
     xg: Dict[str, float]
     timeline: List[Dict[str, Any]]
     video_url: Optional[str] = None
+    render_mode_used: Optional[str] = None
 

@@ -1098,7 +1098,7 @@ async def simulate_grf_match(req: MatchSimulationRequest):
 
         # Execute authentic GRF simulation (Phase A - pure physics, fast)
         native_runner = GRFNativeRunner()
-        rec_states = should_render_video if req.record_grf_states is None else bool(req.record_grf_states)
+        rec_states = (should_render_video and req.render_mode != "2d") if req.record_grf_states is None else bool(req.record_grf_states)
         grf_out = await asyncio.to_thread(
             native_runner.simulate,
             home_team=h_team,
@@ -1115,6 +1115,7 @@ async def simulate_grf_match(req: MatchSimulationRequest):
             render_video=False,
             record_grf_states=rec_states,
             record_dump=req.record_dump,
+            render_mode=req.render_mode or "auto",
         )
 
         h_score    = int(grf_out.get("score", [0, 0])[0])
@@ -1137,7 +1138,7 @@ async def simulate_grf_match(req: MatchSimulationRequest):
                         "step": 0,
                         "total_steps": steps,
                         "match_minute": 0,
-                        "stage": "Rendering 3D Match Broadcast...",
+                        "stage": "Rendering Match Broadcast...",
                         "score": [h_score, a_score],
                         "completed": False
                     }, pf)
@@ -1183,6 +1184,7 @@ async def simulate_grf_match(req: MatchSimulationRequest):
             xg={"home": float(real_xg[0]), "away": float(real_xg[1])},
             timeline=real_events,
             video_url=video_url,
+            render_mode_used=req.render_mode if should_render_video else None,
         )
     except Exception as e:
         logger.exception("Error simulating GRF match")
