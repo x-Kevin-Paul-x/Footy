@@ -13,6 +13,7 @@ from typing import Dict, List, Any, Optional, Tuple
 import numpy as np
 
 from logic.replay_schema import TRAJECTORY_SCHEMA_VERSION, TRAJECTORY_SCHEMA_VERSION_V1
+from logic.grf_state_archive import ReplayIntegrityError
 
 
 @dataclass
@@ -103,50 +104,81 @@ class MatchTrajectory:
     ball_owned_player: Optional[np.ndarray] = None  # shape: (T,), int8
 
     def __post_init__(self):
-        """Validate trajectory array dimensions, step counts, dtypes, and finite values."""
+        """Validate trajectory array dimensions, step counts, dtypes, domains, and finite values."""
         T = self.total_steps
         if T <= 0:
             raise ValueError(f"MatchTrajectory total_steps must be positive, got {T}")
 
-        expected_shapes = [
-            ("player_coords", self.player_coords, (T, 22, 2)),
-            ("player_dirs", self.player_dirs, (T, 22, 2)),
-            ("ball_coords", self.ball_coords, (T, 3)),
-            ("ball_dirs", self.ball_dirs, (T, 3)),
-            ("actions", self.actions, (T, 20)),
-            ("scores", self.scores, (T, 2)),
-        ]
-        if self.game_mode is not None:
-            expected_shapes.append(("game_mode", self.game_mode, (T,)))
-        if self.ball_owned_team is not None:
-            expected_shapes.append(("ball_owned_team", self.ball_owned_team, (T,)))
-        if self.ball_owned_player is not None:
-            expected_shapes.append(("ball_owned_player", self.ball_owned_player, (T,)))
+        v2_fields = (self.game_mode, self.ball_owned_team, self.ball_owned_player)
+        has_any_v2 = any(x is not None for x in v2_fields)
+        has_all_v2 = all(x is not None for x in v2_fields)
+        if has_any_v2 and not has_all_v2:
+            raise ValueError(
+                "Trajectory V2 fields must be provided atomically together: "
+                "game_mode, ball_owned_team, ball_owned_player"
+            )
 
-        for name, arr, expected in expected_shapes:
+        expected_specs = [
+            ("player_coords", self.player_coords, (T, 22, 2), np.float32),
+            ("player_dirs", self.player_dirs, (T, 22, 2), np.float32),
+            ("ball_coords", self.ball_coords, (T, 3), np.float32),
+            ("ball_dirs", self.ball_dirs, (T, 3), np.float32),
+            ("actions", self.actions, (T, 20), np.uint8),
+            ("scores", self.scores, (T, 2), np.uint8),
+        ]
+        if has_all_v2:
+            expected_specs.extend([
+                ("game_mode", self.game_mode, (T,), np.int8),
+                ("ball_owned_team", self.ball_owned_team, (T,), np.int8),
+                ("ball_owned_player", self.ball_owned_player, (T,), np.int8),
+            ])
+
+        for name, arr, expected_shape, expected_dtype in expected_specs:
             if arr is None or not isinstance(arr, np.ndarray):
                 raise ValueError(f"MatchTrajectory field '{name}' must be a numpy ndarray")
-            if arr.shape != expected:
-                raise ValueError(f"MatchTrajectory field '{name}' shape mismatch: expected {expected}, got {arr.shape}")
+            if arr.shape != expected_shape:
+                raise ValueError(f"MatchTrajectory field '{name}' shape mismatch: expected {expected_shape}, got {arr.shape}")
+            if arr.dtype != expected_dtype:
+                raise ValueError(f"MatchTrajectory field '{name}' dtype mismatch: expected {expected_dtype}, got {arr.dtype}")
             if np.issubdtype(arr.dtype, np.floating) and not np.all(np.isfinite(arr)):
                 raise ValueError(f"MatchTrajectory field '{name}' contains non-finite values (NaN or Inf)")
 
+        # Categorical domain validations
+        if has_all_v2:
+            assert self.ball_owned_team is not None
+            assert self.ball_owned_player is not None
+            invalid_teams = set(np.unique(self.ball_owned_team)) - {-1, 0, 1}
+            if invalid_teams:
+                raise ValueError(f"MatchTrajectory field 'ball_owned_team' contains invalid team values: {invalid_teams}")
+
+            min_player = int(np.min(self.ball_owned_player))
+            max_player = int(np.max(self.ball_owned_player))
+            if min_player < -1 or max_player > 10:
+                raise ValueError(f"MatchTrajectory field 'ball_owned_player' values out of range [-1, 10]: min={min_player}, max={max_player}")
+
     def compute_physics_hash(self) -> str:
-        """Compute deterministic SHA256 checksum of raw physics arrays."""
+        """Compute schema-aware deterministic SHA256 checksum of raw physics arrays."""
         h = hashlib.sha256()
         h.update(str(self.seed).encode('utf-8'))
-        h.update(self.player_coords.tobytes())
-        h.update(self.player_dirs.tobytes())
-        h.update(self.ball_coords.tobytes())
-        h.update(self.ball_dirs.tobytes())
-        h.update(self.actions.tobytes())
-        h.update(self.scores.tobytes())
+        fields = [
+            ("player_coords", self.player_coords),
+            ("player_dirs", self.player_dirs),
+            ("ball_coords", self.ball_coords),
+            ("ball_dirs", self.ball_dirs),
+            ("actions", self.actions),
+            ("scores", self.scores),
+        ]
         if self.game_mode is not None:
-            h.update(self.game_mode.tobytes())
+            fields.append(("game_mode", self.game_mode))
         if self.ball_owned_team is not None:
-            h.update(self.ball_owned_team.tobytes())
+            fields.append(("ball_owned_team", self.ball_owned_team))
         if self.ball_owned_player is not None:
-            h.update(self.ball_owned_player.tobytes())
+            fields.append(("ball_owned_player", self.ball_owned_player))
+
+        for name, arr in fields:
+            h.update(f"{name}:{arr.dtype}:{arr.shape}".encode('utf-8'))
+            h.update(arr.tobytes())
+
         return h.hexdigest()
 
     def compute_trajectory_hash(self) -> str:
@@ -155,8 +187,8 @@ class MatchTrajectory:
         h.update(self.compute_physics_hash().encode('utf-8'))
         h.update(str(self.match_id).encode('utf-8'))
         if self.manifest:
-            manifest_summary = f"{self.manifest.home_score}:{self.manifest.away_score}:{len(self.manifest.events)}:{self.manifest.home_team}:{self.manifest.away_team}"
-            h.update(manifest_summary.encode('utf-8'))
+            manifest_json = json.dumps(self.manifest.to_dict(), sort_keys=True)
+            h.update(manifest_json.encode('utf-8'))
         return h.hexdigest()
 
     def get_frame_state(self, step: int) -> Dict[str, Any]:
@@ -225,9 +257,17 @@ class MatchTrajectory:
         player_coords = data["player_coords"]
         total_steps = player_coords.shape[0]
 
+        declared_schema = manifest_dict.get("trajectory_schema", TRAJECTORY_SCHEMA_VERSION_V1)
         game_mode = data["game_mode"] if "game_mode" in data else None
         ball_owned_team = data["ball_owned_team"] if "ball_owned_team" in data else None
         ball_owned_player = data["ball_owned_player"] if "ball_owned_player" in data else None
+
+        if declared_schema == TRAJECTORY_SCHEMA_VERSION:
+            if game_mode is None or ball_owned_team is None or ball_owned_player is None:
+                raise ReplayIntegrityError(
+                    f"Trajectory manifest declared schema '{TRAJECTORY_SCHEMA_VERSION}' "
+                    "but required V2 state arrays (game_mode, ball_owned_team, ball_owned_player) are missing."
+                )
 
         return cls(
             match_id=manifest.match_id,

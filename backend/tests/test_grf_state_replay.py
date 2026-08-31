@@ -397,7 +397,7 @@ def test_grf_state_archive_trajectory_pairing_mismatch(tmp_path):
 
 
 def test_trajectory_structural_validation(tmp_path):
-    """Verify that MatchTrajectory __post_init__ catches shape mismatches and NaNs."""
+    """Verify that MatchTrajectory __post_init__ catches shape mismatches, dtype mismatches, non-atomic V2, and NaNs."""
     manifest = MatchManifest(
         match_id="m_val", home_team="H", away_team="A", home_score=0, away_score=0,
         score=(0, 0), total_steps=10, possession=(50.0, 50.0), shots=(0, 0),
@@ -417,6 +417,51 @@ def test_trajectory_structural_validation(tmp_path):
             manifest=manifest
         )
 
+    # Wrong dtype
+    with pytest.raises(ValueError, match="dtype mismatch"):
+        MatchTrajectory(
+            match_id="m_val", seed=1, total_steps=10,
+            player_coords=np.zeros((10, 22, 2), dtype=np.float64),  # float64 instead of float32
+            player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+            ball_coords=np.zeros((10, 3), dtype=np.float32),
+            ball_dirs=np.zeros((10, 3), dtype=np.float32),
+            actions=np.zeros((10, 20), dtype=np.uint8),
+            scores=np.zeros((10, 2), dtype=np.uint8),
+            manifest=manifest
+        )
+
+    # Non-atomic V2 fields (game_mode provided, but ball_owned_team missing)
+    with pytest.raises(ValueError, match="provided atomically together"):
+        MatchTrajectory(
+            match_id="m_val", seed=1, total_steps=10,
+            player_coords=np.zeros((10, 22, 2), dtype=np.float32),
+            player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+            ball_coords=np.zeros((10, 3), dtype=np.float32),
+            ball_dirs=np.zeros((10, 3), dtype=np.float32),
+            actions=np.zeros((10, 20), dtype=np.uint8),
+            scores=np.zeros((10, 2), dtype=np.uint8),
+            manifest=manifest,
+            game_mode=np.zeros(10, dtype=np.int8)
+        )
+
+    # Invalid categorical domain
+    bad_teams = np.zeros(10, dtype=np.int8)
+    bad_teams[0] = 42
+    with pytest.raises(ValueError, match="invalid team values"):
+        MatchTrajectory(
+            match_id="m_val", seed=1, total_steps=10,
+            player_coords=np.zeros((10, 22, 2), dtype=np.float32),
+            player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+            ball_coords=np.zeros((10, 3), dtype=np.float32),
+            ball_dirs=np.zeros((10, 3), dtype=np.float32),
+            actions=np.zeros((10, 20), dtype=np.uint8),
+            scores=np.zeros((10, 2), dtype=np.uint8),
+            manifest=manifest,
+            game_mode=np.zeros(10, dtype=np.int8),
+            ball_owned_team=bad_teams,
+            ball_owned_player=np.zeros(10, dtype=np.int8)
+        )
+
     # NaN in player_coords
     bad_coords = np.zeros((10, 22, 2), dtype=np.float32)
     bad_coords[0, 0, 0] = np.nan
@@ -431,6 +476,30 @@ def test_trajectory_structural_validation(tmp_path):
             scores=np.zeros((10, 2), dtype=np.uint8),
             manifest=manifest
         )
+
+
+def test_trajectory_schema_on_load_enforcement(tmp_path):
+    """Verify that load_from_npz raises ReplayIntegrityError when declared schema is V2 but arrays are missing."""
+    traj_file = tmp_path / "declared_v2_missing_arrays.npz"
+    manifest_dict = {
+        "match_id": "m_declared_v2", "home_team": "H", "away_team": "A",
+        "home_score": 0, "away_score": 0, "total_steps": 10,
+        "trajectory_schema": "FOOTY_TRAJECTORY_V2"
+    }
+    np.savez_compressed(
+        str(traj_file),
+        player_coords=np.zeros((10, 22, 2), dtype=np.float32),
+        player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+        ball_coords=np.zeros((10, 3), dtype=np.float32),
+        ball_dirs=np.zeros((10, 3), dtype=np.float32),
+        actions=np.zeros((10, 20), dtype=np.uint8),
+        scores=np.zeros((10, 2), dtype=np.uint8),
+        seed=np.array([42], dtype=np.int64),
+        manifest=np.array([json.dumps(manifest_dict)], dtype=object)
+    )
+
+    with pytest.raises(ReplayIntegrityError, match="declared schema 'FOOTY_TRAJECTORY_V2'"):
+        MatchTrajectory.load_from_npz(traj_file)
 
 
 def test_trajectory_matching_pairing_passes(tmp_path):

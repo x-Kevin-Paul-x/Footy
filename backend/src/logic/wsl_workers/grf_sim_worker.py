@@ -339,8 +339,8 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
             recorded_owned_players[step] = int(o0['ball_owned_player'])
 
             # 7. Possession & True Ball-Touch Scorer Tracking
-            ball_owned = o0.get('ball_owned_team', -1)
-            ball_player = o0.get('ball_owned_player', -1)
+            ball_owned = o0['ball_owned_team']
+            ball_player = o0['ball_owned_player']
 
             if ball_owned == 0:
                 left_poss += 1

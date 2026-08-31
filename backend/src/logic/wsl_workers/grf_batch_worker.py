@@ -283,8 +283,8 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
             ms["rec_owned_teams"][step] = int(o0['ball_owned_team'])
             ms["rec_owned_players"][step] = int(o0['ball_owned_player'])
 
-            b_own = o0.get('ball_owned_team', -1)
-            b_player = o0.get('ball_owned_player', -1)
+            b_own = o0['ball_owned_team']
+            b_player = o0['ball_owned_player']
             if b_own == 0:
                 ms["left_poss"] += 1
                 if b_player >= 0:
