@@ -196,6 +196,7 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
     recorded_ball_dirs = np.empty((max_steps, 3), dtype=np.float32)
     recorded_actions = np.empty((max_steps, 20), dtype=np.uint8)
     recorded_scores = np.empty((max_steps, 2), dtype=np.uint8)
+    recorded_grf_states: List[bytes] = []
 
     # Match state & statistics
     curr_score = [0, 0]
@@ -274,8 +275,9 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
         right_act_mapped = [ACTION_MIRROR_MAP.get(a, a) for a in right_act_tactical]
         combined_actions = left_act + right_act_mapped
 
-        # 5. Step Environment
+        # 5. Step Environment & Record State
         raw_next_obs, _, done, _ = env.step(combined_actions)
+        recorded_grf_states.append(env.get_state())
 
         # 6. Trajectory Recording
         o0 = raw_next_obs[0]
@@ -418,12 +420,21 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
     env.close()
 
     # Locate generated native dump and move to target destination
-    import glob, shutil
+    import glob, shutil, pickle
     dump_files = sorted(glob.glob(f"{match_dump_dir}/episode_done_*.dump"))
     if dump_files and trace_dump_path:
         os.makedirs(os.path.dirname(trace_dump_path), exist_ok=True)
         shutil.move(dump_files[-1], trace_dump_path)
     shutil.rmtree(match_dump_dir, ignore_errors=True)
+
+    # Save recorded GRF engine states for 100% bit-exact 3D replay
+    if trace_npz_path:
+        states_path = str(trace_npz_path).replace('.npz', '_states.pkl')
+        try:
+            with open(states_path, 'wb') as sf:
+                pickle.dump(recorded_grf_states[:actual_steps], sf, protocol=pickle.HIGHEST_PROTOCOL)
+        except Exception as e:
+            sys.stderr.write(f"Warning: Failed to save GRF states archive: {e}\n")
 
     # Invariant guarantees
     final_score = [int(curr_score[0]), int(curr_score[1])]

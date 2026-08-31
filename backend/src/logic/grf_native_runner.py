@@ -278,17 +278,17 @@ class GRFNativeRunner:
                 away_color=away_color, output_mp4=output_mp4, mode="2d"
             )
 
-        if not dump_win.exists():
-            raise FileNotFoundError(f"Neither trace dump nor trajectory found for match replay: {m_id}")
-
         _home_color = home_color or team_color_from_name(home_team)
         _away_color = away_color or team_color_from_name(away_team)
 
+        states_win = Path(str(traj_win).replace(".npz", "_states.pkl"))
         payload = {
             "match_id": m_id,
             "home_team": home_team,
             "away_team": away_team,
-            "dump_file": to_wsl_path(dump_win),
+            "states_file": to_wsl_path(states_win) if states_win.exists() else None,
+            "trajectory_file": to_wsl_path(traj_win) if traj_win.exists() else None,
+            "dump_file": to_wsl_path(dump_win) if dump_win.exists() else None,
             "output_mp4": to_wsl_path(out_win),
             "progress_file": to_wsl_path(prog_win),
             "home_players": home_players,
