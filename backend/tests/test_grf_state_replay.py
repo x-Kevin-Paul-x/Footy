@@ -346,6 +346,56 @@ def test_grf_state_archive_schema_v2_mismatch(tmp_path):
         patched_reader.validate()
 
 
+def test_grf_state_archive_schema_missing(tmp_path):
+    """Verify that validate() raises ReplayIntegrityError when state_schema is completely missing from header.
+
+    Removes state_schema key from header JSON. The reader must reject the archive.
+    """
+    test_file = tmp_path / "test_schema_missing.grfstate"
+    fake_states = [f"state_{i}".encode('utf-8') * 20 for i in range(10)]
+
+    with GRFStateArchiveWriter(str(test_file), match_id="schema_missing_match", chunk_size=5) as writer:
+        for s in fake_states:
+            writer.append(s)
+
+    raw_data = bytearray(test_file.read_bytes())
+    magic_len = len(b"FOOTY_GRF_STATE_V2\n")
+    HEADER_SLOT_SIZE = 16384
+
+    header_bytes = bytes(raw_data[magic_len: magic_len + HEADER_SLOT_SIZE]).rstrip()
+    header_dict = json.loads(header_bytes)
+
+    # Delete state_schema key
+    del header_dict["state_schema"]
+    patched_header = json.dumps(header_dict).encode("utf-8").ljust(HEADER_SLOT_SIZE, b" ")
+    raw_data[magic_len: magic_len + HEADER_SLOT_SIZE] = patched_header
+    test_file.write_bytes(bytes(raw_data))
+
+    missing_schema_reader = GRFStateArchiveReader(str(test_file))
+    with pytest.raises(ReplayIntegrityError, match="schema version mismatch"):
+        missing_schema_reader.validate()
+
+
+def test_grf_state_archive_trajectory_pairing_mismatch(tmp_path):
+    """Verify that pairing an archive with a trajectory having different match_id or total_steps raises ReplayIntegrityError."""
+    archive_file = tmp_path / "match_001.grfstate"
+    fake_states = [f"state_{i}".encode('utf-8') * 20 for i in range(15)]
+
+    with GRFStateArchiveWriter(str(archive_file), match_id="match_001", chunk_size=5) as writer:
+        for s in fake_states:
+            writer.append(s)
+
+    reader = GRFStateArchiveReader(str(archive_file))
+
+    # Match ID mismatch
+    with pytest.raises(ReplayIntegrityError, match="match ID mismatch"):
+        reader.validate(expected_match_id="match_002")
+
+    # Step count mismatch
+    with pytest.raises(ReplayIntegrityError, match="step count mismatch"):
+        reader.validate(expected_steps=20)
+
+
 def test_grf_goal_replay_multiple_events_same_step(tmp_path):
     """Verify that the render path iterates over ALL goal events at the same step, not just the last.
 
