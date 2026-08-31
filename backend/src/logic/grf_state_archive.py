@@ -310,7 +310,7 @@ class GRFStateArchiveReader:
         expected_steps: Optional[int] = None,
         expected_match_id: Optional[str] = None
     ) -> None:
-        """Validate archive integrity, step count, match ID, and verify SHA256 checksum."""
+        """Validate archive integrity, step count, match ID, schema version, and SHA256 checksum."""
         if expected_steps is not None and self.total_steps != expected_steps:
             raise ReplayIntegrityError(
                 f"State archive step count mismatch: archive has {self.total_steps} steps, "
@@ -322,6 +322,16 @@ class GRFStateArchiveReader:
                 f"State archive match ID mismatch: archive has match_id='{self.match_id}', "
                 f"expected '{expected_match_id}'."
             )
+
+        # Schema version validation: V2 archives must declare grf_chunked_zlib_v2.
+        # Reject stale V1 schema strings in V2 files to prevent cross-version replay corruption.
+        if not self._is_legacy_pickle:
+            schema = self.header.get("state_schema", "")
+            if schema and schema != "grf_chunked_zlib_v2":
+                raise ReplayIntegrityError(
+                    f"State archive schema version mismatch: found '{schema}', "
+                    f"expected 'grf_chunked_zlib_v2'. Archive may be from an incompatible version."
+                )
 
         if not self._is_legacy_pickle and self.sha256:
             calc_sha = hashlib.sha256()

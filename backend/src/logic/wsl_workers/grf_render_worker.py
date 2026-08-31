@@ -276,6 +276,7 @@ def render_from_grf_states(payload: Dict[str, Any]):
     if trajectory_file and os.path.exists(trajectory_file):
         traj = MatchTrajectory.load_from_npz(Path(trajectory_file))
         if total_steps != traj.total_steps:
+            archive.close()
             raise ReplayIntegrityError(
                 f"State archive length ({total_steps}) != trajectory total steps ({traj.total_steps})"
             )
@@ -322,161 +323,166 @@ def render_from_grf_states(payload: Dict[str, Any]):
     writer = imageio.get_writer(output_mp4, fps=broadcast_fps, codec='libx264',
                                 pixelformat='yuv420p', quality=8)
 
-    # 1. Pre-Match Card (3 seconds = 3 * broadcast_fps frames)
-    intro_card = draw_pre_match_card(
-        w=1280, h=720, home_team=home_team, away_team=away_team,
-        home_players=home_players, away_players=away_players,
-        home_formation=home_formation, away_formation=away_formation,
-        home_bgr=home_bgr, away_bgr=away_bgr
-    )
-    intro_frames = max(10, int(3.0 * broadcast_fps))
-    for _ in range(intro_frames):
-        writer.append_data(intro_card)
-
-    goal_events_by_step = {}
-    if traj:
-        for ev in traj.manifest.events:
-            if ev.get("type") == "goal":
-                step_idx = ev.get("step")
-                if step_idx is None:
-                    g_min = ev.get("minute", 0)
-                    step_idx = int((g_min / 90.0) * total_steps)
-                goal_events_by_step.setdefault(step_idx, []).append(ev)
-
-    goal_banner = None
-    goal_banner_cd = 0
-
-    for step in range(total_steps):
-        state_bytes = archive.get_state(step)
-        env.set_state(state_bytes)
-
-        # First-Frame Camera Synchronization:
-        # Force C++ GFootball to evaluate observation and initialize OpenGL camera view matrix
-        if step == 0:
-            try:
-                env.observation()
-            except Exception:
-                pass
-
-        frame = env.render(mode='rgb_array')
-        if frame is None:
-            continue
-
-        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR) if frame.ndim == 3 else frame
-
-        if traj:
-            state_info = traj.get_frame_state(step)
-            curr_score = state_info["score"]
-            match_min = state_info["match_minute"]
-            is_second_half = state_info["is_second_half"]
-        else:
-            obs = env.observation()[0]
-            curr_score = [int(obs['score'][0]), int(obs['score'][1])]
-            match_min = max(1, min(90, int((step / max(total_steps, 1)) * 90)))
-            is_second_half = step > half_time_step
-
-        if step in goal_events_by_step:
-            gevs = goal_events_by_step[step]
-            for gev in gevs:
-                scorer = gev.get("player", "Player")
-                team_str = gev.get("team", "").upper()
-                goal_banner = f"GOAL!  {scorer} ({team_str})  {match_min}'"
-                goal_banner_cd = max(15, int(2.0 * broadcast_fps))
-
-        banner = goal_banner if goal_banner_cd > 0 else None
-        annotated = draw_hud(
-            frame_bgr, home_team, away_team, (curr_score[0], curr_score[1]),
-            match_min, home_bgr, away_bgr, banner, is_second_half
+    try:
+        # 1. Pre-Match Card (3 seconds = 3 * broadcast_fps frames)
+        intro_card = draw_pre_match_card(
+            w=1280, h=720, home_team=home_team, away_team=away_team,
+            home_players=home_players, away_players=away_players,
+            home_formation=home_formation, away_formation=away_formation,
+            home_bgr=home_bgr, away_bgr=away_bgr
         )
-        writer.append_data(annotated)
+        intro_frames = max(10, int(3.0 * broadcast_fps))
+        for _ in range(intro_frames):
+            writer.append_data(intro_card)
 
-        # Authentic State-Rewind 3D Action Replay on Goals
-        if step in goal_events_by_step:
-            # Hold live celebration frame for 1.5 seconds
-            for _ in range(int(1.5 * broadcast_fps)):
-                writer.append_data(annotated)
+        goal_events_by_step = {}
+        if traj:
+            for ev in traj.manifest.events:
+                if ev.get("type") == "goal":
+                    step_idx = ev.get("step")
+                    if step_idx is None:
+                        g_min = ev.get("minute", 0)
+                        step_idx = int((g_min / 90.0) * total_steps)
+                    goal_events_by_step.setdefault(step_idx, []).append(ev)
 
-            # Rewind and render actual GRF engine states leading up to the goal
-            rewind_steps = min(step, int(1.5 * broadcast_fps))
-            for r_step in range(step - rewind_steps, step + 1):
-                r_state = archive.get_state(r_step)
-                env.set_state(r_state)
-                r_frame = env.render(mode='rgb_array')
-                if r_frame is not None:
-                    r_bgr = cv2.cvtColor(r_frame, cv2.COLOR_RGB2BGR) if r_frame.ndim == 3 else r_frame
-                    r_annotated = draw_replay_frame(
-                        r_bgr, home_team, away_team, (curr_score[0], curr_score[1]),
-                        match_min, home_bgr, away_bgr, is_second_half, zoom_factor=1.25
-                    )
-                    # 2x slow motion frame pacing
-                    writer.append_data(r_annotated)
-                    writer.append_data(r_annotated)
+        goal_banner = None
+        goal_banner_cd = 0
 
-            # Re-restore current state after replay rewind sequence
+        for step in range(total_steps):
+            state_bytes = archive.get_state(step)
             env.set_state(state_bytes)
 
-        if goal_banner_cd > 0:
-            goal_banner_cd -= 1
-            if goal_banner_cd == 0:
-                goal_banner = None
+            # First-Frame Camera Synchronization:
+            # Force C++ GFootball to evaluate observation and initialize OpenGL camera view matrix
+            if step == 0:
+                try:
+                    env.observation()
+                except Exception:
+                    pass
 
-        # Half-Time Studio Recap Card
-        if step == half_time_step:
-            ht_card = draw_studio_stats_card(
-                w=1280, h=720, title="HALF TIME", home_team=home_team, away_team=away_team,
-                score=(curr_score[0], curr_score[1]),
-                h_poss=traj.manifest.possession[0] if traj else 50.0,
-                a_poss=traj.manifest.possession[1] if traj else 50.0,
-                h_shots=traj.manifest.shots[0] if traj else 0,
-                a_shots=traj.manifest.shots[1] if traj else 0,
-                h_sot=traj.manifest.shots_on_target[0] if traj else 0,
-                a_sot=traj.manifest.shots_on_target[1] if traj else 0,
-                h_xg=traj.manifest.xg[0] if traj else 0.0,
-                a_xg=traj.manifest.xg[1] if traj else 0.0,
-                home_bgr=home_bgr, away_bgr=away_bgr,
-                events=[e for e in (traj.manifest.events if traj else []) if e.get("minute", 0) <= 45]
+            frame = env.render(mode='rgb_array')
+            if frame is None:
+                continue
+
+            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR) if frame.ndim == 3 else frame
+
+            if traj:
+                state_info = traj.get_frame_state(step)
+                curr_score = state_info["score"]
+                match_min = state_info["match_minute"]
+                is_second_half = state_info["is_second_half"]
+            else:
+                obs = env.observation()[0]
+                curr_score = [int(obs['score'][0]), int(obs['score'][1])]
+                match_min = max(1, min(90, int((step / max(total_steps, 1)) * 90)))
+                is_second_half = step > half_time_step
+
+            if step in goal_events_by_step:
+                gevs = goal_events_by_step[step]
+                for gev in gevs:
+                    scorer = gev.get("player", "Player")
+                    team_str = gev.get("team", "").upper()
+                    goal_banner = f"GOAL!  {scorer} ({team_str})  {match_min}'"
+                    goal_banner_cd = max(15, int(2.0 * broadcast_fps))
+
+            banner = goal_banner if goal_banner_cd > 0 else None
+            annotated = draw_hud(
+                frame_bgr, home_team, away_team, (curr_score[0], curr_score[1]),
+                match_min, home_bgr, away_bgr, banner, is_second_half
             )
-            for _ in range(int(3.0 * broadcast_fps)):
-                writer.append_data(ht_card)
+            writer.append_data(annotated)
 
-        if progress_file and (step % 50 == 0 or step == total_steps - 1):
-            pct = min(98, 5 + int((step / max(total_steps - 1, 1)) * 93))
-            write_progress_atomic(progress_file, {
-                "status": "rendering", "progress": pct, "step": step,
-                "total_steps": total_steps, "match_minute": match_min,
-                "stage": f"Replaying 3D Broadcast • {match_min}'/90'...",
-                "score": curr_score, "completed": False
-            })
+            # Authentic State-Rewind 3D Action Replay on Goals
+            if step in goal_events_by_step:
+                # Hold live celebration frame for 1.5 seconds
+                for _ in range(int(1.5 * broadcast_fps)):
+                    writer.append_data(annotated)
 
-    # Full-Time Card
-    motm = None
-    if traj:
-        goals = [e for e in traj.manifest.events if e.get("type") == "goal"]
-        if goals:
-            motm = goals[-1].get("player")
-        elif home_players and away_players:
-            motm = home_players[8] if curr_score[0] >= curr_score[1] else away_players[9]
+                # Rewind and render actual GRF engine states leading up to the goal
+                rewind_steps = min(step, int(1.5 * broadcast_fps))
+                for r_step in range(step - rewind_steps, step + 1):
+                    r_state = archive.get_state(r_step)
+                    env.set_state(r_state)
+                    r_frame = env.render(mode='rgb_array')
+                    if r_frame is not None:
+                        r_bgr = cv2.cvtColor(r_frame, cv2.COLOR_RGB2BGR) if r_frame.ndim == 3 else r_frame
+                        r_annotated = draw_replay_frame(
+                            r_bgr, home_team, away_team, (curr_score[0], curr_score[1]),
+                            match_min, home_bgr, away_bgr, is_second_half, zoom_factor=1.25
+                        )
+                        # 2x slow motion frame pacing
+                        writer.append_data(r_annotated)
+                        writer.append_data(r_annotated)
 
-    ft_card = draw_studio_stats_card(
-        w=1280, h=720, title="FULL TIME", home_team=home_team, away_team=away_team,
-        score=(curr_score[0], curr_score[1]),
-        h_poss=traj.manifest.possession[0] if traj else 50.0,
-        a_poss=traj.manifest.possession[1] if traj else 50.0,
-        h_shots=traj.manifest.shots[0] if traj else 0,
-        a_shots=traj.manifest.shots[1] if traj else 0,
-        h_sot=traj.manifest.shots_on_target[0] if traj else 0,
-        a_sot=traj.manifest.shots_on_target[1] if traj else 0,
-        h_xg=traj.manifest.xg[0] if traj else 0.0,
-        a_xg=traj.manifest.xg[1] if traj else 0.0,
-        home_bgr=home_bgr, away_bgr=away_bgr,
-        events=traj.manifest.events if traj else [],
-        motm_player=motm
-    )
-    for _ in range(int(4.0 * broadcast_fps)):
-        writer.append_data(ft_card)
+                # Re-restore current state after replay rewind sequence
+                env.set_state(state_bytes)
 
-    writer.close()
-    env.close()
+            if goal_banner_cd > 0:
+                goal_banner_cd -= 1
+                if goal_banner_cd == 0:
+                    goal_banner = None
+
+            # Half-Time Studio Recap Card
+            if step == half_time_step:
+                ht_card = draw_studio_stats_card(
+                    w=1280, h=720, title="HALF TIME", home_team=home_team, away_team=away_team,
+                    score=(curr_score[0], curr_score[1]),
+                    h_poss=traj.manifest.possession[0] if traj else 50.0,
+                    a_poss=traj.manifest.possession[1] if traj else 50.0,
+                    h_shots=traj.manifest.shots[0] if traj else 0,
+                    a_shots=traj.manifest.shots[1] if traj else 0,
+                    h_sot=traj.manifest.shots_on_target[0] if traj else 0,
+                    a_sot=traj.manifest.shots_on_target[1] if traj else 0,
+                    h_xg=traj.manifest.xg[0] if traj else 0.0,
+                    a_xg=traj.manifest.xg[1] if traj else 0.0,
+                    home_bgr=home_bgr, away_bgr=away_bgr,
+                    events=[e for e in (traj.manifest.events if traj else []) if e.get("minute", 0) <= 45]
+                )
+                for _ in range(int(3.0 * broadcast_fps)):
+                    writer.append_data(ht_card)
+
+            if progress_file and (step % 50 == 0 or step == total_steps - 1):
+                pct = min(98, 5 + int((step / max(total_steps - 1, 1)) * 93))
+                write_progress_atomic(progress_file, {
+                    "status": "rendering", "progress": pct, "step": step,
+                    "total_steps": total_steps, "match_minute": match_min,
+                    "stage": f"Replaying 3D Broadcast • {match_min}'/90'...",
+                    "score": curr_score, "completed": False
+                })
+
+        # Full-Time Card
+        motm = None
+        if traj:
+            goals = [e for e in traj.manifest.events if e.get("type") == "goal"]
+            if goals:
+                motm = goals[-1].get("player")
+            elif home_players and away_players:
+                motm = home_players[8] if curr_score[0] >= curr_score[1] else away_players[9]
+
+        ft_card = draw_studio_stats_card(
+            w=1280, h=720, title="FULL TIME", home_team=home_team, away_team=away_team,
+            score=(curr_score[0], curr_score[1]),
+            h_poss=traj.manifest.possession[0] if traj else 50.0,
+            a_poss=traj.manifest.possession[1] if traj else 50.0,
+            h_shots=traj.manifest.shots[0] if traj else 0,
+            a_shots=traj.manifest.shots[1] if traj else 0,
+            h_sot=traj.manifest.shots_on_target[0] if traj else 0,
+            a_sot=traj.manifest.shots_on_target[1] if traj else 0,
+            h_xg=traj.manifest.xg[0] if traj else 0.0,
+            a_xg=traj.manifest.xg[1] if traj else 0.0,
+            home_bgr=home_bgr, away_bgr=away_bgr,
+            events=traj.manifest.events if traj else [],
+            motm_player=motm
+        )
+        for _ in range(int(4.0 * broadcast_fps)):
+            writer.append_data(ft_card)
+
+    finally:
+        # ISSUE #9 FIX: Always close archive explicitly — do not rely on __del__,
+        # which is unreliable in long-running WSL backend processes.
+        archive.close()
+        writer.close()
+        env.close()
 
     video_url = f"/recordings/{os.path.basename(output_mp4)}"
     if progress_file:

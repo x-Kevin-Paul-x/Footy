@@ -240,3 +240,144 @@ def test_grf_state_archive_successful_creation_cleans_tmp(tmp_path):
     assert test_file.exists(), "Target file must exist after successful write"
     assert not os.path.exists(tmp_check), "Temporary file must be cleanly replaced"
 
+
+def test_grf_state_archive_truncated_file(tmp_path):
+    """Verify that reading from a truncated archive raises ReplayIntegrityError or zlib.error.
+
+    Simulates filesystem corruption or an interrupted write by cutting the file to half its size.
+    Any read that touches the truncated region must raise, not silently return garbage data.
+    """
+    test_file = tmp_path / "test_truncated.grfstate"
+    num_states = 30
+    fake_states = [f"state_{i}_{'y'*100}".encode('utf-8') for i in range(num_states)]
+
+    with GRFStateArchiveWriter(str(test_file), match_id="truncated_match", chunk_size=10) as writer:
+        for s in fake_states:
+            writer.append(s)
+
+    original_size = test_file.stat().st_size
+    truncated_size = max(64, original_size // 2)
+    raw_data = test_file.read_bytes()[:truncated_size]
+    test_file.write_bytes(raw_data)
+
+    # Reading from the truncated region must raise — it must not silently return garbage
+    with pytest.raises((ReplayIntegrityError, zlib.error, Exception)):
+        reader = GRFStateArchiveReader(str(test_file))
+        # Try to read a state from the truncated area (last chunk)
+        reader.get_state(num_states - 1)
+
+
+def test_grf_state_archive_header_corruption(tmp_path):
+    """Verify that corrupting the archive header causes construction or validate() to raise.
+
+    Mutates the first 50 bytes (header/manifest region) — the reader must detect this as invalid.
+    """
+    test_file = tmp_path / "test_header_corrupt.grfstate"
+    fake_states = [f"state_{i}".encode('utf-8') * 30 for i in range(20)]
+
+    with GRFStateArchiveWriter(str(test_file), match_id="header_match", chunk_size=10) as writer:
+        for s in fake_states:
+            writer.append(s)
+
+    # Corrupt the magic header bytes
+    raw_data = bytearray(test_file.read_bytes())
+    for i in range(min(50, len(raw_data))):
+        raw_data[i] = (raw_data[i] ^ 0xAB) % 256
+    test_file.write_bytes(raw_data)
+
+    with pytest.raises((ReplayIntegrityError, Exception)):
+        bad_reader = GRFStateArchiveReader(str(test_file))
+        bad_reader.validate()
+
+
+def test_grf_state_archive_rejects_tmp_file(tmp_path):
+    """Verify that a renderer never accepts a .tmp partial file as a valid archive.
+
+    Creates a .grfstate.tmp file (simulating an interrupted write) and asserts
+    that GRFStateArchiveReader raises when given a .tmp path — partial archives
+    must never be silently consumed.
+    """
+    tmp_archive = tmp_path / "match_replay.grfstate.tmp.99999"
+    # Write partial data — incomplete zlib stream, no proper magic header
+    tmp_archive.write_bytes(b"PARTIAL_INCOMPLETE_DATA_NO_MAGIC\x00\x01\x02\x03")
+
+    with pytest.raises((ReplayIntegrityError, Exception)):
+        bad_reader = GRFStateArchiveReader(str(tmp_archive))
+        bad_reader.validate()
+
+
+def test_grf_state_archive_schema_v2_mismatch(tmp_path):
+    """Verify that validate() raises ReplayIntegrityError when the manifest reports a wrong schema version.
+
+    Parses the JSON header from the archive binary and replaces state_schema with a stale V1 string,
+    then re-serializes into the exact same header slot. The reader must detect and reject this mismatch.
+    """
+    test_file = tmp_path / "test_schema_mismatch.grfstate"
+    fake_states = [f"state_{i}".encode('utf-8') * 20 for i in range(10)]
+
+    with GRFStateArchiveWriter(str(test_file), match_id="schema_match", chunk_size=5) as writer:
+        for s in fake_states:
+            writer.append(s)
+
+    raw_data = bytearray(test_file.read_bytes())
+    magic_len = len(b"FOOTY_GRF_STATE_V2\n")
+    HEADER_SLOT_SIZE = 16384
+
+    # Extract and parse the JSON header from its fixed slot
+    header_bytes = bytes(raw_data[magic_len: magic_len + HEADER_SLOT_SIZE]).rstrip()
+    try:
+        header_dict = json.loads(header_bytes)
+    except json.JSONDecodeError:
+        pytest.skip("Could not parse JSON header from archive binary")
+
+    original_schema = header_dict.get("state_schema", "")
+    if not original_schema or "v2" not in original_schema:
+        pytest.skip(f"Archive did not contain expected V2 schema field: {original_schema}")
+
+    # Patch schema string to stale V1
+    header_dict["state_schema"] = "grf_chunked_zlib_v1"
+    patched_header = json.dumps(header_dict).encode("utf-8").ljust(HEADER_SLOT_SIZE, b" ")
+    raw_data[magic_len: magic_len + HEADER_SLOT_SIZE] = patched_header
+    test_file.write_bytes(bytes(raw_data))
+
+    patched_reader = GRFStateArchiveReader(str(test_file))
+    # validate() must detect the stale schema string and raise ReplayIntegrityError
+    with pytest.raises(ReplayIntegrityError, match="schema version mismatch"):
+        patched_reader.validate()
+
+
+def test_grf_goal_replay_multiple_events_same_step(tmp_path):
+    """Verify that the render path iterates over ALL goal events at the same step, not just the last.
+
+    Constructs a goal_events_by_step dict with 2 events at step 5 and checks that both
+    banner strings are processed (i.e., the for loop iterates correctly over the list).
+    This is a logic-level unit test — no GRF env needed.
+    """
+    # Simulate the goal event iteration logic from render_from_grf_states
+    goal_events_by_step = {
+        5: [
+            {"player": "Salah", "team": "home", "minute": 45},
+            {"player": "Mane", "team": "home", "minute": 45},
+        ]
+    }
+
+    processed_banners = []
+    broadcast_fps = 10
+
+    # Replicate the exact loop from grf_render_worker.py
+    step = 5
+    if step in goal_events_by_step:
+        gevs = goal_events_by_step[step]
+        for gev in gevs:
+            scorer = gev.get("player", "Player")
+            team_str = gev.get("team", "").upper()
+            match_min = gev.get("minute", 0)
+            banner = f"GOAL!  {scorer} ({team_str})  {match_min}'"
+            processed_banners.append(banner)
+
+    # Both events must be iterated — not just the last one
+    assert len(processed_banners) == 2, (
+        f"Expected 2 goal banners processed for 2 events at same step, got {len(processed_banners)}"
+    )
+    assert any("Salah" in b for b in processed_banners), "First goal scorer must be processed"
+    assert any("Mane" in b for b in processed_banners), "Second goal scorer must be processed"

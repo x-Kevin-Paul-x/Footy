@@ -17,7 +17,13 @@ from logic.grf_native_runner import GRFNativeRunner, to_wsl_path
 
 
 def test_grf_state_observation_and_render_equivalence():
-    """Execute equivalence worker inside WSL2 and assert bitwise state restoration parity and visual bounds."""
+    """GRF state restoration and render consistency.
+
+    Executes equivalence worker inside WSL2 and asserts:
+    - Near-exact (< 1e-4) state restoration across all 16 observation fields.
+    - Perceptual/numerical bounded render equivalence: PSNR > 20 dB, MAE < 25.0, MSE < 500.0.
+    NOTE: Render parity is proven by perceptual bounds, not bitwise pixel equality.
+    """
     wsl_python = "/root/venv_baller/bin/python3"
     worker_win = Path(__file__).resolve().parent.parent / "src" / "logic" / "wsl_workers" / "grf_equivalence_worker.py"
     worker_wsl = to_wsl_path(worker_win)

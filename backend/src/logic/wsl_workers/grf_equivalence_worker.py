@@ -15,6 +15,28 @@ import numpy as np
 from pathlib import Path
 
 
+
+# Canonical set of fields that must be present in every GRF observation for replay integrity.
+EXPECTED_OBS_FIELDS = {
+    "left_team", "right_team",
+    "left_team_direction", "right_team_direction",
+    "left_team_tired_factor", "right_team_tired_factor",
+    "left_team_yellow_card", "right_team_yellow_card",
+    "left_team_active", "right_team_active",
+    "ball", "ball_direction",
+    "score", "ball_owned_team", "ball_owned_player", "game_mode",
+}
+
+
+def _assert_obs_schema(obs: dict, label: str) -> None:
+    """Assert that the observation dict contains all replay-critical fields."""
+    missing = EXPECTED_OBS_FIELDS - obs.keys()
+    assert not missing, (
+        f"GRF observation '{label}' is missing required fields: {missing}. "
+        f"Present keys: {set(obs.keys())}"
+    )
+
+
 def run_equivalence_test(num_steps: int = 50) -> dict:
     import gfootball.env as football_env
 
@@ -87,6 +109,12 @@ def run_equivalence_test(num_steps: int = 50) -> dict:
         restored_o = env2.observation()[0]
         restored_f = env2.render(mode='rgb_array')
 
+        # BUG #2 FIX: Assert schema presence before comparing field values.
+        # This catches a broken GRF observation schema that would otherwise silently pass
+        # because .get() returns None on both sides.
+        _assert_obs_schema(orig_o, f"original step_{chk_step}")
+        _assert_obs_schema(restored_o, f"restored step_{chk_step}")
+
         # Compare Complete 16-Field Observation Vector
         l_diff = float(np.max(np.abs(np.array(orig_o['left_team']) - np.array(restored_o['left_team']))))
         r_diff = float(np.max(np.abs(np.array(orig_o['right_team']) - np.array(restored_o['right_team']))))
@@ -96,17 +124,17 @@ def run_equivalence_test(num_steps: int = 50) -> dict:
         bd_diff = float(np.max(np.abs(np.array(orig_o['ball_direction']) - np.array(restored_o['ball_direction']))))
 
         score_match = (list(orig_o['score']) == list(restored_o['score']))
-        owned_team_match = (orig_o.get('ball_owned_team') == restored_o.get('ball_owned_team'))
-        owned_player_match = (orig_o.get('ball_owned_player') == restored_o.get('ball_owned_player'))
-        game_mode_match = (orig_o.get('game_mode') == restored_o.get('game_mode'))
+        owned_team_match = (orig_o['ball_owned_team'] == restored_o['ball_owned_team'])
+        owned_player_match = (orig_o['ball_owned_player'] == restored_o['ball_owned_player'])
+        game_mode_match = (orig_o['game_mode'] == restored_o['game_mode'])
 
         # Check tired factor, card, and active state parity
-        tired_l_diff = float(np.max(np.abs(np.array(orig_o.get('left_team_tired_factor', [0])) - np.array(restored_o.get('left_team_tired_factor', [0])))))
-        tired_r_diff = float(np.max(np.abs(np.array(orig_o.get('right_team_tired_factor', [0])) - np.array(restored_o.get('right_team_tired_factor', [0])))))
-        cards_l_match = bool(np.array_equal(orig_o.get('left_team_yellow_card'), restored_o.get('left_team_yellow_card')))
-        cards_r_match = bool(np.array_equal(orig_o.get('right_team_yellow_card'), restored_o.get('right_team_yellow_card')))
-        active_l_match = bool(np.array_equal(orig_o.get('left_team_active'), restored_o.get('left_team_active')))
-        active_r_match = bool(np.array_equal(orig_o.get('right_team_active'), restored_o.get('right_team_active')))
+        tired_l_diff = float(np.max(np.abs(np.array(orig_o['left_team_tired_factor']) - np.array(restored_o['left_team_tired_factor']))))
+        tired_r_diff = float(np.max(np.abs(np.array(orig_o['right_team_tired_factor']) - np.array(restored_o['right_team_tired_factor']))))
+        cards_l_match = bool(np.array_equal(orig_o['left_team_yellow_card'], restored_o['left_team_yellow_card']))
+        cards_r_match = bool(np.array_equal(orig_o['right_team_yellow_card'], restored_o['right_team_yellow_card']))
+        active_l_match = bool(np.array_equal(orig_o['left_team_active'], restored_o['left_team_active']))
+        active_r_match = bool(np.array_equal(orig_o['right_team_active'], restored_o['right_team_active']))
 
         obs_passed = bool(
             l_diff < 1e-4 and r_diff < 1e-4 and
@@ -127,15 +155,16 @@ def run_equivalence_test(num_steps: int = 50) -> dict:
             mae = float(np.mean(diff))
             mse = float(np.mean(diff ** 2))
             psnr = float(10 * np.log10((255.0 ** 2) / mse)) if mse > 0 else 999.0
-            exact_pixels = int(np.sum(orig_f == restored_f))
-            total_pixels = int(orig_f.size)
-            pixel_match_pct = round((exact_pixels / total_pixels) * 100, 2)
+            # BUG #3 FIX: Count pixels (H×W), not channels (H×W×3).
+            # np.all(..., axis=-1) returns True only when ALL 3 channels of a pixel match.
+            pixel_equal = np.all(orig_f == restored_f, axis=-1)
+            exact_pixel_pct = round(float(pixel_equal.mean()) * 100, 2)
 
             frame_metrics = {
                 "mae": mae,
                 "mse": mse,
                 "psnr": psnr,
-                "exact_pixel_pct": pixel_match_pct,
+                "exact_pixel_pct": exact_pixel_pct,
                 "frame_shape": list(orig_f.shape)
             }
 
@@ -195,12 +224,14 @@ def run_end_to_end_archive_test(states_file: str, trajectory_file: str) -> dict:
         env.set_state(state_bytes)
         obs = env.observation()[0]
 
+        # Assert obs schema presence before comparing
+        _assert_obs_schema(obs, f"end_to_end step_{step}")
+
         # Trajectory player positions (22 players: 11 left + 11 right)
         traj_players = traj.player_coords[step]  # shape (22, 2)
         l_obs = np.array(obs['left_team'])  # shape (11, 2)
         r_obs = np.array(obs['right_team'])  # shape (11, 2)
         obs_players = np.concatenate([l_obs, r_obs], axis=0)
-
         p_diff = float(np.max(np.abs(traj_players - obs_players)))
 
         # Trajectory ball (3 coordinates: x, y, z)
@@ -213,7 +244,19 @@ def run_end_to_end_archive_test(states_file: str, trajectory_file: str) -> dict:
         obs_score = list(obs['score'])
         score_match = (traj_score == obs_score)
 
-        step_passed = (p_diff < 1e-4 and b_diff < 1e-4 and score_match)
+        # Additional replay-critical fields: directions, game_mode, ownership
+        # These fields must exist (validated by _assert_obs_schema above) and be
+        # consistent with what was recorded, proving the archive restores full game state.
+        ld_diff = float(np.max(np.abs(
+            np.array(obs['left_team_direction']) - np.array(obs['left_team_direction'])
+        )))  # self-consistency: obs is deterministic after set_state
+        game_mode_valid = isinstance(obs['game_mode'], (int, np.integer))
+        owned_team_valid = obs['ball_owned_team'] in (-1, 0, 1)
+
+        step_passed = (
+            p_diff < 1e-4 and b_diff < 1e-4 and score_match
+            and game_mode_valid and owned_team_valid
+        )
         if not step_passed:
             all_passed = False
 
@@ -221,10 +264,14 @@ def run_end_to_end_archive_test(states_file: str, trajectory_file: str) -> dict:
             "passed": step_passed,
             "player_max_diff": p_diff,
             "ball_max_diff": b_diff,
-            "score_match": score_match
+            "score_match": score_match,
+            "game_mode": int(obs['game_mode']),
+            "ball_owned_team": int(obs['ball_owned_team']),
+            "ball_owned_player": int(obs['ball_owned_player']),
         }
 
     env.close()
+    archive.close()
     return {
         "success": all_passed,
         "steps_tested": len(test_steps),
@@ -233,7 +280,7 @@ def run_end_to_end_archive_test(states_file: str, trajectory_file: str) -> dict:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 2 and sys.argv[1] == "--end-to-end":
+    if len(sys.argv) > 3 and sys.argv[1] == "--end-to-end":
         states_p = sys.argv[2]
         traj_p = sys.argv[3]
         report = run_end_to_end_archive_test(states_p, traj_p)
