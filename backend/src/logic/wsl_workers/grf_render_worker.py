@@ -359,6 +359,14 @@ def render_from_grf_states(payload: Dict[str, Any]):
         goal_banner = None
         goal_banner_cd = 0
 
+        frames_written = 0
+
+        # Pre-match intro frames
+        intro_frames = max(10, int(3.0 * broadcast_fps))
+        for _ in range(intro_frames):
+            writer.append_data(intro_card)
+            frames_written += 1
+
         for step in range(total_steps):
             if profile_enabled:
                 t0 = time.perf_counter()
@@ -372,17 +380,19 @@ def render_from_grf_states(payload: Dict[str, Any]):
                 t2 = time.perf_counter()
                 t_state_restore_acc += (t2 - t1)
 
-            # First-Frame Camera Synchronization:
+            # First-Frame Camera Synchronization (excluded from render timer)
             if step == 0:
                 try:
                     env.observation()
                 except Exception:
                     pass
 
+            if profile_enabled:
+                t_r_start = time.perf_counter()
+
             frame = env.render(mode='rgb_array')
             if profile_enabled:
-                t3 = time.perf_counter()
-                t_grf_render_acc += (t3 - t2)
+                t_grf_render_acc += (time.perf_counter() - t_r_start)
 
             if frame is None:
                 continue
@@ -421,6 +431,7 @@ def render_from_grf_states(payload: Dict[str, Any]):
                 t_hud_acc += (t1 - t0)
 
             writer.append_data(annotated)
+            frames_written += 1
             if profile_enabled:
                 t_encode_acc += (time.perf_counter() - t1)
 
@@ -429,6 +440,7 @@ def render_from_grf_states(payload: Dict[str, Any]):
                 # Hold live celebration frame for 1.5 seconds
                 for _ in range(int(1.5 * broadcast_fps)):
                     writer.append_data(annotated)
+                    frames_written += 1
 
                 # Rewind and render actual GRF engine states leading up to the goal
                 rewind_steps = min(step, int(1.5 * broadcast_fps))
@@ -445,6 +457,7 @@ def render_from_grf_states(payload: Dict[str, Any]):
                         # 2x slow motion frame pacing
                         writer.append_data(r_annotated)
                         writer.append_data(r_annotated)
+                        frames_written += 2
 
                 # Re-restore current state after replay rewind sequence
                 env.set_state(state_bytes)
@@ -472,6 +485,7 @@ def render_from_grf_states(payload: Dict[str, Any]):
                 )
                 for _ in range(int(3.0 * broadcast_fps)):
                     writer.append_data(ht_card)
+                    frames_written += 1
 
             if progress_file and (step % 50 == 0 or step == total_steps - 1):
                 pct = min(98, 5 + int((step / max(total_steps - 1, 1)) * 93))
@@ -508,6 +522,7 @@ def render_from_grf_states(payload: Dict[str, Any]):
         )
         for _ in range(int(4.0 * broadcast_fps)):
             writer.append_data(ft_card)
+            frames_written += 1
 
     finally:
         # ISSUE #9 FIX: Always close archive explicitly — do not rely on __del__,
@@ -534,8 +549,9 @@ def render_from_grf_states(payload: Dict[str, Any]):
             "state_restore_ms": round(t_state_restore_acc * 1000, 2),
             "grf_render_ms": round(t_grf_render_acc * 1000, 2),
             "hud_compositing_ms": round(t_hud_acc * 1000, 2),
-            "video_encode_ms": round(t_encode_acc * 1000, 2),
-            "render_fps": round(total_steps / tot_render_time, 1),
+            "video_write_ms": round(t_encode_acc * 1000, 2),
+            "frames_written": frames_written,
+            "effective_fps": round(frames_written / tot_render_time, 1),
         }
 
     result = {

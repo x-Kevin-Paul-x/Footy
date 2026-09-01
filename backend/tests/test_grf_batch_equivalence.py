@@ -60,10 +60,16 @@ def test_batch_equivalence_and_rnn_isolation():
 
     res_a_batch = batch_results[0]
 
-    # Verify score, events, and trajectory hash equivalence
+    # Verify score, events, statistics, xG, passes, and trajectory hash equivalence
     assert res_a_batch["score"] == sim_a_single["score"], "Single vs Batch score mismatch"
     assert res_a_batch["trajectory_hash"] == sim_a_single["trajectory_hash"], "Single vs Batch trajectory hash mismatch"
-    assert len(res_a_batch["events"]) == len(sim_a_single["events"]), "Single vs Batch event count mismatch"
+    assert res_a_batch["events"] == sim_a_single["events"], "Single vs Batch event mismatch"
+    assert res_a_batch["possession"] == sim_a_single["possession"], "Single vs Batch possession mismatch"
+    assert res_a_batch["shots"] == sim_a_single["shots"], "Single vs Batch shots mismatch"
+    assert res_a_batch["shots_on_target"] == sim_a_single["shots_on_target"], "Single vs Batch shots_on_target mismatch"
+    assert res_a_batch["xg"] == sim_a_single["xg"], "Single vs Batch xG mismatch"
+    assert res_a_batch["passes_attempted"] == sim_a_single["passes_attempted"], "Single vs Batch passes_attempted mismatch"
+    assert res_a_batch["passes_completed"] == sim_a_single["passes_completed"], "Single vs Batch passes_completed mismatch"
 
 
 def test_batch_early_termination_isolation():
@@ -104,7 +110,14 @@ def test_batch_early_termination_isolation():
     batch_results = runner.simulate_batch(fixtures=fixtures, max_steps=120)
     res_b_batch = batch_results[1]
 
-    # Match B's outcome must be identical regardless of Match A's early completion
+    # Match B's outcome must be 100% identical regardless of Match A's early completion
     assert res_b_batch["score"] == sim_b_alone["score"]
     assert res_b_batch["trajectory_hash"] == sim_b_alone["trajectory_hash"]
     assert res_b_batch["total_steps"] == sim_b_alone["total_steps"]
+    assert res_b_batch["events"] == sim_b_alone["events"]
+    assert res_b_batch["possession"] == sim_b_alone["possession"]
+    assert res_b_batch["shots"] == sim_b_alone["shots"]
+    assert res_b_batch["shots_on_target"] == sim_b_alone["shots_on_target"]
+    assert res_b_batch["xg"] == sim_b_alone["xg"]
+    assert res_b_batch["passes_attempted"] == sim_b_alone["passes_attempted"]
+    assert res_b_batch["passes_completed"] == sim_b_alone["passes_completed"]
