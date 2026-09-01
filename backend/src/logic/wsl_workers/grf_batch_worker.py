@@ -93,8 +93,18 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
             seed_val = int(seed_val)
 
         dump_path = fix.get("trace_dump")
+        record_dump = bool(dump_path or fix.get("record_dump", False))
         match_dump_dir = f"/tmp/dumps/batch_{m_id}_{idx}_{int(time.time()*1000)%100000}"
-        os.makedirs(match_dump_dir, exist_ok=True)
+        if record_dump:
+            os.makedirs(match_dump_dir, exist_ok=True)
+
+        other_opts = {
+            'action_set': 'full',
+            'random_seed': seed_val % (2**31 - 1),
+        }
+        if record_dump:
+            other_opts['tracesdir'] = match_dump_dir
+            other_opts['dump_full_episodes'] = True
 
         env = football_env.create_environment(
             env_name="11_vs_11_kaggle",
@@ -102,16 +112,11 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
             representation='raw',
             rewards='scoring',
             write_goal_dumps=False,
-            write_full_episode_dumps=True,
+            write_full_episode_dumps=record_dump,
             render=False,
             number_of_left_players_agent_controls=10,
             number_of_right_players_agent_controls=10,
-            other_config_options={
-                'action_set': 'full',
-                'random_seed': seed_val % (2**31 - 1),
-                'tracesdir': match_dump_dir,
-                'dump_full_episodes': True,
-            }
+            other_config_options=other_opts
         )
         envs.append(env)
         raw_obs = env.reset()
@@ -165,9 +170,11 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
             "away_color": fix.get("away_color", "#2196f3"),
             "trace_npz": fix.get("trace_npz"),
             "trace_dump": dump_path,
+            "record_dump": record_dump,
             "match_dump_dir": match_dump_dir,
             "raw_obs": raw_obs,
             "done": False,
+            "actual_steps": None,
             "curr_score": [0, 0],
             "last_score": [0, 0],
             "left_poss": 0, "right_poss": 0,
@@ -202,13 +209,15 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     avail[:, :20] = 1.0
 
     step = 0
-    while step < max_steps and any(not ms["done"] for ms in match_states):
-        all_obs = []
-        for m_idx, ms in enumerate(match_states):
-            if ms["done"]:
-                all_obs.append(np.zeros((20, 268), dtype=np.float32))
-                continue
+    while step < max_steps:
+        active_indices = [i for i, ms in enumerate(match_states) if not ms["done"]]
+        if not active_indices:
+            break
 
+        all_obs = []
+        active_agent_indices = []
+        for m_idx in active_indices:
+            ms = match_states[m_idx]
             r_obs = ms["raw_obs"]
             obs_l, ms["left_loff"], ms["left_roff"] = extract_canonical_features(
                 r_obs[0:10], team_side="left", num_agents=10,
@@ -219,22 +228,27 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 last_loff=ms["right_loff"], last_roff=ms["right_roff"]
             )
             all_obs.append(np.concatenate([obs_l, obs_r], axis=0))
+            active_agent_indices.extend(range(m_idx * 20, (m_idx + 1) * 20))
 
         batch_obs_np = np.concatenate(all_obs, axis=0)
         batch_obs_t = torch.from_numpy(batch_obs_np).to(device)
 
+        active_agent_tensor = torch.tensor(active_agent_indices, dtype=torch.long, device=device)
+        active_rnn = rnn_states[active_agent_tensor]
+        active_masks = masks[active_agent_tensor]
+        active_avail = avail[active_agent_tensor]
+
         with torch.inference_mode():
-            actions_batch, _, rnn_states = policy(
-                batch_obs_t, rnn_states, masks, avail, deterministic=True
+            actions_batch, _, next_active_rnn = policy(
+                batch_obs_t, active_rnn, active_masks, active_avail, deterministic=True
             )
 
-        all_actions = actions_batch.cpu().numpy().flatten().astype(np.int32)
+        rnn_states[active_agent_tensor] = next_active_rnn
+        all_actions = actions_batch.detach().cpu().numpy().reshape(-1)
 
-        for m_idx, ms in enumerate(match_states):
-            if ms["done"]:
-                continue
-
-            start_a = m_idx * 20
+        for act_idx, m_idx in enumerate(active_indices):
+            ms = match_states[m_idx]
+            start_a = act_idx * 20
             l_act_raw = all_actions[start_a:start_a + 10].tolist()
             r_act_raw = all_actions[start_a + 10:start_a + 20].tolist()
 
@@ -258,20 +272,20 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
 
             raw_next, _, d, _ = envs[m_idx].step(comb_act)
             ms["done"] = d
+            if d and ms["actual_steps"] is None:
+                ms["actual_steps"] = step + 1
             ms["raw_obs"] = raw_next
 
             o0 = raw_next[0]
-            l_team = np.array(o0['left_team'], dtype=np.float32)
-            r_team = np.array(o0['right_team'], dtype=np.float32)
-            ms["rec_players"][step] = np.concatenate([l_team, r_team], axis=0)
+            ms["rec_players"][step, :11] = o0['left_team']
+            ms["rec_players"][step, 11:] = o0['right_team']
 
-            l_team_d = np.array(o0['left_team_direction'], dtype=np.float32)
-            r_team_d = np.array(o0['right_team_direction'], dtype=np.float32)
-            ms["rec_player_dirs"][step] = np.concatenate([l_team_d, r_team_d], axis=0)
+            ms["rec_player_dirs"][step, :11] = o0['left_team_direction']
+            ms["rec_player_dirs"][step, 11:] = o0['right_team_direction']
 
-            ms["rec_balls"][step] = np.array(o0['ball'], dtype=np.float32)
-            ms["rec_ball_dirs"][step] = np.array(o0['ball_direction'], dtype=np.float32)
-            ms["rec_actions"][step] = np.array(comb_act, dtype=np.uint8)
+            ms["rec_balls"][step] = o0['ball']
+            ms["rec_ball_dirs"][step] = o0['ball_direction']
+            ms["rec_actions"][step] = comb_act
 
             ms["curr_score"] = [int(o0['score'][0]), int(o0['score'][1])]
             ms["rec_scores"][step] = np.array(ms["curr_score"], dtype=np.uint8)
@@ -387,13 +401,14 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     import glob, shutil
 
     for m_idx, ms in enumerate(match_states):
-        actual_steps = step
+        actual_steps = ms["actual_steps"] if ms["actual_steps"] is not None else step
         m_id = ms["match_id"]
-        dump_files = sorted(glob.glob(f"{ms['match_dump_dir']}/episode_done_*.dump"))
-        if dump_files and ms.get("trace_dump"):
-            os.makedirs(os.path.dirname(ms["trace_dump"]), exist_ok=True)
-            shutil.move(dump_files[-1], ms["trace_dump"])
-        shutil.rmtree(ms["match_dump_dir"], ignore_errors=True)
+        if ms["record_dump"] and os.path.exists(ms["match_dump_dir"]):
+            dump_files = sorted(glob.glob(f"{ms['match_dump_dir']}/episode_done_*.dump"))
+            if dump_files and ms.get("trace_dump"):
+                os.makedirs(os.path.dirname(ms["trace_dump"]), exist_ok=True)
+                shutil.move(dump_files[-1], ms["trace_dump"])
+            shutil.rmtree(ms["match_dump_dir"], ignore_errors=True)
 
         f_score = [int(ms["curr_score"][0]), int(ms["curr_score"][1])]
         tot_poss = max(1, ms["left_poss"] + ms["right_poss"])

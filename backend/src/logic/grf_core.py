@@ -238,15 +238,19 @@ def extract_canonical_features(
         else:
             loff, roff = last_loff, last_roff
 
-    # Shared feature segments
-    ally_flat = ally.flatten()
-    ally_d_flat = ally_d.flatten()
-    enemy_flat = enemy.flatten()
-    enemy_d_flat = enemy_d.flatten()
+    out_matrix = np.zeros((num_agents, 268), dtype=np.float32)
 
-    game_mode_vec = [0.0] * 7
+    # 1. Fill shared global feature segments across all agents
+    out_matrix[:, 0:22] = ally.reshape(-1)
+    out_matrix[:, 22:44] = ally_d.reshape(-1)
+    out_matrix[:, 44:66] = enemy.reshape(-1)
+    out_matrix[:, 66:88] = enemy_d.reshape(-1)
+    out_matrix[:, 88:91] = ball
+    out_matrix[:, 91:94] = ball_d
+    out_matrix[:, 94:97] = ball_own_vec
+
     g_mode = min(6, max(0, int(o0.get('game_mode', 0))))
-    game_mode_vec[g_mode] = 1.0
+    out_matrix[:, 108 + g_mode] = 1.0
 
     steps_left = float(o0.get('steps_left', 3000))
     step_feat_1 = steps_left / 3001.0
@@ -254,8 +258,16 @@ def extract_canonical_features(
     step_feat_2 = min(s_sub, 300.0) / 300.0
     score_ratio_clamped = max(-1.0, min(1.0, score_diff))
 
-    out_matrix = np.empty((num_agents, 268), dtype=np.float32)
+    out_matrix[:, 126:137] = tired
+    out_matrix[:, 137:148] = yellow
+    out_matrix[:, 148:159] = active_status
+    out_matrix[:, 159:170] = loff
+    out_matrix[:, 170:181] = roff
+    out_matrix[:, 238] = step_feat_1
+    out_matrix[:, 239] = step_feat_2
+    out_matrix[:, 240] = score_ratio_clamped
 
+    # 2. Fill per-agent specific feature segments
     for a in range(num_agents):
         agent_obs = raw_obs[a]
         active_idx = int(agent_obs.get('active', 0))
@@ -265,47 +277,33 @@ def extract_canonical_features(
         b_dist = min(1.0, float(np.linalg.norm(me - ball_xy)))
         e_dist = np.linalg.norm(me - enemy, axis=-1)
 
-        to_ally = (ally - me).copy()
-        to_ally[:, 0] /= 2.0
-        to_enemy = (enemy - me).copy()
-        to_enemy[:, 0] /= 2.0
-        to_ball = (ball_xy - me).copy()
-        to_ball[0] /= 2.0
+        to_ally = (ally - me)
+        to_ally_scaled = to_ally.copy()
+        to_ally_scaled[:, 0] /= 2.0
 
-        active_vec = [0.0] * 11
-        active_vec[active_idx] = 1.0
+        to_enemy = (enemy - me)
+        to_enemy_scaled = to_enemy.copy()
+        to_enemy_scaled[:, 0] /= 2.0
+
+        to_ball = (ball_xy - me)
+        to_ball_scaled = to_ball.copy()
+        to_ball_scaled[0] /= 2.0
 
         raw_sticky = agent_obs.get('sticky_actions', [0] * 10)[:10]
         if is_right and len(raw_sticky) >= 8:
-            # Mirror directional sticky actions: 0<->7 (left/right), 1<->4, 2<->5, 3<->6
             sticky_vec = [
                 float(raw_sticky[7]), float(raw_sticky[4]), float(raw_sticky[5]), float(raw_sticky[6]),
                 float(raw_sticky[1]), float(raw_sticky[2]), float(raw_sticky[3]), float(raw_sticky[0]),
             ] + [float(x) for x in raw_sticky[8:]]
         else:
             sticky_vec = [float(x) for x in raw_sticky]
-        while len(sticky_vec) < 10:
-            sticky_vec.append(0.0)
 
-        o_parts = [
-            ally_flat, ally_d_flat, enemy_flat, enemy_d_flat,  # 88
-            ball, ball_d,                                      # 6 -> 94
-            np.array(ball_own_vec, dtype=np.float32),          # 3 -> 97
-            np.array(active_vec, dtype=np.float32),            # 11 -> 108
-            np.array(game_mode_vec, dtype=np.float32),         # 7 -> 115
-            np.array(sticky_vec[:10], dtype=np.float32),       # 10 -> 125
-            np.array([b_dist], dtype=np.float32),              # 1 -> 126
-            tired,                                             # 11 -> 137
-            yellow,                                            # 11 -> 148
-            active_status,                                     # 11 -> 159
-            loff, roff,                                        # 22 -> 181
-            e_dist,                                            # 11 -> 192
-            to_ally.flatten(),                                 # 22 -> 214
-            to_enemy.flatten(),                                # 22 -> 236
-            to_ball.flatten(),                                 # 2 -> 238
-            np.array([step_feat_1, step_feat_2, score_ratio_clamped], dtype=np.float32),  # 3 -> 241
-            np.zeros(27, dtype=np.float32),                    # 27 -> 268
-        ]
-        out_matrix[a] = np.concatenate(o_parts)
+        out_matrix[a, 97 + active_idx] = 1.0
+        out_matrix[a, 115:115 + min(10, len(sticky_vec))] = sticky_vec[:10]
+        out_matrix[a, 125] = b_dist
+        out_matrix[a, 181:192] = e_dist
+        out_matrix[a, 192:214] = to_ally_scaled.reshape(-1)
+        out_matrix[a, 214:236] = to_enemy_scaled.reshape(-1)
+        out_matrix[a, 236:238] = to_ball_scaled
 
     return out_matrix, loff, roff

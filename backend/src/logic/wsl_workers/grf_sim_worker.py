@@ -316,17 +316,15 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
 
             # 6. Trajectory Recording
             o0 = raw_next_obs[0]
-            l_team = np.array(o0['left_team'], dtype=np.float32)
-            r_team = np.array(o0['right_team'], dtype=np.float32)
-            recorded_players[step] = np.concatenate([l_team, r_team], axis=0)
+            recorded_players[step, :11] = o0['left_team']
+            recorded_players[step, 11:] = o0['right_team']
 
-            l_team_d = np.array(o0['left_team_direction'], dtype=np.float32)
-            r_team_d = np.array(o0['right_team_direction'], dtype=np.float32)
-            recorded_player_dirs[step] = np.concatenate([l_team_d, r_team_d], axis=0)
+            recorded_player_dirs[step, :11] = o0['left_team_direction']
+            recorded_player_dirs[step, 11:] = o0['right_team_direction']
 
-            recorded_balls[step] = np.array(o0['ball'], dtype=np.float32)
-            recorded_ball_dirs[step] = np.array(o0['ball_direction'], dtype=np.float32)
-            recorded_actions[step] = np.array(combined_actions, dtype=np.uint8)
+            recorded_balls[step] = o0['ball']
+            recorded_ball_dirs[step] = o0['ball_direction']
+            recorded_actions[step] = combined_actions
 
             curr_score = [int(o0['score'][0]), int(o0['score'][1])]
             recorded_scores[step] = np.array(curr_score, dtype=np.uint8)

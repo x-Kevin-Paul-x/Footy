@@ -11,6 +11,7 @@ import time
 import hashlib
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
+from collections import deque
 import numpy as np
 
 try:
@@ -269,24 +270,18 @@ def draw_studio_stats_card(
     return canvas
 
 
-def draw_pitch_frame_from_state(
-    frame_state: Dict[str, Any],
-    home_team: str,
-    away_team: str,
-    home_players: Optional[List[str]] = None,
-    away_players: Optional[List[str]] = None,
-    home_bgr: Tuple[int, int, int] = (50, 50, 220),
-    away_bgr: Tuple[int, int, int] = (220, 50, 50),
-    goal_banner: Optional[str] = None,
-    w: int = 1280,
-    h: int = 720
-) -> np.ndarray:
-    """
-    Render a single high-fidelity 720p broadcast frame directly from trajectory coordinates.
-    Pure display pipe: does NOT depend on GRF environment or physics engine.
-    """
+_STATIC_PITCH_CACHE: Dict[Tuple[int, int], np.ndarray] = {}
+
+
+def create_static_pitch_background(w: int = 1280, h: int = 720) -> np.ndarray:
+    key = (w, h)
+    if key in _STATIC_PITCH_CACHE:
+        return _STATIC_PITCH_CACHE[key]
+
     if cv2 is None:
-        return np.zeros((h, w, 3), dtype=np.uint8)
+        bg = np.zeros((h, w, 3), dtype=np.uint8)
+        _STATIC_PITCH_CACHE[key] = bg
+        return bg
 
     canvas = np.zeros((h, w, 3), dtype=np.uint8)
 
@@ -337,6 +332,36 @@ def draw_pitch_frame_from_state(
     goal_h = int(ph * 0.14)
     cv2.rectangle(canvas, (px_min - 12, mid_y - goal_h // 2), (px_min, mid_y + goal_h // 2), (200, 200, 200), -1)
     cv2.rectangle(canvas, (px_max, mid_y - goal_h // 2), (px_max + 12, mid_y + goal_h // 2), (200, 200, 200), -1)
+
+    _STATIC_PITCH_CACHE[key] = canvas
+    return canvas
+
+
+def draw_pitch_frame_from_state(
+    frame_state: Dict[str, Any],
+    home_team: str,
+    away_team: str,
+    home_players: Optional[List[str]] = None,
+    away_players: Optional[List[str]] = None,
+    home_bgr: Tuple[int, int, int] = (50, 50, 220),
+    away_bgr: Tuple[int, int, int] = (220, 50, 50),
+    goal_banner: Optional[str] = None,
+    w: int = 1280,
+    h: int = 720
+) -> np.ndarray:
+    """
+    Render a single high-fidelity 720p broadcast frame directly from trajectory coordinates.
+    Pure display pipe: does NOT depend on GRF environment or physics engine.
+    """
+    if cv2 is None:
+        return np.zeros((h, w, 3), dtype=np.uint8)
+
+    canvas = create_static_pitch_background(w, h).copy()
+
+    px_min, px_max = 70, w - 70
+    py_min, py_max = 85, h - 35
+    pw = px_max - px_min
+    ph = py_max - py_min
 
     # Coordinate mapping function
     def to_pixel(gx: float, gy: float) -> Tuple[int, int]:
@@ -459,7 +484,7 @@ def render_video_from_trajectory(
 
     goal_banner = None
     goal_banner_cd = 0
-    replay_buffer = []
+    replay_buffer = deque(maxlen=30)
 
     for step in range(total_steps):
         state = trajectory.get_frame_state(step)
@@ -484,14 +509,13 @@ def render_video_from_trajectory(
         writer.append_data(frame)
 
         replay_buffer.append(frame)
-        if len(replay_buffer) > 30:
-            replay_buffer.pop(0)
 
         # Slow-mo zoom action replay when goal is hit
         if step in goal_events_by_step and len(replay_buffer) >= 15:
             for _ in range(30):
                 writer.append_data(frame)
-            for rf in replay_buffer[-20:]:
+            recent_frames = list(replay_buffer)[-20:]
+            for rf in recent_frames:
                 replay_annotated = draw_replay_frame(
                     rf, home_team, away_team, tuple(state["score"]),
                     match_min, home_bgr, away_bgr, state["is_second_half"], zoom_factor=1.35
