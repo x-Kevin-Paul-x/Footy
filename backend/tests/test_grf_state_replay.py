@@ -97,7 +97,7 @@ def test_grf_state_archive_validation_and_corruption_detection(tmp_path):
 
     tampered_reader = GRFStateArchiveReader(str(test_file))
     with pytest.raises((ReplayIntegrityError, zlib.error, pickle.UnpicklingError)):
-        tampered_reader.validate()
+        tampered_reader.validate(check_global_sha=True)
 
 
 def test_grf_state_archive_legacy_pickle_fallback(tmp_path):

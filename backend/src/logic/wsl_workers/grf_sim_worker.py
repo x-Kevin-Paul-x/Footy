@@ -316,8 +316,10 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
 
             # 6. Trajectory Recording
             o0 = raw_next_obs[0]
-            recorded_players[step, :11] = o0['left_team']
-            recorded_players[step, 11:] = o0['right_team']
+            l_team = np.asarray(o0['left_team'], dtype=np.float32)
+            r_team = np.asarray(o0['right_team'], dtype=np.float32)
+            recorded_players[step, :11] = l_team
+            recorded_players[step, 11:] = r_team
 
             recorded_player_dirs[step, :11] = o0['left_team_direction']
             recorded_player_dirs[step, 11:] = o0['right_team_direction']
@@ -349,7 +351,8 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
                 if ball_player >= 0:
                     last_away_touch = ball_player
 
-            match_min = max(1, min(90, int((step / max(max_steps, 1)) * 90)))
+            sim_time_sec = step * 0.1
+            match_min = max(1, min(90, int(sim_time_sec / 60) + 1))
 
             # 8. Rigorous Pass State Machine
             if ball_owned == 0 and ball_player >= 1 and (ball_player - 1) < len(left_act):

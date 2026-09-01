@@ -208,14 +208,14 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     avail = torch.zeros((total_agents, 33), dtype=torch.float32, device=device)
     avail[:, :20] = 1.0
 
+    batch_obs_np = np.zeros((total_agents, 268), dtype=np.float32)
+
     step = 0
     while step < max_steps:
         active_indices = [i for i, ms in enumerate(match_states) if not ms["done"]]
         if not active_indices:
             break
 
-        all_obs = []
-        active_agent_indices = []
         for m_idx in active_indices:
             ms = match_states[m_idx]
             r_obs = ms["raw_obs"]
@@ -227,28 +227,22 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 r_obs[10:20], team_side="right", num_agents=10,
                 last_loff=ms["right_loff"], last_roff=ms["right_roff"]
             )
-            all_obs.append(np.concatenate([obs_l, obs_r], axis=0))
-            active_agent_indices.extend(range(m_idx * 20, (m_idx + 1) * 20))
+            offset = m_idx * 20
+            batch_obs_np[offset:offset + 10] = obs_l
+            batch_obs_np[offset + 10:offset + 20] = obs_r
 
-        batch_obs_np = np.concatenate(all_obs, axis=0)
         batch_obs_t = torch.from_numpy(batch_obs_np).to(device)
 
-        active_agent_tensor = torch.tensor(active_agent_indices, dtype=torch.long, device=device)
-        active_rnn = rnn_states[active_agent_tensor]
-        active_masks = masks[active_agent_tensor]
-        active_avail = avail[active_agent_tensor]
-
         with torch.inference_mode():
-            actions_batch, _, next_active_rnn = policy(
-                batch_obs_t, active_rnn, active_masks, active_avail, deterministic=True
+            actions_batch, _, rnn_states = policy(
+                batch_obs_t, rnn_states, masks, avail, deterministic=True
             )
 
-        rnn_states[active_agent_tensor] = next_active_rnn
         all_actions = actions_batch.detach().cpu().numpy().reshape(-1)
 
-        for act_idx, m_idx in enumerate(active_indices):
+        for m_idx in active_indices:
             ms = match_states[m_idx]
-            start_a = act_idx * 20
+            start_a = m_idx * 20
             l_act_raw = all_actions[start_a:start_a + 10].tolist()
             r_act_raw = all_actions[start_a + 10:start_a + 20].tolist()
 
@@ -272,13 +266,17 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
 
             raw_next, _, d, _ = envs[m_idx].step(comb_act)
             ms["done"] = d
-            if d and ms["actual_steps"] is None:
-                ms["actual_steps"] = step + 1
+            if d:
+                if ms["actual_steps"] is None:
+                    ms["actual_steps"] = step + 1
+                masks[m_idx * 20:(m_idx + 1) * 20] = 0.0
             ms["raw_obs"] = raw_next
 
             o0 = raw_next[0]
-            ms["rec_players"][step, :11] = o0['left_team']
-            ms["rec_players"][step, 11:] = o0['right_team']
+            l_team = np.asarray(o0['left_team'], dtype=np.float32)
+            r_team = np.asarray(o0['right_team'], dtype=np.float32)
+            ms["rec_players"][step, :11] = l_team
+            ms["rec_players"][step, 11:] = r_team
 
             ms["rec_player_dirs"][step, :11] = o0['left_team_direction']
             ms["rec_player_dirs"][step, 11:] = o0['right_team_direction']
@@ -308,7 +306,8 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 if b_player >= 0:
                     ms["last_away_touch"] = b_player
 
-            m_min = max(1, min(90, int((step / max(max_steps, 1)) * 90)))
+            sim_time_sec = step * 0.1
+            m_min = max(1, min(90, int(sim_time_sec / 60) + 1))
 
             # Pass State Machine
             if b_own == 0 and b_player >= 1 and (b_player - 1) < len(l_act):

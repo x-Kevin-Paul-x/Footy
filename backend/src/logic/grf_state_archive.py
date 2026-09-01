@@ -19,7 +19,7 @@ from logic.replay_schema import GRF_STATE_SCHEMA_VERSION, REPLAY_FORMAT_VERSION
 
 MAGIC_HEADER_V1 = b"FOOTY_GRF_STATE_V1\n"
 MAGIC_HEADER_V2 = f"{REPLAY_FORMAT_VERSION}\n".encode("utf-8")
-DEFAULT_CHUNK_SIZE = 50
+DEFAULT_CHUNK_SIZE = 200
 SIM_STEP_SECONDS = 0.1
 SIM_FPS = 10.0
 
@@ -309,9 +309,10 @@ class GRFStateArchiveReader:
     def validate(
         self,
         expected_steps: Optional[int] = None,
-        expected_match_id: Optional[str] = None
+        expected_match_id: Optional[str] = None,
+        check_global_sha: bool = False
     ) -> None:
-        """Validate archive integrity, step count, match ID, schema version, and SHA256 checksum."""
+        """Validate archive integrity, step count, match ID, schema version, and optionally SHA256 checksum."""
         if expected_steps is not None and self.total_steps != expected_steps:
             raise ReplayIntegrityError(
                 f"State archive step count mismatch: archive has {self.total_steps} steps, "
@@ -334,7 +335,7 @@ class GRFStateArchiveReader:
                     f"expected '{GRF_STATE_SCHEMA_VERSION}'. Archive may be from an incompatible version."
                 )
 
-        if not self._is_legacy_pickle and self.sha256:
+        if check_global_sha and not self._is_legacy_pickle and self.sha256:
             calc_sha = hashlib.sha256()
             for s in self.iter_states():
                 calc_sha.update(s)
