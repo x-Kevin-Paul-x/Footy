@@ -64,3 +64,47 @@ def test_batch_equivalence_and_rnn_isolation():
     assert res_a_batch["score"] == sim_a_single["score"], "Single vs Batch score mismatch"
     assert res_a_batch["trajectory_hash"] == sim_a_single["trajectory_hash"], "Single vs Batch trajectory hash mismatch"
     assert len(res_a_batch["events"]) == len(sim_a_single["events"]), "Single vs Batch event count mismatch"
+
+
+def test_batch_early_termination_isolation():
+    """Verify that early termination of match A in a batch does not alter match B's trajectory or score."""
+    runner = GRFNativeRunner()
+    if not runner.is_available():
+        pytest.skip("GRF WSL environment not available")
+
+    seed_b = 887766
+
+    # Match B simulated alone for 120 steps
+    sim_b_alone = runner.simulate(
+        home_team="Liverpool",
+        away_team="ManCity",
+        max_steps=120,
+        match_id="test_b_alone",
+        seed_val=seed_b,
+    )
+
+    # Batch simulation where Match A runs for 30 steps while Match B runs for 120 steps
+    fixtures = [
+        {
+            "match_id": "test_a_short",
+            "home_team": "Arsenal",
+            "away_team": "Chelsea",
+            "seed_val": 111111,
+            "max_steps": 30,
+        },
+        {
+            "match_id": "test_b_long",
+            "home_team": "Liverpool",
+            "away_team": "ManCity",
+            "seed_val": seed_b,
+            "max_steps": 120,
+        }
+    ]
+
+    batch_results = runner.simulate_batch(fixtures=fixtures, max_steps=120)
+    res_b_batch = batch_results[1]
+
+    # Match B's outcome must be identical regardless of Match A's early completion
+    assert res_b_batch["score"] == sim_b_alone["score"]
+    assert res_b_batch["trajectory_hash"] == sim_b_alone["trajectory_hash"]
+    assert res_b_batch["total_steps"] == sim_b_alone["total_steps"]

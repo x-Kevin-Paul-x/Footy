@@ -22,6 +22,7 @@ import cv2
 import imageio
 from logic.grf_trajectory import MatchTrajectory, MatchManifest
 from logic.grf_state_archive import GRFStateArchiveReader, ReplayIntegrityError, SIM_STEP_SECONDS, SIM_FPS
+from logic.replay_schema import PerformanceConfig
 from logic.grf_renderer import (
     hex_to_bgr,
     team_color_from_name,
@@ -323,8 +324,18 @@ def render_from_grf_states(payload: Dict[str, Any]):
     writer = imageio.get_writer(output_mp4, fps=broadcast_fps, codec='libx264',
                                 pixelformat='yuv420p', quality=8)
 
+    profile_enabled = PerformanceConfig.enabled
+    t_render_start = time.perf_counter() if profile_enabled else 0.0
+    t_archive_read_acc = 0.0
+    t_state_restore_acc = 0.0
+    t_grf_render_acc = 0.0
+    t_hud_acc = 0.0
+    t_encode_acc = 0.0
+
     try:
         # 1. Pre-Match Card (3 seconds = 3 * broadcast_fps frames)
+        if profile_enabled:
+            t0 = time.perf_counter()
         intro_card = draw_pre_match_card(
             w=1280, h=720, home_team=home_team, away_team=away_team,
             home_players=home_players, away_players=away_players,
@@ -349,11 +360,19 @@ def render_from_grf_states(payload: Dict[str, Any]):
         goal_banner_cd = 0
 
         for step in range(total_steps):
+            if profile_enabled:
+                t0 = time.perf_counter()
             state_bytes = archive.get_state(step)
+            if profile_enabled:
+                t1 = time.perf_counter()
+                t_archive_read_acc += (t1 - t0)
+
             env.set_state(state_bytes)
+            if profile_enabled:
+                t2 = time.perf_counter()
+                t_state_restore_acc += (t2 - t1)
 
             # First-Frame Camera Synchronization:
-            # Force C++ GFootball to evaluate observation and initialize OpenGL camera view matrix
             if step == 0:
                 try:
                     env.observation()
@@ -361,6 +380,10 @@ def render_from_grf_states(payload: Dict[str, Any]):
                     pass
 
             frame = env.render(mode='rgb_array')
+            if profile_enabled:
+                t3 = time.perf_counter()
+                t_grf_render_acc += (t3 - t2)
+
             if frame is None:
                 continue
 
@@ -374,7 +397,7 @@ def render_from_grf_states(payload: Dict[str, Any]):
             else:
                 obs = env.observation()[0]
                 curr_score = [int(obs['score'][0]), int(obs['score'][1])]
-                match_min = max(1, min(90, int((step / max(total_steps, 1)) * 90)))
+                match_min = max(1, min(90, int((step * SIM_STEP_SECONDS / 60) + 1)))
                 is_second_half = step > half_time_step
 
             if step in goal_events_by_step:
@@ -386,11 +409,20 @@ def render_from_grf_states(payload: Dict[str, Any]):
                     goal_banner_cd = max(15, int(2.0 * broadcast_fps))
 
             banner = goal_banner if goal_banner_cd > 0 else None
+
+            if profile_enabled:
+                t0 = time.perf_counter()
             annotated = draw_hud(
                 frame_bgr, home_team, away_team, (curr_score[0], curr_score[1]),
                 match_min, home_bgr, away_bgr, banner, is_second_half
             )
+            if profile_enabled:
+                t1 = time.perf_counter()
+                t_hud_acc += (t1 - t0)
+
             writer.append_data(annotated)
+            if profile_enabled:
+                t_encode_acc += (time.perf_counter() - t1)
 
             # Authentic State-Rewind 3D Action Replay on Goals
             if step in goal_events_by_step:
@@ -493,6 +525,19 @@ def render_from_grf_states(payload: Dict[str, Any]):
             "video_url": video_url, "score": curr_score, "completed": True
         })
 
+    render_profile = {}
+    if profile_enabled:
+        tot_render_time = max(1e-5, time.perf_counter() - t_render_start)
+        render_profile = {
+            "total_render_wall_ms": round(tot_render_time * 1000, 2),
+            "archive_read_ms": round(t_archive_read_acc * 1000, 2),
+            "state_restore_ms": round(t_state_restore_acc * 1000, 2),
+            "grf_render_ms": round(t_grf_render_acc * 1000, 2),
+            "hud_compositing_ms": round(t_hud_acc * 1000, 2),
+            "video_encode_ms": round(t_encode_acc * 1000, 2),
+            "render_fps": round(total_steps / tot_render_time, 1),
+        }
+
     result = {
         "match_id": str(match_id),
         "requested_render_mode": payload.get("mode", "3d"),
@@ -504,6 +549,7 @@ def render_from_grf_states(payload: Dict[str, Any]):
         "shots": list(traj.manifest.shots) if traj else [0, 0],
         "events": traj.manifest.events if traj else [],
         "video_url": video_url,
+        "render_profile": render_profile,
     }
     print("MATCH_RENDER_RESULT_JSON:" + json.dumps(result))
 

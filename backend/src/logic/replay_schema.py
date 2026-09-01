@@ -6,9 +6,20 @@ and format identifiers across simulation, archive storage, and replay workers.
 
 from typing import Tuple, FrozenSet
 
+import os
+
 SIM_STEP_SECONDS = 0.1
 SIM_FPS = 10.0
 GRF_STATE_SCHEMA_VERSION = "grf_chunked_zlib_v2"
+
+
+class PerformanceConfig:
+    """
+    Centralized toggle and settings for zero-cost production profiling vs granular benchmarks.
+    When PROFILE_ENABLED is False (or env PROFILE_ENABLED=0), timing measurements incur zero/near-zero overhead.
+    """
+    enabled: bool = os.getenv("PROFILE_ENABLED", "1").lower() in ("1", "true", "yes")
+    deep_profiling: bool = os.getenv("DEEP_PROFILING", "0").lower() in ("1", "true", "yes")
 REPLAY_FORMAT_VERSION = "FOOTY_GRF_STATE_V2"
 TRAJECTORY_SCHEMA_VERSION = "FOOTY_TRAJECTORY_V2"
 TRAJECTORY_SCHEMA_VERSION_V1 = "FOOTY_TRAJECTORY_V1"
