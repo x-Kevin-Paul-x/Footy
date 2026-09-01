@@ -26,6 +26,7 @@ import gfootball.env as football_env
 
 from logic.grf_trajectory import MatchTrajectory, MatchManifest
 from logic.grf_state_archive import ReplayIntegrityError
+from logic.replay_schema import SIM_STEP_SECONDS
 from logic.grf_core import (
     extract_canonical_features,
     compute_shot_xg,
@@ -273,8 +274,8 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
             ms["raw_obs"] = raw_next
 
             o0 = raw_next[0]
-            l_team = np.asarray(o0['left_team'], dtype=np.float32)
-            r_team = np.asarray(o0['right_team'], dtype=np.float32)
+            l_team = o0['left_team']
+            r_team = o0['right_team']
             ms["rec_players"][step, :11] = l_team
             ms["rec_players"][step, 11:] = r_team
 
@@ -306,7 +307,7 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 if b_player >= 0:
                     ms["last_away_touch"] = b_player
 
-            sim_time_sec = step * 0.1
+            sim_time_sec = step * SIM_STEP_SECONDS
             m_min = max(1, min(90, int(sim_time_sec / 60) + 1))
 
             # Pass State Machine

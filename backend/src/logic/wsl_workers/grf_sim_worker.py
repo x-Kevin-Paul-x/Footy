@@ -28,6 +28,7 @@ import gfootball.env as football_env
 from logic.grf_trajectory import MatchTrajectory, MatchManifest
 from logic.grf_state_archive import GRFStateArchiveWriter, ReplayIntegrityError
 from logic.grf_core import extract_canonical_features, compute_shot_xg, apply_tactical_action_bias, ACTION_MIRROR_MAP
+from logic.replay_schema import SIM_STEP_SECONDS
 from logic.footy_grf_adapter import FootyGRFAdapter, FORMATION_COORDINATES, GRFPlayerProfile, GRFTeamTactics
 
 
@@ -245,6 +246,13 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
     step = 0
     done = False
 
+    t_feature_acc = 0.0
+    t_policy_acc = 0.0
+    t_tactical_acc = 0.0
+    t_env_step_acc = 0.0
+    t_state_archive_acc = 0.0
+    t_sim_start = time.perf_counter()
+
     try:
         while not done and step < max_steps:
             # Check for Half-Time transition
@@ -252,7 +260,7 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
                 half_time_recorded = True
                 events.append({
                     "step": step,
-                    "sim_time": round(step * 0.1, 2),
+                    "sim_time": round(step * SIM_STEP_SECONDS, 2),
                     "minute": 45,
                     "type": "half_time",
                     "score": f"{curr_score[0]}-{curr_score[1]}",
@@ -260,6 +268,7 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
                 })
 
             # 1. Canonical perspective feature extraction
+            t0 = time.perf_counter()
             obs_l, left_loff, left_roff = extract_canonical_features(
                 raw_obs[0:num_agents], team_side="left", num_agents=num_agents,
                 last_loff=left_loff, last_roff=left_roff
@@ -275,8 +284,10 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
             rnn_batch = torch.cat([left_rnn_states, right_rnn_states], dim=0)
             masks_batch = torch.cat([left_masks, right_masks], dim=0)
             avail_batch = torch.cat([left_avail, right_avail], dim=0)
+            t_feature_acc += (time.perf_counter() - t0)
 
             # 2. TiKick Neural Policy Inference
+            t0 = time.perf_counter()
             with torch.inference_mode():
                 actions_batch, _, next_rnn_batch = policy(
                     obs_batch_t, rnn_batch, masks_batch, avail_batch, deterministic=True
@@ -288,8 +299,10 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
             actions_np = actions_batch.cpu().numpy().flatten().astype(np.int32)
             left_act_raw = actions_np[:num_agents].tolist()
             right_act_raw = actions_np[num_agents:].tolist()
+            t_policy_acc += (time.perf_counter() - t0)
 
             # 3. Managerial Tactics & Action Modulation Layer
+            t0 = time.perf_counter()
             o_prev = raw_obs[0]
             ball_xy = np.array(o_prev['ball'][:2], dtype=np.float32)
             b_own_prev = o_prev.get('ball_owned_team', -1)
@@ -308,16 +321,22 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
             # 4. Action Mirror Inversion for Right Team
             right_act_mapped = [ACTION_MIRROR_MAP.get(a, a) for a in right_act_tactical]
             combined_actions = left_act + right_act_mapped
+            t_tactical_acc += (time.perf_counter() - t0)
 
             # 5. Step Environment & Record State
+            t0 = time.perf_counter()
             raw_next_obs, _, done, _ = env.step(combined_actions)
+            t_env_step_acc += (time.perf_counter() - t0)
+
             if state_writer is not None:
+                t0 = time.perf_counter()
                 state_writer.append(env.get_state())
+                t_state_archive_acc += (time.perf_counter() - t0)
 
             # 6. Trajectory Recording
             o0 = raw_next_obs[0]
-            l_team = np.asarray(o0['left_team'], dtype=np.float32)
-            r_team = np.asarray(o0['right_team'], dtype=np.float32)
+            l_team = o0['left_team']
+            r_team = o0['right_team']
             recorded_players[step, :11] = l_team
             recorded_players[step, 11:] = r_team
 
@@ -351,7 +370,7 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
                 if ball_player >= 0:
                     last_away_touch = ball_player
 
-            sim_time_sec = step * 0.1
+            sim_time_sec = step * SIM_STEP_SECONDS
             match_min = max(1, min(90, int(sim_time_sec / 60) + 1))
 
             # 8. Rigorous Pass State Machine
@@ -430,7 +449,7 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
                 scorer = home_players[scorer_idx].split('(')[0].strip()
                 events.append({
                     "step": step,
-                    "sim_time": round(step * 0.1, 2),
+                    "sim_time": round(step * SIM_STEP_SECONDS, 2),
                     "minute": match_min,
                     "type": "goal",
                     "team": "home",
@@ -449,7 +468,7 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
                 scorer = away_players[scorer_idx].split('(')[0].strip()
                 events.append({
                     "step": step,
-                    "sim_time": round(step * 0.1, 2),
+                    "sim_time": round(step * SIM_STEP_SECONDS, 2),
                     "minute": match_min,
                     "type": "goal",
                     "team": "away",
@@ -489,6 +508,17 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
     xg_h = max(final_score[0] * 0.35, round(xg_h, 2))
     xg_a = max(final_score[1] * 0.35, round(xg_a, 2))
 
+    tot_sim_time = max(1e-5, time.perf_counter() - t_sim_start)
+    sim_profile = {
+        "total_wall_ms": round(tot_sim_time * 1000, 2),
+        "env_step_ms": round(t_env_step_acc * 1000, 2),
+        "feature_extraction_ms": round(t_feature_acc * 1000, 2),
+        "policy_inference_ms": round(t_policy_acc * 1000, 2),
+        "tactical_modulation_ms": round(t_tactical_acc * 1000, 2),
+        "state_archive_ms": round(t_state_archive_acc * 1000, 2),
+        "steps_per_sec": round(actual_steps / tot_sim_time, 1),
+    }
+
     manifest = MatchManifest(
         match_id=match_id,
         home_team=home_team,
@@ -517,10 +547,11 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
             "feature_schema": "canonical-268-v2",
             "determinism_level": 3,
             "sim_fps": 10.0,
-            "sim_step_seconds": 0.1,
+            "sim_step_seconds": SIM_STEP_SECONDS,
             "scenario": "11_vs_11_kaggle",
             "action_set": "full",
             "state_schema": "grf_chunked_zlib_v2" if state_writer else "none",
+            "profile": sim_profile,
         },
         video_url=f"/recordings/match_{match_id}.mp4",
         created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

@@ -15,13 +15,11 @@ import hashlib
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Iterator, Tuple
 
-from logic.replay_schema import GRF_STATE_SCHEMA_VERSION, REPLAY_FORMAT_VERSION
+from logic.replay_schema import GRF_STATE_SCHEMA_VERSION, REPLAY_FORMAT_VERSION, SIM_STEP_SECONDS, SIM_FPS
 
 MAGIC_HEADER_V1 = b"FOOTY_GRF_STATE_V1\n"
 MAGIC_HEADER_V2 = f"{REPLAY_FORMAT_VERSION}\n".encode("utf-8")
 DEFAULT_CHUNK_SIZE = 200
-SIM_STEP_SECONDS = 0.1
-SIM_FPS = 10.0
 
 
 class ReplayIntegrityError(Exception):

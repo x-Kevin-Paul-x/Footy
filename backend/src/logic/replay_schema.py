@@ -6,6 +6,8 @@ and format identifiers across simulation, archive storage, and replay workers.
 
 from typing import Tuple, FrozenSet
 
+SIM_STEP_SECONDS = 0.1
+SIM_FPS = 10.0
 GRF_STATE_SCHEMA_VERSION = "grf_chunked_zlib_v2"
 REPLAY_FORMAT_VERSION = "FOOTY_GRF_STATE_V2"
 TRAJECTORY_SCHEMA_VERSION = "FOOTY_TRAJECTORY_V2"
