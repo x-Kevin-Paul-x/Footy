@@ -811,5 +811,5 @@ class Team:
         return {
             "total": round(total, 2),
             "breakdown": {k: round(v, 2) for k, v in expenses.items()},
-            "as_percentage_of_budget": round((total / self.weekly_budget) * 100, 1)
+            "as_percentage_of_budget": round((total / self.weekly_budget) * 100, 1) if self.weekly_budget > 0 else 0.0
         }

@@ -193,14 +193,12 @@ def render_from_dump(payload: Dict[str, Any]):
             frame=frame_bgr,
             home_team=home_team,
             away_team=away_team,
-            home_score=curr_score[0],
-            away_score=curr_score[1],
-            match_minute=match_min,
-            is_second_half=is_second_half,
+            score=(curr_score[0], curr_score[1]),
+            match_min=match_min,
             home_bgr=home_bgr,
             away_bgr=away_bgr,
             goal_banner=goal_banner if goal_banner_cd > 0 else None,
-            raw_obs=raw_o
+            is_second_half=is_second_half
         )
         if goal_banner_cd > 0:
             goal_banner_cd -= 1

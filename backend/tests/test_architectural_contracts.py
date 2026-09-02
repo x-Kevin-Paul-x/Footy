@@ -1,7 +1,8 @@
 """
-Static Architecture & Contract Regression Test Suite (Pass 1, Pass 2 & Pass 3).
+Static Architecture & Contract Regression Test Suite (Passes 1, 2 & 3).
 Statically verifies system abstractions, argument contracts, determinism contracts,
-event ledger invariants, database pragmas, state archive schema versioning, and frontend/API route alignment WITHOUT running simulation or WSL subprocesses.
+event ledger invariants, database pragmas, state archive schema versioning, manager financial bounds,
+and frontend/API route alignment WITHOUT running simulation or WSL subprocesses.
 """
 
 import inspect
@@ -119,6 +120,31 @@ def test_database_wal_and_busy_timeout_pragmas():
     src = inspect.getsource(session_mod)
     assert "PRAGMA journal_mode=WAL" in src, "Database engine connect listener must set WAL mode"
     assert "PRAGMA busy_timeout=10000" in src, "Database engine connect listener must set busy_timeout"
+
+
+def test_team_financial_expense_percentage_protection():
+    """Statically inspect Team.calculate_weekly_expenses for division-by-zero protection."""
+    from models.team import Team
+
+    src = inspect.getsource(Team.calculate_weekly_expenses)
+    assert "if self.weekly_budget > 0 else 0.0" in src, "as_percentage_of_budget must protect against weekly_budget == 0"
+
+
+def test_grf_render_worker_draw_hud_arguments():
+    """Statically inspect grf_render_worker.py render_from_dump to ensure draw_hud is called with valid score tuple."""
+    from logic.wsl_workers import grf_render_worker
+
+    src = inspect.getsource(grf_render_worker.render_from_dump)
+    assert "score=(curr_score[0], curr_score[1])" in src, "draw_hud must be called with score tuple argument"
+
+
+def test_policy_backend_interface():
+    """Statically verify PolicyBackend abstract methods and CUDABatchPolicy implementation."""
+    from logic.simulation.policy_backend import PolicyBackend, CUDABatchPolicy
+
+    assert hasattr(PolicyBackend, "evaluate")
+    assert hasattr(PolicyBackend, "reset_match")
+    assert hasattr(CUDABatchPolicy, "get_or_create_rnn_state")
 
 
 def test_grf_state_archive_schema_version_validation():
