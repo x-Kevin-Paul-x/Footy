@@ -67,3 +67,11 @@ class FootyMatchSimulator:
             seed_val=seed_val,
             render_video=render_video,
         )
+
+    def run_match(self, *args, **kwargs) -> Dict[str, Any]:
+        """Forward run_match directly to the underlying GRFNativeRunner."""
+        return self.runner.run_match(*args, **kwargs)
+
+    def render_replay(self, *args, **kwargs) -> Dict[str, Any]:
+        """Forward render_replay directly to the underlying GRFNativeRunner."""
+        return self.runner.render_replay(*args, **kwargs)

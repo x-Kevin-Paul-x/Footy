@@ -23,17 +23,17 @@ _grf_simulator_attempted = False
 def get_grf_simulator():
     """
     Get or initialize the GRF + TiKick match simulator.
-    Returns a GRFNativeRunner which exposes .simulate() (compatible with play_match)
+    Returns a FootyMatchSimulator which exposes .simulate() (compatible with play_match)
     and .run_match() (used directly by the API for on-demand renders).
-    GRFNativeRunner.simulate() runs GRF via WSL with write_full_episode_dumps=True
-    so every match automatically saves a trace for consistent 3D replay later.
+    FootyMatchSimulator acts as the canonical bridge between Footy domain objects
+    (teams, lineups, player attributes) and GRFNativeRunner.
     """
     global _grf_simulator, _grf_simulator_attempted
     if not _grf_simulator_attempted:
         _grf_simulator_attempted = True
         try:
-            from logic.grf_native_runner import GRFNativeRunner
-            runner = GRFNativeRunner()
+            from logic.match_engine_grf import FootyMatchSimulator
+            runner = FootyMatchSimulator()
             if runner.is_available():
                 _grf_simulator = runner
         except Exception as e:
@@ -899,7 +899,11 @@ class Match:
 
                 return summary
             except Exception as e:
-                logger.warning("GRF Simulation error, falling back to heuristic engine: %s", e)
+                from config import ENGINE_MODE
+                if ENGINE_MODE == "GRF":
+                    logger.error("GRF Simulation failed and ENGINE_MODE=='GRF': %s", e)
+                    raise RuntimeError(f"GRF Simulation failed under strict GRF mode: {e}") from e
+                logger.warning("GRF Simulation error, falling back to heuristic engine in AUTO mode: %s", e)
         
         # Simulate 90 minutes + injury time
         injury_time = random.randint(1, 5)

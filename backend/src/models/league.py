@@ -216,10 +216,14 @@ class League:
                             self._ensure_minimum_squad(team, min_players=min_players)
                             self._weekly_team_training(team)
 
+                    import hashlib
                     prepared = []
                     for home_team, away_team in fixtures_batch:
+                        match_id_str = f"match_{self.season_year}_{home_team.team_id}_{away_team.team_id}"
+                        seed_val = int.from_bytes(hashlib.sha256(f"{self.name}_{self.season_year}_{home_team.team_id}_{away_team.team_id}".encode()).digest()[:4], "little")
                         prepared.append({
-                            "match_id": f"match_{self.season_year}_{home_team.team_id}_{away_team.team_id}",
+                            "match_id": match_id_str,
+                            "seed_val": seed_val,
                             "home_team": home_team,
                             "away_team": away_team,
                             "home_team_name": home_team.name,
@@ -245,7 +249,11 @@ class League:
                     return results
             except Exception as e:
                 import logging
-                logging.getLogger(__name__).warning(f"Batch GRF execution error: {e}. Falling back to sequential.")
+                from config import ENGINE_MODE
+                if ENGINE_MODE == "GRF":
+                    logging.getLogger(__name__).error(f"Batch GRF execution error under strict GRF mode: {e}")
+                    raise RuntimeError(f"Batch GRF execution failed under strict GRF mode: {e}") from e
+                logging.getLogger(__name__).warning(f"Batch GRF execution error: {e}. Falling back to sequential heuristic in AUTO mode.")
 
         # Fallback to sequential play_match
         return [self.play_match(home, away) for home, away in fixtures_batch]
@@ -271,10 +279,14 @@ class League:
                                 self._ensure_minimum_squad(team, min_players=min_players)
                                 self._weekly_team_training(team)
 
+                        import hashlib
                         prepared = []
                         for home_team, away_team in fixtures_batch:
+                            match_id_str = f"match_{self.season_year}_{home_team.team_id}_{away_team.team_id}"
+                            seed_val = int.from_bytes(hashlib.sha256(f"{self.name}_{self.season_year}_{home_team.team_id}_{away_team.team_id}".encode()).digest()[:4], "little")
                             prepared.append({
-                                "match_id": f"match_{self.season_year}_{home_team.team_id}_{away_team.team_id}",
+                                "match_id": match_id_str,
+                                "seed_val": seed_val,
                                 "home_team": home_team,
                                 "away_team": away_team,
                                 "home_team_name": home_team.name,
@@ -307,7 +319,11 @@ class League:
                     return all_matchdays_results
             except Exception as e:
                 import logging
-                logging.getLogger(__name__).warning(f"Concurrent GRF execution error: {e}. Falling back.")
+                from config import ENGINE_MODE
+                if ENGINE_MODE == "GRF":
+                    logging.getLogger(__name__).error(f"Concurrent GRF execution error under strict GRF mode: {e}")
+                    raise RuntimeError(f"Concurrent GRF execution failed under strict GRF mode: {e}") from e
+                logging.getLogger(__name__).warning(f"Concurrent GRF execution error: {e}. Falling back to heuristic in AUTO mode.")
 
         return [self.play_matchday(batch) for batch in matchdays_batches]
 
