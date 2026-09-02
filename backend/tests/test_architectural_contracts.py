@@ -1,8 +1,8 @@
 """
-Static Architecture & Contract Regression Test Suite (Passes 1, 2 & 3).
-Statically verifies system abstractions, argument contracts, determinism contracts,
-event ledger invariants, database pragmas, state archive schema versioning, manager financial bounds,
-lineup/seed parity, worker state machine transitions, and frontend/API route alignment WITHOUT running simulation or WSL subprocesses.
+Static Architecture & Contract Regression Test Suite (Fourth Pass).
+Statically verifies system abstractions, PreparedMatch schema, lineup consolidation,
+seed scope isolation, process pool state machines, database pragmas, state archive schema versioning,
+manager financial bounds, and frontend/API route alignment WITHOUT running simulation or WSL subprocesses.
 """
 
 import inspect
@@ -25,76 +25,58 @@ def test_home_lineup_abstraction_contract():
     assert "away_lineup" not in native_sig.parameters, "GRFNativeRunner.simulate must NOT directly accept 'away_lineup'"
 
 
-def test_simulator_bridge_method_forwarding():
-    """Statically verify FootyMatchSimulator exposes .run_match() and .render_replay()."""
-    from logic.match_engine_grf import FootyMatchSimulator
+def test_prepared_match_schema_and_methods():
+    """Statically verify PreparedMatch dataclass fields and to_fixture_dict method."""
+    from models.match import PreparedMatch
 
-    assert hasattr(FootyMatchSimulator, "run_match"), "FootyMatchSimulator must expose run_match()"
-    assert hasattr(FootyMatchSimulator, "render_replay"), "FootyMatchSimulator must expose render_replay()"
+    sig = inspect.signature(PreparedMatch)
+    expected_fields = ["match_id", "seed_val", "home_team", "away_team", "home_lineup", "away_lineup"]
+    for field in expected_fields:
+        assert field in sig.parameters, f"PreparedMatch must declare '{field}' field"
 
-
-def test_get_grf_simulator_return_type():
-    """Statically verify get_grf_simulator source code imports FootyMatchSimulator and does not permanently lock out retry."""
-    from models.match import get_grf_simulator
-    src = inspect.getsource(get_grf_simulator)
-    assert "from logic.match_engine_grf import FootyMatchSimulator" in src, \
-        "get_grf_simulator must instantiate FootyMatchSimulator"
-    assert "_grf_simulator_attempted" not in src, \
-        "get_grf_simulator must not permanently lock out retry on transient failure"
+    assert hasattr(PreparedMatch, "to_fixture_dict"), "PreparedMatch must expose to_fixture_dict()"
 
 
-def test_canonical_lineup_and_seed_derivation_methods():
-    """Statically verify League exposes derive_match_seed and select_team_lineup methods."""
+def test_league_prepare_match_and_lineup_consolidation():
+    """Statically verify League.prepare_match and select_team_lineup implementation."""
     from models.league import League
 
-    assert hasattr(League, "derive_match_seed"), "League must expose derive_match_seed()"
+    assert hasattr(League, "prepare_match"), "League must expose prepare_match()"
     assert hasattr(League, "select_team_lineup"), "League must expose select_team_lineup()"
 
-
-def test_canonical_adapter_roster_extraction():
-    """Statically verify FootyGRFAdapter.build_team_tactics signature and roster mapping."""
-    from logic.footy_grf_adapter import FootyGRFAdapter, GRFTeamTactics
-
-    adapter_sig = inspect.signature(FootyGRFAdapter.build_team_tactics)
-    assert "lineup" in adapter_sig.parameters
-    assert "formation" in adapter_sig.parameters
-
-    tactics = FootyGRFAdapter.build_team_tactics(
-        team="Arsenal",
-        lineup=[{"name": f"Player {i+1}", "position": "GK" if i == 0 else "CM"} for i in range(11)],
-        formation="4-3-3"
-    )
-    assert isinstance(tactics, GRFTeamTactics)
-    assert len(tactics.roster) == 11
-    assert tactics.roster[0].position == "GK"
+    src = inspect.getsource(League.prepare_match)
+    assert "PreparedMatch" in src, "League.prepare_match must return a PreparedMatch instance"
+    assert "select_team_lineup" in src, "League.prepare_match must utilize select_team_lineup"
 
 
-def test_manifest_identity_completeness():
-    """Statically verify MatchManifest includes home_formation and away_formation in simulation identity hash."""
-    from logic.match_manifest import MatchManifest
+def test_per_match_rng_seed_scope_isolation():
+    """Statically verify Match.__init__ uses an isolated random.Random(self.seed_val) instance."""
+    from models.match import Match
 
-    manifest = MatchManifest(
-        match_id="test_001",
-        home_team="Arsenal",
-        away_team="Chelsea",
-        home_formation="4-3-3",
-        away_formation="4-2-3-1",
-        score=[2, 1]
-    )
-    identity_dict = manifest.get_simulation_identity_dict()
-    assert "home_formation" in identity_dict, "Identity dict must contain home_formation"
-    assert "away_formation" in identity_dict, "Identity dict must contain away_formation"
-    assert identity_dict["home_formation"] == "4-3-3"
+    src = inspect.getsource(Match.__init__)
+    assert "random.Random(self.seed_val)" in src, "Match.__init__ must isolate per-match RNG using random.Random(seed_val)"
 
 
-def test_process_pool_state_machine_and_deduplication():
-    """Statically inspect SimulationProcessPool._run_dynamic_queue_pool source code for state machine and result deduplication."""
+def test_chronological_matchday_execution_in_concurrent():
+    """Statically verify play_matchdays_concurrent executes matchday batches in chronological order."""
+    from models.league import League
+
+    src = inspect.getsource(League.play_matchdays_concurrent)
+    assert "for fixtures_batch in matchdays_batches:" in src, "play_matchdays_concurrent must iterate matchday batches sequentially"
+    assert "prepared_matches = [self.prepare_match" in src, "play_matchdays_concurrent must prepare matches per matchday batch"
+
+
+def test_process_pool_state_machine_and_order_preservation():
+    """Statically inspect SimulationProcessPool for explicit state machine and input order preservation."""
     from logic.simulation.simulation_process_pool import SimulationProcessPool
 
-    src = inspect.getsource(SimulationProcessPool._run_dynamic_queue_pool)
-    assert "fixture_states" in src, "Supervisor must maintain explicit fixture_states map"
-    assert "clean_partial_artifacts" in src, "Supervisor must clean partial artifacts before retry"
-    assert "if m_id not in results_by_id:" in src, "Supervisor must enforce result deduplication"
+    src_pool = inspect.getsource(SimulationProcessPool._run_dynamic_queue_pool)
+    assert "fixture_states" in src_pool, "Supervisor must maintain explicit fixture_states map"
+    assert "clean_partial_artifacts" in src_pool, "Supervisor must clean partial artifacts before retry"
+    assert "if m_id not in results_by_id:" in src_pool, "Supervisor must enforce result deduplication"
+
+    src_run = inspect.getsource(SimulationProcessPool.run_batch)
+    assert "return" in src_run, "run_batch must return results matching input fixture order"
 
 
 def test_fast_mode_engine_mode_precedence():

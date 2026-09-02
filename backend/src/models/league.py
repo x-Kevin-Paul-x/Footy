@@ -121,6 +121,50 @@ class League:
         positions.extend(["ST", "ST"][:len(forwards[:2])])
         return lineup[:11], positions[:11]
 
+    def prepare_match(self, home_team, away_team, match_id=None, seed_val=None):
+        """Canonical match-preparation path returning a typed PreparedMatch dataclass."""
+        from models.match import PreparedMatch
+        from logic.footy_grf_adapter import FootyGRFAdapter
+
+        m_id = match_id or f"match_{self.season_year}_{home_team.team_id}_{away_team.team_id}"
+        s_val = seed_val if seed_val is not None else self.derive_match_seed(home_team, away_team)
+
+        h_lineup, h_pos = self.select_team_lineup(home_team, opponent=away_team)
+        a_lineup, a_pos = self.select_team_lineup(away_team, opponent=home_team)
+
+        def select_matchday_bench(team, lineup, max_bench=7):
+            available = [p for p in team.players if p not in lineup and getattr(p, "is_available_for_selection", lambda: True)()]
+            available.sort(key=lambda p: (p.get_overall_rating() if hasattr(p, "get_overall_rating") and callable(p.get_overall_rating) else getattr(p, "potential", 70)), reverse=True)
+            return available[:max_bench]
+
+        h_bench = select_matchday_bench(home_team, h_lineup)
+        a_bench = select_matchday_bench(away_team, a_lineup)
+
+        h_tactics = FootyGRFAdapter.build_team_tactics(home_team, lineup=h_lineup, positions=h_pos)
+        a_tactics = FootyGRFAdapter.build_team_tactics(away_team, lineup=a_lineup, positions=a_pos)
+
+        h_profiles = [p.to_dict() for p in h_tactics.roster]
+        a_profiles = [p.to_dict() for p in a_tactics.roster]
+
+        return PreparedMatch(
+            match_id=m_id,
+            seed_val=s_val,
+            home_team=home_team,
+            away_team=away_team,
+            home_lineup=h_lineup,
+            away_lineup=a_lineup,
+            home_positions=h_pos,
+            away_positions=a_pos,
+            home_bench=h_bench,
+            away_bench=a_bench,
+            home_formation=h_tactics.formation,
+            away_formation=a_tactics.formation,
+            home_tactics=h_tactics,
+            away_tactics=a_tactics,
+            home_profiles=h_profiles,
+            away_profiles=a_profiles,
+        )
+
     def play_match(self, home_team, away_team):
         """Play a single match between two teams with league-level emergency squad intervention and manager learning."""
         min_players = 11
@@ -191,12 +235,11 @@ class League:
             # All training handled by coaches only
             self._weekly_team_training(team)
 
-        # Play the match
-        match = Match(home_team, away_team)
-        seed_val = self.derive_match_seed(home_team, away_team)
-        match_id_str = f"match_{self.season_year}_{home_team.team_id}_{away_team.team_id}"
+        # Play the match using canonical PreparedMatch
+        prepared = self.prepare_match(home_team, away_team)
+        match = Match(home_team, away_team, prepared_match=prepared, seed_val=prepared.seed_val)
         try:
-            result = match.play_match(match_id=match_id_str, seed_val=seed_val)
+            result = match.play_match(match_id=prepared.match_id, seed_val=prepared.seed_val)
             # Post-match player updates: suspensions and injury recovery
             for team in [home_team, away_team]:
                 for player in team.players:
@@ -253,40 +296,13 @@ class League:
                             self._ensure_minimum_squad(team, min_players=min_players)
                             self._weekly_team_training(team)
 
-                    from logic.footy_grf_adapter import FootyGRFAdapter
-                    prepared = []
-                    for home_team, away_team in fixtures_batch:
-                        match_id_str = f"match_{self.season_year}_{home_team.team_id}_{away_team.team_id}"
-                        seed_val = self.derive_match_seed(home_team, away_team)
-
-                        h_lineup, h_pos = self.select_team_lineup(home_team, opponent=away_team)
-                        a_lineup, a_pos = self.select_team_lineup(away_team, opponent=home_team)
-
-                        h_tactics = FootyGRFAdapter.build_team_tactics(home_team, lineup=h_lineup, positions=h_pos)
-                        a_tactics = FootyGRFAdapter.build_team_tactics(away_team, lineup=a_lineup, positions=a_pos)
-
-                        prepared.append({
-                            "match_id": match_id_str,
-                            "seed_val": seed_val,
-                            "home_team": home_team,
-                            "away_team": away_team,
-                            "home_team_name": home_team.name,
-                            "away_team_name": away_team.name,
-                            "home_formation": h_tactics.formation,
-                            "away_formation": a_tactics.formation,
-                            "home_players": [p.name for p in h_tactics.roster],
-                            "away_players": [p.name for p in a_tactics.roster],
-                            "home_profiles": [p.to_dict() for p in h_tactics.roster],
-                            "away_profiles": [p.to_dict() for p in a_tactics.roster],
-                            "home_lineup_objs": h_lineup,
-                            "away_lineup_objs": a_lineup,
-                        })
-
-                    batch_results = runner.run_matchday(prepared)
+                    prepared_matches = [self.prepare_match(home_team, away_team) for home_team, away_team in fixtures_batch]
+                    fixtures_payload = [p.to_fixture_dict() for p in prepared_matches]
+                    batch_results = runner.run_matchday(fixtures_payload)
                     results = []
                     for idx, res in enumerate(batch_results):
                         home_team, away_team = fixtures_batch[idx]
-                        prep_fix = prepared[idx]
+                        prep = prepared_matches[idx]
                         for team in [home_team, away_team]:
                             for player in team.players:
                                 if getattr(player, "suspended_matches", 0) > 0:
@@ -296,8 +312,8 @@ class League:
                         self.update_standings(home_team, away_team, res)
                         res['home_team_id'] = home_team.team_id
                         res['away_team_id'] = away_team.team_id
-                        res['home_lineup'] = [{"name": p.name, "position": getattr(p, "position", "ST")} for p in prep_fix["home_lineup_objs"]]
-                        res['away_lineup'] = [{"name": p.name, "position": getattr(p, "position", "ST")} for p in prep_fix["away_lineup_objs"]]
+                        res['home_lineup'] = [{"name": p.name, "position": getattr(p, "position", "ST")} for p in prep.home_lineup]
+                        res['away_lineup'] = [{"name": p.name, "position": getattr(p, "position", "ST")} for p in prep.away_lineup]
                         results.append(res)
                     return results
             except Exception as e:
@@ -313,8 +329,8 @@ class League:
 
     def play_matchdays_concurrent(self, matchdays_batches, max_workers=2):
         """
-        Play multiple matchdays (e.g. 2 matchdays = 20 fixtures) simultaneously
-        across independent parallel worker processes.
+        Play multiple matchdays sequentially in strict chronological order,
+        parallelizing only independent fixtures belonging to the SAME matchday.
         """
         from config import ENGINE_MODE
         if ENGINE_MODE in ["GRF", "AUTO"]:
@@ -322,9 +338,11 @@ class League:
                 from logic.grf_batch_runner import GRFBatchRunner
                 runner = GRFBatchRunner()
                 if runner.is_available():
-                    all_prepared = []
+                    all_matchdays_results = []
                     min_players = 11
+
                     for fixtures_batch in matchdays_batches:
+                        # Pre-match preparation strictly for THIS matchday
                         for home_team, away_team in fixtures_batch:
                             for team in [home_team, away_team]:
                                 team.generate_youth_players_weekly(count=3)
@@ -332,45 +350,14 @@ class League:
                                 self._ensure_minimum_squad(team, min_players=min_players)
                                 self._weekly_team_training(team)
 
-                        from logic.footy_grf_adapter import FootyGRFAdapter
-                        prepared = []
-                        for home_team, away_team in fixtures_batch:
-                            match_id_str = f"match_{self.season_year}_{home_team.team_id}_{away_team.team_id}"
-                            seed_val = self.derive_match_seed(home_team, away_team)
+                        prepared_matches = [self.prepare_match(home_team, away_team) for home_team, away_team in fixtures_batch]
+                        fixtures_payload = [p.to_fixture_dict() for p in prepared_matches]
 
-                            h_lineup, h_pos = self.select_team_lineup(home_team, opponent=away_team)
-                            a_lineup, a_pos = self.select_team_lineup(away_team, opponent=home_team)
-
-                            h_tactics = FootyGRFAdapter.build_team_tactics(home_team, lineup=h_lineup, positions=h_pos)
-                            a_tactics = FootyGRFAdapter.build_team_tactics(away_team, lineup=a_lineup, positions=a_pos)
-
-                            prepared.append({
-                                "match_id": match_id_str,
-                                "seed_val": seed_val,
-                                "home_team": home_team,
-                                "away_team": away_team,
-                                "home_team_name": home_team.name,
-                                "away_team_name": away_team.name,
-                                "home_formation": h_tactics.formation,
-                                "away_formation": a_tactics.formation,
-                                "home_players": [p.name for p in h_tactics.roster],
-                                "away_players": [p.name for p in a_tactics.roster],
-                                "home_profiles": [p.to_dict() for p in h_tactics.roster],
-                                "away_profiles": [p.to_dict() for p in a_tactics.roster],
-                                "home_lineup_objs": h_lineup,
-                                "away_lineup_objs": a_lineup,
-                            })
-                        all_prepared.append(prepared)
-
-                    concurrent_results = runner.run_matchdays_concurrent(all_prepared, max_workers=max_workers)
-                    all_matchdays_results = []
-                    for md_idx, batch_results in enumerate(concurrent_results):
-                        fixtures_batch = matchdays_batches[md_idx]
-                        prepared_batch = all_prepared[md_idx]
+                        batch_results = runner.run_matchday(fixtures_payload)
                         results = []
                         for idx, res in enumerate(batch_results):
                             home_team, away_team = fixtures_batch[idx]
-                            prep_fix = prepared_batch[idx]
+                            prep = prepared_matches[idx]
                             for team in [home_team, away_team]:
                                 for player in team.players:
                                     if getattr(player, "suspended_matches", 0) > 0:
@@ -380,10 +367,11 @@ class League:
                             self.update_standings(home_team, away_team, res)
                             res['home_team_id'] = home_team.team_id
                             res['away_team_id'] = away_team.team_id
-                            res['home_lineup'] = [{"name": p.name, "position": getattr(p, "position", "ST")} for p in prep_fix["home_lineup_objs"]]
-                            res['away_lineup'] = [{"name": p.name, "position": getattr(p, "position", "ST")} for p in prep_fix["away_lineup_objs"]]
+                            res['home_lineup'] = [{"name": p.name, "position": getattr(p, "position", "ST")} for p in prep.home_lineup]
+                            res['away_lineup'] = [{"name": p.name, "position": getattr(p, "position", "ST")} for p in prep.away_lineup]
                             results.append(res)
                         all_matchdays_results.append(results)
+
                     return all_matchdays_results
             except Exception as e:
                 import logging

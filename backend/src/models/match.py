@@ -86,17 +86,67 @@ class Substitution:
     player_in: str
     reason: str = "tactical"
 
+@dataclass
+class PreparedMatch:
+    match_id: str
+    seed_val: int
+    home_team: Any
+    away_team: Any
+    home_lineup: List[Any]
+    away_lineup: List[Any]
+    home_positions: List[str]
+    away_positions: List[str]
+    home_bench: List[Any]
+    away_bench: List[Any]
+    home_formation: str
+    away_formation: str
+    home_tactics: Any
+    away_tactics: Any
+    home_profiles: List[Dict[str, Any]]
+    away_profiles: List[Dict[str, Any]]
+
+    def to_fixture_dict(self) -> Dict[str, Any]:
+        h_name = getattr(self.home_team, "name", str(self.home_team))
+        a_name = getattr(self.away_team, "name", str(self.away_team))
+        return {
+            "match_id": self.match_id,
+            "seed_val": self.seed_val,
+            "home_team": self.home_team,
+            "away_team": self.away_team,
+            "home_team_name": h_name,
+            "away_team_name": a_name,
+            "home_formation": self.home_formation,
+            "away_formation": self.away_formation,
+            "home_players": [p.get("name", "") if isinstance(p, dict) else getattr(p, "name", str(p)) for p in self.home_profiles],
+            "away_players": [p.get("name", "") if isinstance(p, dict) else getattr(p, "name", str(p)) for p in self.away_profiles],
+            "home_profiles": self.home_profiles,
+            "away_profiles": self.away_profiles,
+            "home_lineup_objs": self.home_lineup,
+            "away_lineup_objs": self.away_lineup,
+            "home_bench_objs": self.home_bench,
+            "away_bench_objs": self.away_bench,
+        }
+
 class Match:
-    def __init__(self, home_team, away_team):
+    def __init__(self, home_team, away_team, prepared_match: Optional[PreparedMatch] = None, seed_val: Optional[int] = None):
         """
         Initialize a match between two teams.
         
         Args:
             home_team (Team): Home team
             away_team (Team): Away team
+            prepared_match (PreparedMatch, optional): Canonical pre-constructed match inputs
+            seed_val (int, optional): Deterministic match seed
         """
         self.home_team = home_team
         self.away_team = away_team
+        self.prepared_match = prepared_match
+        self.seed_val = seed_val or (prepared_match.seed_val if prepared_match else None)
+        self.match_id = prepared_match.match_id if prepared_match else None
+
+        # Isolated per-match RNG seeded deterministically by seed_val
+        match_rng = random.Random(self.seed_val) if self.seed_val is not None else random
+
         self.score = [0, 0]  # [home, away]
         self.possession = [0, 0]  # Possession time in minutes
         self.shots = [0, 0]  # [home shots, away shots]
@@ -115,11 +165,10 @@ class Match:
         self.xg = [0.0, 0.0]  # [home_xg, away_xg] Expected Goals tracking
         
         # Enhanced match attributes
-        # Dynamic home advantage based on stadium capacity & attendance
         stadium_cap = getattr(home_team, "stadium_capacity", 30000)
         self.home_advantage = 1.05 + min(0.10, (stadium_cap / 80000) * 0.08)
-        self.intensity = random.uniform(0.8, 1.2)
-        self.weather = random.choice(["sunny", "rainy", "windy", "snowy"])
+        self.intensity = match_rng.uniform(0.8, 1.2)
+        self.weather = match_rng.choice(["sunny", "rainy", "windy", "snowy"])
         
         # Substitution tracking
         self.home_substitutions_made = 0
@@ -130,13 +179,21 @@ class Match:
         self.home_players_sent_off = []
         self.away_players_sent_off = []
         
-        # Initialize lineups
-        self.home_lineup = []
-        self.home_positions = []
-        self.home_bench = []
-        self.away_lineup = []
-        self.away_positions = []
-        self.away_bench = []
+        # Initialize lineups from prepared match if available
+        if prepared_match:
+            self.home_lineup = list(prepared_match.home_lineup)
+            self.home_positions = list(prepared_match.home_positions)
+            self.home_bench = list(prepared_match.home_bench)
+            self.away_lineup = list(prepared_match.away_lineup)
+            self.away_positions = list(prepared_match.away_positions)
+            self.away_bench = list(prepared_match.away_bench)
+        else:
+            self.home_lineup = []
+            self.home_positions = []
+            self.home_bench = []
+            self.away_lineup = []
+            self.away_positions = []
+            self.away_bench = []
         
         # Updated weather effects (more balanced)
         self.weather_effects = {
@@ -776,31 +833,35 @@ class Match:
         should_use_grf = use_grf or (ENGINE_MODE in ["GRF", "AUTO"])
         grf_sim = get_grf_simulator() if should_use_grf else None
 
-        # Select lineups using improved selection
-        if self.home_team.manager:
-            self.home_lineup, self.home_positions = self.home_team.manager.select_lineup(
-                self.home_team.players,
-                opponent=self.away_team
-            )
-        else:
-            self.home_lineup, self.home_positions = self._select_default_lineup(self.home_team)
+        # Select lineups if not already provided via PreparedMatch
+        if not self.home_lineup:
+            if self.home_team.manager:
+                self.home_lineup, self.home_positions = self.home_team.manager.select_lineup(
+                    self.home_team.players,
+                    opponent=self.away_team
+                )
+            else:
+                self.home_lineup, self.home_positions = self._select_default_lineup(self.home_team)
 
-        if self.away_team.manager:
-            self.away_lineup, self.away_positions = self.away_team.manager.select_lineup(
-                self.away_team.players,
-                opponent=self.home_team
-            )
-        else:
-            self.away_lineup, self.away_positions = self._select_default_lineup(self.away_team)
+        if not self.away_lineup:
+            if self.away_team.manager:
+                self.away_lineup, self.away_positions = self.away_team.manager.select_lineup(
+                    self.away_team.players,
+                    opponent=self.home_team
+                )
+            else:
+                self.away_lineup, self.away_positions = self._select_default_lineup(self.away_team)
 
-        # Create official matchday bench (7-9 named substitutes)
+        # Create official matchday bench if not already provided
         def select_matchday_bench(team, lineup, max_bench=7):
             available = [p for p in team.players if p not in lineup and p.is_available_for_selection()]
             available.sort(key=lambda p: (p.get_overall_rating() if hasattr(p, "get_overall_rating") and callable(p.get_overall_rating) else getattr(p, "potential", 70)), reverse=True)
             return available[:max_bench]
 
-        self.home_bench = select_matchday_bench(self.home_team, self.home_lineup, max_bench=7)
-        self.away_bench = select_matchday_bench(self.away_team, self.away_lineup, max_bench=7)
+        if not self.home_bench:
+            self.home_bench = select_matchday_bench(self.home_team, self.home_lineup, max_bench=7)
+        if not self.away_bench:
+            self.away_bench = select_matchday_bench(self.away_team, self.away_lineup, max_bench=7)
 
         # Validate lineups
         self.home_lineup, self.home_positions = self._validate_lineup(self.home_lineup, self.home_positions, self.home_team)
