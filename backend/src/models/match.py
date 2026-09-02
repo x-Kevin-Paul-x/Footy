@@ -27,18 +27,21 @@ def get_grf_simulator():
     and .run_match() (used directly by the API for on-demand renders).
     FootyMatchSimulator acts as the canonical bridge between Footy domain objects
     (teams, lineups, player attributes) and GRFNativeRunner.
+    Does not permanently cache transient initialization failures.
     """
-    global _grf_simulator, _grf_simulator_attempted
-    if not _grf_simulator_attempted:
-        _grf_simulator_attempted = True
-        try:
-            from logic.match_engine_grf import FootyMatchSimulator
-            runner = FootyMatchSimulator()
-            if runner.is_available():
-                _grf_simulator = runner
-        except Exception as e:
-            logger.warning("GRF simulator not available in current runtime: %s", e)
-    return _grf_simulator
+    global _grf_simulator
+    if _grf_simulator is not None:
+        return _grf_simulator
+
+    try:
+        from logic.match_engine_grf import FootyMatchSimulator
+        runner = FootyMatchSimulator()
+        if runner.is_available():
+            _grf_simulator = runner
+            return _grf_simulator
+    except Exception as e:
+        logger.warning("GRF simulator not available in current runtime: %s", e)
+    return None
 
 def get_match_predictor():
     """Get or initialize the match predictor for fast mode."""
@@ -748,7 +751,7 @@ class Match:
         
         self.minute += 1
     
-    def play_match(self, use_grf: bool = False, render_video: bool = False, match_id: Optional[str] = None):
+    def play_match(self, use_grf: bool = False, render_video: bool = False, match_id: Optional[str] = None, seed_val: Optional[int] = None):
         """
         Simulate the entire match with enhanced features.
         Supports Fast Heuristic Mode, Match Predictor, and High-Fidelity GRF + TiKick Multi-Agent Simulation.
@@ -756,13 +759,20 @@ class Match:
         Returns:
             dict: Match statistics and events
         """
-        # FAST_MODE: Use proxy model for quick prediction during RL training
-        if FAST_MODE:
+        from config import ENGINE_MODE
+
+        # ENGINE_MODE="GRF" takes precedence and guarantees strict GRF simulation
+        if ENGINE_MODE == "GRF":
+            fast_prediction_enabled = False
+        else:
+            fast_prediction_enabled = FAST_MODE
+
+        # FAST_MODE: Use proxy model for quick prediction during RL training (unless strict GRF mode is active)
+        if fast_prediction_enabled:
             predictor = get_match_predictor()
             if predictor:
                 return self._fast_mode_prediction(predictor)
         
-        from config import ENGINE_MODE
         should_use_grf = use_grf or (ENGINE_MODE in ["GRF", "AUTO"])
         grf_sim = get_grf_simulator() if should_use_grf else None
 
@@ -814,6 +824,7 @@ class Match:
                     match_id=match_id,
                     home_lineup=self.home_lineup,
                     away_lineup=self.away_lineup,
+                    seed_val=seed_val,
                 )
                 self.score = grf_res["score"]
                 self.xg = grf_res.get("xg", [0.0, 0.0])

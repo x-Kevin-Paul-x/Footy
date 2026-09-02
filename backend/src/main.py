@@ -658,6 +658,13 @@ def simulate_season_with_transfers(premier_league, transfer_market):
             # Instantly sync updated league standings, team records, and player stats after every matchday
             sync_simulation_state_to_db(premier_league, transfer_market)
 
+    # Assert season fixture completeness
+    if matches_played != total_matches:
+        raise RuntimeError(
+            f"Season simulation incomplete for {premier_league.season_year}: "
+            f"played {matches_played}/{total_matches} expected fixtures."
+        )
+
     # Process contract expiries at end of season
     expired_contracts = transfer_market.process_contract_expiries(premier_league.teams)
     if expired_contracts > 0:

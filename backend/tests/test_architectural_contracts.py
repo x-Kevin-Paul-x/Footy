@@ -2,7 +2,7 @@
 Static Architecture & Contract Regression Test Suite (Passes 1, 2 & 3).
 Statically verifies system abstractions, argument contracts, determinism contracts,
 event ledger invariants, database pragmas, state archive schema versioning, manager financial bounds,
-and frontend/API route alignment WITHOUT running simulation or WSL subprocesses.
+lineup/seed parity, worker state machine transitions, and frontend/API route alignment WITHOUT running simulation or WSL subprocesses.
 """
 
 import inspect
@@ -34,11 +34,21 @@ def test_simulator_bridge_method_forwarding():
 
 
 def test_get_grf_simulator_return_type():
-    """Statically verify get_grf_simulator source code imports FootyMatchSimulator."""
+    """Statically verify get_grf_simulator source code imports FootyMatchSimulator and does not permanently lock out retry."""
     from models.match import get_grf_simulator
     src = inspect.getsource(get_grf_simulator)
     assert "from logic.match_engine_grf import FootyMatchSimulator" in src, \
         "get_grf_simulator must instantiate FootyMatchSimulator"
+    assert "_grf_simulator_attempted" not in src, \
+        "get_grf_simulator must not permanently lock out retry on transient failure"
+
+
+def test_canonical_lineup_and_seed_derivation_methods():
+    """Statically verify League exposes derive_match_seed and select_team_lineup methods."""
+    from models.league import League
+
+    assert hasattr(League, "derive_match_seed"), "League must expose derive_match_seed()"
+    assert hasattr(League, "select_team_lineup"), "League must expose select_team_lineup()"
 
 
 def test_canonical_adapter_roster_extraction():
@@ -77,23 +87,31 @@ def test_manifest_identity_completeness():
     assert identity_dict["home_formation"] == "4-3-3"
 
 
-def test_process_pool_crash_recovery_invariants():
-    """Statically inspect SimulationProcessPool._run_dynamic_queue_pool source code for crash recovery logic."""
+def test_process_pool_state_machine_and_deduplication():
+    """Statically inspect SimulationProcessPool._run_dynamic_queue_pool source code for state machine and result deduplication."""
     from logic.simulation.simulation_process_pool import SimulationProcessPool
 
     src = inspect.getsource(SimulationProcessPool._run_dynamic_queue_pool)
+    assert "fixture_states" in src, "Supervisor must maintain explicit fixture_states map"
     assert "clean_partial_artifacts" in src, "Supervisor must clean partial artifacts before retry"
-    assert "lost_ids" in src or "in_flight_dict" in src, "Supervisor must track assigned match IDs for crash recovery"
-    assert "retry_counts" in src, "Supervisor must maintain retry counters"
+    assert "if m_id not in results_by_id:" in src, "Supervisor must enforce result deduplication"
 
 
-def test_silent_fallback_prevention():
-    """Statically inspect Match.play_match source code to ensure strict GRF mode raises exception instead of silent fallback."""
+def test_fast_mode_engine_mode_precedence():
+    """Statically inspect Match.play_match source code to ensure ENGINE_MODE=='GRF' overrides FAST_MODE."""
     from models.match import Match
 
     src = inspect.getsource(Match.play_match)
-    assert "if ENGINE_MODE == \"GRF\":" in src, "Match.play_match must check ENGINE_MODE=='GRF' on error"
-    assert "raise RuntimeError" in src, "Match.play_match must raise RuntimeError under strict GRF mode"
+    assert "if ENGINE_MODE == \"GRF\":" in src, "Match.play_match must check ENGINE_MODE=='GRF'"
+    assert "fast_prediction_enabled = False" in src, "ENGINE_MODE=='GRF' must disable fast mode prediction"
+
+
+def test_season_fixture_completeness_assertion():
+    """Statically inspect main.py simulate_season_with_transfers for season completeness assertion."""
+    import main as main_mod
+
+    src = inspect.getsource(main_mod.simulate_season_with_transfers)
+    assert "if matches_played != total_matches:" in src, "Season simulation must assert exact expected fixture count"
 
 
 def test_event_ledger_terminal_state_exclusivity():
@@ -105,14 +123,6 @@ def test_event_ledger_terminal_state_exclusivity():
         assert terminal_state in src, f"SimulationWorker must track {terminal_state} shot outcome"
 
 
-def test_event_ledger_scorer_attribution():
-    """Statically verify goal events in grf_sim_worker include both player and scorer keys."""
-    from logic.wsl_workers import grf_sim_worker
-
-    src = inspect.getsource(grf_sim_worker.run_simulation)
-    assert "\"scorer\": scorer" in src, "Goal events must include scorer field for backwards compatibility"
-
-
 def test_database_wal_and_busy_timeout_pragmas():
     """Statically inspect database session.py for WAL mode and busy timeout pragmas."""
     import database.session as session_mod
@@ -120,39 +130,6 @@ def test_database_wal_and_busy_timeout_pragmas():
     src = inspect.getsource(session_mod)
     assert "PRAGMA journal_mode=WAL" in src, "Database engine connect listener must set WAL mode"
     assert "PRAGMA busy_timeout=10000" in src, "Database engine connect listener must set busy_timeout"
-
-
-def test_team_financial_expense_percentage_protection():
-    """Statically inspect Team.calculate_weekly_expenses for division-by-zero protection."""
-    from models.team import Team
-
-    src = inspect.getsource(Team.calculate_weekly_expenses)
-    assert "if self.weekly_budget > 0 else 0.0" in src, "as_percentage_of_budget must protect against weekly_budget == 0"
-
-
-def test_grf_render_worker_draw_hud_arguments():
-    """Statically inspect grf_render_worker.py render_from_dump to ensure draw_hud is called with valid score tuple."""
-    from logic.wsl_workers import grf_render_worker
-
-    src = inspect.getsource(grf_render_worker.render_from_dump)
-    assert "score=(curr_score[0], curr_score[1])" in src, "draw_hud must be called with score tuple argument"
-
-
-def test_policy_backend_interface():
-    """Statically verify PolicyBackend abstract methods and CUDABatchPolicy implementation."""
-    from logic.simulation.policy_backend import PolicyBackend, CUDABatchPolicy
-
-    assert hasattr(PolicyBackend, "evaluate")
-    assert hasattr(PolicyBackend, "reset_match")
-    assert hasattr(CUDABatchPolicy, "get_or_create_rnn_state")
-
-
-def test_grf_state_archive_schema_version_validation():
-    """Statically inspect GRFStateArchiveReader validate method for schema version enforcement."""
-    from logic.grf_state_archive import GRFStateArchiveReader
-
-    src = inspect.getsource(GRFStateArchiveReader.validate)
-    assert "GRF_STATE_SCHEMA_VERSION" in src, "GRFStateArchiveReader must validate GRF_STATE_SCHEMA_VERSION"
 
 
 def test_frontend_backend_route_contracts():

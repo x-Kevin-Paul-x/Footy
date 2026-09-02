@@ -250,6 +250,11 @@ class SimulationProcessPool:
         max_steps: int,
         replay_mode: ReplayMode
     ) -> List[Dict[str, Any]]:
+        """
+        Executes centralized GPU/CPU batched inference under a Fail-Fast fault contract.
+        If any worker pipe disconnects, times out, or raises an error, the batch immediately aborts,
+        cleans up all child processes, and raises a descriptive RuntimeError.
+        """
         ctx = mp.get_context("spawn")
         manager = ctx.Manager()
         in_flight_dict = manager.dict()
@@ -289,9 +294,9 @@ class SimulationProcessPool:
             p.start()
 
         fixtures_by_id = {str(f["match_id"]): f for f in fixtures}
+        fixture_states = {str(f["match_id"]): "QUEUED" for f in fixtures}
         retry_counts = {str(f["match_id"]): 0 for f in fixtures}
         results_by_id = {}
-        completed_count = 0
         max_retries = 2
 
         def clean_partial_artifacts(fix: Dict[str, Any]):
@@ -304,7 +309,13 @@ class SimulationProcessPool:
                         pass
 
         try:
-            while completed_count < num_fixtures:
+            while len(results_by_id) < num_fixtures:
+                # Synchronize in-flight worker states with fixture_states
+                for w_idx in range(len(processes)):
+                    curr_inflight = in_flight_dict.get(w_idx)
+                    if curr_inflight and curr_inflight in fixture_states and fixture_states[curr_inflight] != "SUCCESS":
+                        fixture_states[curr_inflight] = f"RUNNING({w_idx})"
+
                 try:
                     msg = result_queue.get(timeout=0.5)
                 except Exception:
@@ -313,23 +324,21 @@ class SimulationProcessPool:
                         if not p.is_alive() and p.exitcode != 0:
                             lost_m_id = in_flight_dict.get(idx)
 
-                            # Fallback check: find any uncompleted match not currently in_flight
                             lost_ids = []
                             if lost_m_id and lost_m_id in fixtures_by_id and lost_m_id not in results_by_id:
                                 lost_ids.append(lost_m_id)
-                            else:
-                                active_in_flight = {in_flight_dict.get(i) for i in range(len(processes)) if i != idx}
-                                for mid, fix in fixtures_by_id.items():
-                                    if mid not in results_by_id and mid not in active_in_flight:
-                                        lost_ids.append(mid)
 
                             for m_to_retry in lost_ids:
                                 if retry_counts[m_to_retry] < max_retries:
                                     retry_counts[m_to_retry] += 1
                                     print(f"[SUPERVISOR] Detected abrupt worker death (PID {p.pid}, code {p.exitcode}) on match {m_to_retry}. Auto-retrying (Attempt {retry_counts[m_to_retry]}/{max_retries})...")
+                                    fixture_states[m_to_retry] = "RETRY_PENDING"
                                     fix = fixtures_by_id[m_to_retry]
                                     clean_partial_artifacts(fix)
                                     task_queue.put(fix)
+                                    fixture_states[m_to_retry] = "QUEUED"
+                                else:
+                                    fixture_states[m_to_retry] = "FAILED"
 
                             in_flight_dict[idx] = None
 
@@ -362,11 +371,14 @@ class SimulationProcessPool:
                     if m_id in fixtures_by_id and retry_counts[m_id] < max_retries:
                         retry_counts[m_id] += 1
                         print(f"[SUPERVISOR] Auto-retrying failed match {m_id} (Attempt {retry_counts[m_id]}/{max_retries})...")
+                        fixture_states[m_id] = "RETRY_PENDING"
                         fix = fixtures_by_id[m_id]
                         clean_partial_artifacts(fix)
                         task_queue.put(fix)
+                        fixture_states[m_id] = "QUEUED"
                         continue
                     else:
+                        fixture_states[m_id] = "FAILED"
                         for p in processes:
                             if p.is_alive():
                                 p.terminate()
@@ -374,8 +386,10 @@ class SimulationProcessPool:
                             f"Simulation worker failed on match {msg['match_id']}: {msg['error']}\n{msg.get('traceback', '')}"
                         )
 
-                results_by_id[m_id] = msg["data"]
-                completed_count += 1
+                # Result Deduplication Guarantee
+                if m_id not in results_by_id:
+                    results_by_id[m_id] = msg["data"]
+                    fixture_states[m_id] = "SUCCESS"
 
             # Send termination sentinels to cleanly shutdown workers
             for _ in range(workers_to_spawn):

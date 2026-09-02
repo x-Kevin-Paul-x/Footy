@@ -50,11 +50,15 @@ def init_db():
 import sqlite3
 
 def get_raw_conn(db_file=None):
-    """Return a raw sqlite3 connection configured with FK enforcement, WAL mode, and busy timeout."""
+    """
+    Return a raw sqlite3 connection configured with FK enforcement, WAL mode, and busy timeout.
+    Note: WAL mode and busy timeout reduce and gracefully handle lock contention during concurrent
+    reads/writes, but SQLite still requires a single writer lock.
+    """
     target_db = db_file or DB_FILE
     os.makedirs(os.path.dirname(target_db), exist_ok=True)
-    conn = sqlite3.connect(target_db, timeout=10.0)
+    conn = sqlite3.connect(target_db, timeout=30.0)
     conn.execute("PRAGMA foreign_keys=ON;")
     conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA busy_timeout=5000;")
+    conn.execute("PRAGMA busy_timeout=10000;")
     return conn
