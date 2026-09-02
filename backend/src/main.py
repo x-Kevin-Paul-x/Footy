@@ -576,8 +576,13 @@ def simulate_season_with_transfers(premier_league, transfer_market):
             for idx_in_batch, match_result in enumerate(batch_results):
                 match_global_idx = curr_start + idx_in_batch
                 if match_result is not None:
+                    match_id = match_result.get("match_id")
+                    if not match_id:
+                        raise RuntimeError(
+                            f"Simulation result missing match_id for fixture index {match_global_idx}"
+                        )
                     match_result['date'] = scheduled_date.isoformat()
-                    recorded_match_ids.add(str(match_result.get("match_id", match_global_idx)))
+                    recorded_match_ids.add(str(match_id))
                 save_match_to_db(match_result, premier_league.season_year, match_global_idx + 1)
                 matches_played += 1
 
@@ -642,8 +647,13 @@ def simulate_season_with_transfers(premier_league, transfer_market):
             for idx_in_batch, match_result in enumerate(batch_results):
                 match_global_idx = curr_start + idx_in_batch
                 if match_result is not None:
+                    match_id = match_result.get("match_id")
+                    if not match_id:
+                        raise RuntimeError(
+                            f"Simulation result missing match_id for fixture index {match_global_idx}"
+                        )
                     match_result['date'] = scheduled_date.isoformat()
-                    recorded_match_ids.add(str(match_result.get("match_id", match_global_idx)))
+                    recorded_match_ids.add(str(match_id))
                 save_match_to_db(match_result, premier_league.season_year, match_global_idx + 1)
                 matches_played += 1
 
@@ -661,16 +671,22 @@ def simulate_season_with_transfers(premier_league, transfer_market):
             # Instantly sync updated league standings, team records, and player stats after every matchday
             sync_simulation_state_to_db(premier_league, transfer_market)
 
-    # Assert season fixture completeness and uniqueness
+    # Assert season fixture completeness and exact match ID uniqueness
+    expected_match_ids = {
+        f"match_{premier_league.season_year}_{h.team_id}_{a.team_id}"
+        for h, a in premier_league.schedule
+    }
     if matches_played != total_matches:
         raise RuntimeError(
             f"Season simulation incomplete for {premier_league.season_year}: "
             f"played {matches_played}/{total_matches} expected fixtures."
         )
-    if len(recorded_match_ids) != total_matches:
+    if recorded_match_ids != expected_match_ids:
+        missing = expected_match_ids - recorded_match_ids
+        unexpected = recorded_match_ids - expected_match_ids
         raise RuntimeError(
-            f"Season simulation duplicate fixture detected for {premier_league.season_year}: "
-            f"recorded {len(recorded_match_ids)} unique match IDs out of {total_matches} expected."
+            f"Season fixture integrity failure for {premier_league.season_year}: "
+            f"missing={sorted(missing)}, unexpected={sorted(unexpected)}"
         )
 
     # Process contract expiries at end of season

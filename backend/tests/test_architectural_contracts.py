@@ -122,12 +122,35 @@ def test_fast_mode_engine_mode_precedence():
 
 
 def test_season_fixture_completeness_and_uniqueness_assertion():
-    """Statically inspect main.py simulate_season_with_transfers for season completeness and uniqueness assertions."""
+    """Statically inspect main.py simulate_season_with_transfers for season completeness and exact match ID uniqueness assertions."""
     import main as main_mod
 
     src = inspect.getsource(main_mod.simulate_season_with_transfers)
     assert "if matches_played != total_matches:" in src, "Season simulation must assert exact expected fixture count"
-    assert "if len(recorded_match_ids) != total_matches:" in src, "Season simulation must assert unique recorded match IDs"
+    assert "if recorded_match_ids != expected_match_ids:" in src, "Season simulation must assert exact match ID set equality"
+
+
+def test_match_play_match_rng_and_seed_propagation():
+    """Statically inspect Match.play_match source code for rng pass-through and self.seed_val propagation to GRF."""
+    from models.match import Match
+
+    src = inspect.getsource(Match.play_match)
+    assert "rng=self.rng" in src, "Match.play_match must pass rng=self.rng to manager lineup selection"
+    assert "seed_val=self.seed_val" in src, "Match.play_match must propagate self.seed_val when delegating to GRF"
+
+
+def test_deterministic_simulation_isolation_contracts():
+    """Statically verify contract methods for deterministic match execution and independence from global Python random."""
+    from models.match import Match
+    from models.league import League
+
+    # Verify Match.__init__ creates an isolated Random instance from seed_val
+    src_init = inspect.getsource(Match.__init__)
+    assert "self.rng = random.Random(self.seed_val)" in src_init, "Match.__init__ must initialize self.rng with self.seed_val"
+
+    # Verify League.derive_match_seed uses deterministic hashlib SHA256 hashing
+    src_derive = inspect.getsource(League.derive_match_seed)
+    assert "hashlib.sha256" in src_derive, "League.derive_match_seed must use SHA256 for deterministic seed generation"
 
 
 def test_database_wal_and_busy_timeout_pragmas():

@@ -838,7 +838,8 @@ class Match:
             if self.home_team.manager:
                 self.home_lineup, self.home_positions = self.home_team.manager.select_lineup(
                     self.home_team.players,
-                    opponent=self.away_team
+                    opponent=self.away_team,
+                    rng=self.rng
                 )
             else:
                 self.home_lineup, self.home_positions = self._select_default_lineup(self.home_team)
@@ -847,7 +848,8 @@ class Match:
             if self.away_team.manager:
                 self.away_lineup, self.away_positions = self.away_team.manager.select_lineup(
                     self.away_team.players,
-                    opponent=self.home_team
+                    opponent=self.home_team,
+                    rng=self.rng
                 )
             else:
                 self.away_lineup, self.away_positions = self._select_default_lineup(self.away_team)
@@ -882,10 +884,10 @@ class Match:
                     away_team=self.away_team,
                     max_steps=FOOTY_GRF_MAX_STEPS,
                     render_video=render_video,
-                    match_id=match_id,
+                    match_id=match_id or self.match_id,
                     home_lineup=self.home_lineup,
                     away_lineup=self.away_lineup,
-                    seed_val=seed_val,
+                    seed_val=self.seed_val,
                 )
                 self.score = grf_res["score"]
                 self.xg = grf_res.get("xg", [0.0, 0.0])
