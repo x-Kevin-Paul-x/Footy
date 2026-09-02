@@ -222,6 +222,9 @@ class GRFStateArchiveReader:
                 "total_steps": self.total_steps
             }
 
+    def __len__(self) -> int:
+        return self.total_steps
+
     def close(self) -> None:
         """Close internal open file handle."""
         if hasattr(self, "_file") and self._file is not None and not self._file.closed:

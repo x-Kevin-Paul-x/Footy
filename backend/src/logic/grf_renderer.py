@@ -68,16 +68,17 @@ def draw_hud(
     goal_banner: Optional[str] = None,
     is_second_half: bool = False
 ) -> np.ndarray:
-    annotated = frame.copy()
+    annotated = frame  # In-place drawing on writable frame, avoid full-frame copy
     h_img, w_img = annotated.shape[:2]
 
     # Floating Modern Top-Left TV Pill HUD
     px, py = 32, 24
     pw, ph = 370, 38
 
-    overlay = annotated.copy()
-    cv2.rectangle(overlay, (px, py), (px + pw, py + ph), (14, 18, 26), -1)
-    cv2.addWeighted(overlay, 0.85, annotated, 0.15, 0, annotated)
+    # Fast ROI slice alpha-blending
+    roi = annotated[py:py+ph, px:px+pw]
+    bg_patch = np.full((ph, pw, 3), (14, 18, 26), dtype=np.uint8)
+    cv2.addWeighted(bg_patch, 0.85, roi, 0.15, 0, roi)
     cv2.rectangle(annotated, (px, py), (px + pw, py + ph), (55, 68, 85), 1)
 
     # Home Pill
@@ -107,9 +108,10 @@ def draw_hud(
     if goal_banner:
         bx1, bx2 = w_img // 2 - 280, w_img // 2 + 280
         by1, by2 = h_img - 78, h_img - 24
-        gov = annotated.copy()
-        cv2.rectangle(gov, (bx1, by1), (bx2, by2), (10, 15, 24), -1)
-        cv2.addWeighted(gov, 0.88, annotated, 0.12, 0, annotated)
+        bw, bh = bx2 - bx1, by2 - by1
+        g_roi = annotated[by1:by2, bx1:bx2]
+        g_bg = np.full((bh, bw, 3), (10, 15, 24), dtype=np.uint8)
+        cv2.addWeighted(g_bg, 0.88, g_roi, 0.12, 0, g_roi)
         cv2.rectangle(annotated, (bx1, by1), (bx1 + 8, by2), (0, 215, 255), -1)
         cv2.rectangle(annotated, (bx1, by1), (bx2, by2), (0, 215, 255), 2)
         cv2.putText(annotated, goal_banner, (bx1 + 24, by1 + 37), cv2.FONT_HERSHEY_DUPLEX, 0.72, (255, 255, 255), 2, cv2.LINE_AA)
