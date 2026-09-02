@@ -364,16 +364,10 @@ class SimulationWorker:
             ball_x = float(o0['ball'][0])
             ball_y = float(o0['ball'][1])
 
-            # 1. Check GK Save (Opposing GK touches ball in defending third)
+            # 1. Check GK Save (Opposing GK touches ball in defending danger zone)
             if b_own == opp_team and b_player == 0:
                 if (shot_team == 0 and ball_x > 0.65) or (shot_team == 1 and ball_x < -0.65):
-                    if shot_team == 0:
-                        self.sot_h += 1
-                        gk_name = self.away_players[0] if len(self.away_players) > 0 else "Goalkeeper"
-                    else:
-                        self.sot_a += 1
-                        gk_name = self.home_players[0] if len(self.home_players) > 0 else "Goalkeeper"
-
+                    gk_name = self.away_players[0] if (shot_team == 0 and len(self.away_players) > 0) else (self.home_players[0] if len(self.home_players) > 0 else "Goalkeeper")
                     for ev in reversed(self.events):
                         if ev.get("type") == "shot" and ev.get("step") == self.active_shot["step"]:
                             ev["on_target"] = True
@@ -386,7 +380,20 @@ class SimulationWorker:
                     })
                     self.active_shot = None
 
-            # 2. Check Outfield Defender Block
+            # 2. Check Hit Post / Crossbar (Ball at goal mouth post boundaries $|y| \approx 0.044$)
+            elif ((shot_team == 0 and 0.98 <= ball_x <= 1.02) or (shot_team == 1 and -1.02 <= ball_x <= -0.98)) and (0.038 <= abs(ball_y) <= 0.055):
+                for ev in reversed(self.events):
+                    if ev.get("type") == "shot" and ev.get("step") == self.active_shot["step"]:
+                        ev["on_target"] = False
+                        ev["outcome"] = "HIT_POST"
+                        break
+                self.events.append({
+                    "minute": m_min, "step": step, "type": "hit_post",
+                    "team": "home" if shot_team == 0 else "away", "player": self.active_shot["shooter"]
+                })
+                self.active_shot = None
+
+            # 3. Check Outfield Defender Block
             elif b_own == opp_team and b_player > 0:
                 for ev in reversed(self.events):
                     if ev.get("type") == "shot" and ev.get("step") == self.active_shot["step"]:
@@ -395,7 +402,7 @@ class SimulationWorker:
                         break
                 self.active_shot = None
 
-            # 3. Check Off-Target Endline Crossing outside posts
+            # 4. Check Off-Target Endline Crossing outside posts ($|y| > 0.08$)
             elif (shot_team == 0 and ball_x >= 1.0 and abs(ball_y) > 0.08) or \
                  (shot_team == 1 and ball_x <= -1.0 and abs(ball_y) > 0.08):
                 for ev in reversed(self.events):
@@ -405,11 +412,11 @@ class SimulationWorker:
                         break
                 self.active_shot = None
 
-            # 4. Timeout fallback
+            # 5. Timeout: 25 steps elapsed without resolution -> UNRESOLVED (never falsely label as OFF_TARGET)
             elif step - self.active_shot["step"] > 25:
                 for ev in reversed(self.events):
                     if ev.get("type") == "shot" and ev.get("step") == self.active_shot["step"] and ev.get("outcome") == "PENDING":
-                        ev["outcome"] = "OFF_TARGET"
+                        ev["outcome"] = "UNRESOLVED"
                         break
                 self.active_shot = None
 
@@ -418,7 +425,6 @@ class SimulationWorker:
             scorer = "Home Player"
             if self.active_shot and self.active_shot["team"] == 0:
                 scorer = self.active_shot["shooter"]
-                self.sot_h += 1
                 for ev in reversed(self.events):
                     if ev.get("type") == "shot" and ev.get("team") == "home" and ev.get("step") == self.active_shot["step"]:
                         ev["on_target"] = True
@@ -440,9 +446,6 @@ class SimulationWorker:
                     gk_pos=away_gk_pos,
                     gk_save_coverage=getattr(away_gk_profile, 'gk_save_coverage', 1.0)
                 )
-                self.shots_h += 1
-                self.sot_h += 1
-                self.xg_h += strike_xg
                 scorer = self.home_players[striker_idx] if striker_idx < len(self.home_players) else f"Player {striker_idx}"
                 self.events.append({
                     "minute": m_min, "step": step, "type": "shot", "team": "home",
@@ -452,7 +455,12 @@ class SimulationWorker:
 
             self.events.append({
                 "minute": m_min, "step": step, "type": "goal", "team": "home",
-                "scorer": scorer, "score": f"{self.curr_score[0]}-{self.curr_score[1]}"
+                "scorer": scorer, "score": f"{self.curr_score[0]}-{self.curr_score[1]}",
+                "causality": {
+                    "ball_coord": [float(o0['ball'][0]), float(o0['ball'][1]), float(o0['ball'][2])],
+                    "goal_mouth_y": float(o0['ball'][1]),
+                    "score_transition": [self.last_score[0], self.curr_score[0]]
+                }
             })
             self.last_score[0] = self.curr_score[0]
             self.active_shot = None
@@ -461,7 +469,6 @@ class SimulationWorker:
             scorer = "Away Player"
             if self.active_shot and self.active_shot["team"] == 1:
                 scorer = self.active_shot["shooter"]
-                self.sot_a += 1
                 for ev in reversed(self.events):
                     if ev.get("type") == "shot" and ev.get("team") == "away" and ev.get("step") == self.active_shot["step"]:
                         ev["on_target"] = True
@@ -483,9 +490,6 @@ class SimulationWorker:
                     gk_pos=home_gk_pos,
                     gk_save_coverage=getattr(home_gk_profile, 'gk_save_coverage', 1.0)
                 )
-                self.shots_a += 1
-                self.sot_a += 1
-                self.xg_a += strike_xg
                 scorer = self.away_players[striker_idx] if striker_idx < len(self.away_players) else f"Player {striker_idx}"
                 self.events.append({
                     "minute": m_min, "step": step, "type": "shot", "team": "away",
@@ -495,7 +499,12 @@ class SimulationWorker:
 
             self.events.append({
                 "minute": m_min, "step": step, "type": "goal", "team": "away",
-                "scorer": scorer, "score": f"{self.curr_score[0]}-{self.curr_score[1]}"
+                "scorer": scorer, "score": f"{self.curr_score[0]}-{self.curr_score[1]}",
+                "causality": {
+                    "ball_coord": [float(o0['ball'][0]), float(o0['ball'][1]), float(o0['ball'][2])],
+                    "goal_mouth_y": float(o0['ball'][1]),
+                    "score_transition": [self.last_score[1], self.curr_score[1]]
+                }
             })
             self.last_score[1] = self.curr_score[1]
             self.active_shot = None
@@ -533,11 +542,16 @@ class SimulationWorker:
         poss_h = round((self.left_poss / tot_p) * 100.0, 1)
         poss_a = round(100.0 - poss_h, 1)
 
-        # Enforce strict domain statistical hierarchy: Shots >= SoT >= Score
-        self.sot_h = max(self.sot_h, self.curr_score[0])
-        self.shots_h = max(self.shots_h, self.sot_h)
-        self.sot_a = max(self.sot_a, self.curr_score[1])
-        self.shots_a = max(self.shots_a, self.sot_a)
+        # Canonical Event Ledger Reducer (Single Source of Truth)
+        shot_events_h = [e for e in self.events if e.get("type") == "shot" and e.get("team") == "home"]
+        shot_events_a = [e for e in self.events if e.get("type") == "shot" and e.get("team") == "away"]
+
+        shots_h_derived = len(shot_events_h)
+        shots_a_derived = len(shot_events_a)
+        sot_h_derived = len([e for e in shot_events_h if e.get("on_target", False)])
+        sot_a_derived = len([e for e in shot_events_a if e.get("on_target", False)])
+        xg_h_derived = round(sum(e.get("xg", 0.0) for e in shot_events_h), 2)
+        xg_a_derived = round(sum(e.get("xg", 0.0) for e in shot_events_a), 2)
 
         result_dict = {
             "match_id": self.match_id,
@@ -545,12 +559,12 @@ class SimulationWorker:
             "away_team": self.away_team,
             "home_score": self.curr_score[0],
             "away_score": self.curr_score[1],
-            "home_xg": round(self.xg_h, 2),
-            "away_xg": round(self.xg_a, 2),
-            "home_shots": self.shots_h,
-            "away_shots": self.shots_a,
-            "home_shots_on_target": self.sot_h,
-            "away_shots_on_target": self.sot_a,
+            "home_xg": xg_h_derived,
+            "away_xg": xg_a_derived,
+            "home_shots": shots_h_derived,
+            "away_shots": shots_a_derived,
+            "home_shots_on_target": sot_h_derived,
+            "away_shots_on_target": sot_a_derived,
             "home_possession": poss_h,
             "away_possession": poss_a,
             "home_passes_completed": self.passes_h_cmp,
@@ -558,6 +572,9 @@ class SimulationWorker:
             "away_passes_completed": self.passes_a_cmp,
             "away_passes_attempted": self.passes_a_att,
             "events": self.events,
+            "simulation_steps": total_steps,
+            "trajectory_file": self.trace_npz,
+            "states_file": self.states_file,
             "total_steps": total_steps,
             "seed_val": self.seed_val,
         }
@@ -574,9 +591,9 @@ class SimulationWorker:
                 score=(self.curr_score[0], self.curr_score[1]),
                 total_steps=total_steps,
                 possession=(poss_h, poss_a),
-                shots=(self.shots_h, self.shots_a),
-                shots_on_target=(self.sot_h, self.sot_a),
-                xg=(round(self.xg_h, 2), round(self.xg_a, 2)),
+                shots=(shots_h_derived, shots_a_derived),
+                shots_on_target=(sot_h_derived, sot_a_derived),
+                xg=(xg_h_derived, xg_a_derived),
                 passes_attempted=(self.passes_h_att, self.passes_a_att),
                 passes_completed=(self.passes_h_cmp, self.passes_a_cmp),
                 events=self.events,
