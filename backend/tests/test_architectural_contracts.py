@@ -1,7 +1,7 @@
 """
-Static Architecture & Contract Regression Test Suite.
+Static Architecture & Contract Regression Test Suite (Pass 1, Pass 2 & Pass 3).
 Statically verifies system abstractions, argument contracts, determinism contracts,
-event ledger invariants, and frontend/API route alignment WITHOUT running simulation or WSL subprocesses.
+event ledger invariants, database pragmas, state archive schema versioning, and frontend/API route alignment WITHOUT running simulation or WSL subprocesses.
 """
 
 import inspect
@@ -102,6 +102,31 @@ def test_event_ledger_terminal_state_exclusivity():
     src = inspect.getsource(SimulationWorker.step)
     for terminal_state in ["SAVED", "HIT_POST", "BLOCKED", "OFF_TARGET", "UNRESOLVED", "GOAL"]:
         assert terminal_state in src, f"SimulationWorker must track {terminal_state} shot outcome"
+
+
+def test_event_ledger_scorer_attribution():
+    """Statically verify goal events in grf_sim_worker include both player and scorer keys."""
+    from logic.wsl_workers import grf_sim_worker
+
+    src = inspect.getsource(grf_sim_worker.run_simulation)
+    assert "\"scorer\": scorer" in src, "Goal events must include scorer field for backwards compatibility"
+
+
+def test_database_wal_and_busy_timeout_pragmas():
+    """Statically inspect database session.py for WAL mode and busy timeout pragmas."""
+    import database.session as session_mod
+
+    src = inspect.getsource(session_mod)
+    assert "PRAGMA journal_mode=WAL" in src, "Database engine connect listener must set WAL mode"
+    assert "PRAGMA busy_timeout=10000" in src, "Database engine connect listener must set busy_timeout"
+
+
+def test_grf_state_archive_schema_version_validation():
+    """Statically inspect GRFStateArchiveReader validate method for schema version enforcement."""
+    from logic.grf_state_archive import GRFStateArchiveReader
+
+    src = inspect.getsource(GRFStateArchiveReader.validate)
+    assert "GRF_STATE_SCHEMA_VERSION" in src, "GRFStateArchiveReader must validate GRF_STATE_SCHEMA_VERSION"
 
 
 def test_frontend_backend_route_contracts():

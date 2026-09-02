@@ -492,6 +492,7 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
                     "type": "goal",
                     "team": "home",
                     "player": scorer,
+                    "scorer": scorer,
                     "score": f"{curr_score[0]}-{curr_score[1]}",
                     "details": f"Goal! {scorer} scores for {home_team}!"
                 })
@@ -511,6 +512,7 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
                     "type": "goal",
                     "team": "away",
                     "player": scorer,
+                    "scorer": scorer,
                     "score": f"{curr_score[0]}-{curr_score[1]}",
                     "details": f"Goal! {scorer} scores for {away_team}!"
                 })
