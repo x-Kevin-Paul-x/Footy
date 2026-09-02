@@ -11,6 +11,7 @@ import time
 import hashlib
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
+from collections import deque
 import numpy as np
 
 try:
@@ -67,16 +68,17 @@ def draw_hud(
     goal_banner: Optional[str] = None,
     is_second_half: bool = False
 ) -> np.ndarray:
-    annotated = frame.copy()
+    annotated = frame  # In-place drawing on writable frame, avoid full-frame copy
     h_img, w_img = annotated.shape[:2]
 
     # Floating Modern Top-Left TV Pill HUD
     px, py = 32, 24
     pw, ph = 370, 38
 
-    overlay = annotated.copy()
-    cv2.rectangle(overlay, (px, py), (px + pw, py + ph), (14, 18, 26), -1)
-    cv2.addWeighted(overlay, 0.85, annotated, 0.15, 0, annotated)
+    # Fast ROI slice alpha-blending
+    roi = annotated[py:py+ph, px:px+pw]
+    bg_patch = np.full((ph, pw, 3), (14, 18, 26), dtype=np.uint8)
+    cv2.addWeighted(bg_patch, 0.85, roi, 0.15, 0, roi)
     cv2.rectangle(annotated, (px, py), (px + pw, py + ph), (55, 68, 85), 1)
 
     # Home Pill
@@ -106,9 +108,10 @@ def draw_hud(
     if goal_banner:
         bx1, bx2 = w_img // 2 - 280, w_img // 2 + 280
         by1, by2 = h_img - 78, h_img - 24
-        gov = annotated.copy()
-        cv2.rectangle(gov, (bx1, by1), (bx2, by2), (10, 15, 24), -1)
-        cv2.addWeighted(gov, 0.88, annotated, 0.12, 0, annotated)
+        bw, bh = bx2 - bx1, by2 - by1
+        g_roi = annotated[by1:by2, bx1:bx2]
+        g_bg = np.full((bh, bw, 3), (10, 15, 24), dtype=np.uint8)
+        cv2.addWeighted(g_bg, 0.88, g_roi, 0.12, 0, g_roi)
         cv2.rectangle(annotated, (bx1, by1), (bx1 + 8, by2), (0, 215, 255), -1)
         cv2.rectangle(annotated, (bx1, by1), (bx2, by2), (0, 215, 255), 2)
         cv2.putText(annotated, goal_banner, (bx1 + 24, by1 + 37), cv2.FONT_HERSHEY_DUPLEX, 0.72, (255, 255, 255), 2, cv2.LINE_AA)
@@ -269,24 +272,18 @@ def draw_studio_stats_card(
     return canvas
 
 
-def draw_pitch_frame_from_state(
-    frame_state: Dict[str, Any],
-    home_team: str,
-    away_team: str,
-    home_players: Optional[List[str]] = None,
-    away_players: Optional[List[str]] = None,
-    home_bgr: Tuple[int, int, int] = (50, 50, 220),
-    away_bgr: Tuple[int, int, int] = (220, 50, 50),
-    goal_banner: Optional[str] = None,
-    w: int = 1280,
-    h: int = 720
-) -> np.ndarray:
-    """
-    Render a single high-fidelity 720p broadcast frame directly from trajectory coordinates.
-    Pure display pipe: does NOT depend on GRF environment or physics engine.
-    """
+_STATIC_PITCH_CACHE: Dict[Tuple[int, int], np.ndarray] = {}
+
+
+def create_static_pitch_background(w: int = 1280, h: int = 720) -> np.ndarray:
+    key = (w, h)
+    if key in _STATIC_PITCH_CACHE:
+        return _STATIC_PITCH_CACHE[key]
+
     if cv2 is None:
-        return np.zeros((h, w, 3), dtype=np.uint8)
+        bg = np.zeros((h, w, 3), dtype=np.uint8)
+        _STATIC_PITCH_CACHE[key] = bg
+        return bg
 
     canvas = np.zeros((h, w, 3), dtype=np.uint8)
 
@@ -337,6 +334,36 @@ def draw_pitch_frame_from_state(
     goal_h = int(ph * 0.14)
     cv2.rectangle(canvas, (px_min - 12, mid_y - goal_h // 2), (px_min, mid_y + goal_h // 2), (200, 200, 200), -1)
     cv2.rectangle(canvas, (px_max, mid_y - goal_h // 2), (px_max + 12, mid_y + goal_h // 2), (200, 200, 200), -1)
+
+    _STATIC_PITCH_CACHE[key] = canvas
+    return canvas
+
+
+def draw_pitch_frame_from_state(
+    frame_state: Dict[str, Any],
+    home_team: str,
+    away_team: str,
+    home_players: Optional[List[str]] = None,
+    away_players: Optional[List[str]] = None,
+    home_bgr: Tuple[int, int, int] = (50, 50, 220),
+    away_bgr: Tuple[int, int, int] = (220, 50, 50),
+    goal_banner: Optional[str] = None,
+    w: int = 1280,
+    h: int = 720
+) -> np.ndarray:
+    """
+    Render a single high-fidelity 720p broadcast frame directly from trajectory coordinates.
+    Pure display pipe: does NOT depend on GRF environment or physics engine.
+    """
+    if cv2 is None:
+        return np.zeros((h, w, 3), dtype=np.uint8)
+
+    canvas = create_static_pitch_background(w, h).copy()
+
+    px_min, px_max = 70, w - 70
+    py_min, py_max = 85, h - 35
+    pw = px_max - px_min
+    ph = py_max - py_min
 
     # Coordinate mapping function
     def to_pixel(gx: float, gy: float) -> Tuple[int, int]:
@@ -459,7 +486,7 @@ def render_video_from_trajectory(
 
     goal_banner = None
     goal_banner_cd = 0
-    replay_buffer = []
+    replay_buffer = deque(maxlen=30)
 
     for step in range(total_steps):
         state = trajectory.get_frame_state(step)
@@ -484,14 +511,13 @@ def render_video_from_trajectory(
         writer.append_data(frame)
 
         replay_buffer.append(frame)
-        if len(replay_buffer) > 30:
-            replay_buffer.pop(0)
 
         # Slow-mo zoom action replay when goal is hit
         if step in goal_events_by_step and len(replay_buffer) >= 15:
             for _ in range(30):
                 writer.append_data(frame)
-            for rf in replay_buffer[-20:]:
+            recent_frames = list(replay_buffer)[-20:]
+            for rf in recent_frames:
                 replay_annotated = draw_replay_frame(
                     rf, home_team, away_team, tuple(state["score"]),
                     match_min, home_bgr, away_bgr, state["is_second_half"], zoom_factor=1.35

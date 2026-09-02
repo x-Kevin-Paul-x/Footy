@@ -14,27 +14,23 @@ import json
 import numpy as np
 from pathlib import Path
 
+# Add backend/src to sys.path if needed
+src_dir = str(Path(__file__).resolve().parent.parent.parent)
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
 
-
-# Canonical set of fields that must be present in every GRF observation for replay integrity.
-EXPECTED_OBS_FIELDS = {
-    "left_team", "right_team",
-    "left_team_direction", "right_team_direction",
-    "left_team_tired_factor", "right_team_tired_factor",
-    "left_team_yellow_card", "right_team_yellow_card",
-    "left_team_active", "right_team_active",
-    "ball", "ball_direction",
-    "score", "ball_owned_team", "ball_owned_player", "game_mode",
-}
+from logic.replay_schema import GRF_REQUIRED_OBS_FIELD_SET
+from logic.grf_state_archive import ReplayIntegrityError
 
 
 def _assert_obs_schema(obs: dict, label: str) -> None:
-    """Assert that the observation dict contains all replay-critical fields."""
-    missing = EXPECTED_OBS_FIELDS - obs.keys()
-    assert not missing, (
-        f"GRF observation '{label}' is missing required fields: {missing}. "
-        f"Present keys: {set(obs.keys())}"
-    )
+    """Assert that the observation dict contains all replay-critical fields using ReplayIntegrityError."""
+    missing = GRF_REQUIRED_OBS_FIELD_SET - obs.keys()
+    if missing:
+        raise ReplayIntegrityError(
+            f"GRF observation '{label}' is missing required fields: {missing}. "
+            f"Present keys: {set(obs.keys())}"
+        )
 
 
 def run_equivalence_test(num_steps: int = 50) -> dict:
@@ -206,6 +202,9 @@ def run_end_to_end_archive_test(states_file: str, trajectory_file: str) -> dict:
     archive = GRFStateArchiveReader(states_file)
     traj = MatchTrajectory.load_from_npz(Path(trajectory_file))
 
+    # Validate archive metadata against trajectory metadata
+    archive.validate(expected_steps=traj.total_steps, expected_match_id=traj.match_id)
+
     env = football_env.create_environment(
         env_name="11_vs_11_kaggle",
         representation='raw',
@@ -234,28 +233,53 @@ def run_end_to_end_archive_test(states_file: str, trajectory_file: str) -> dict:
         obs_players = np.concatenate([l_obs, r_obs], axis=0)
         p_diff = float(np.max(np.abs(traj_players - obs_players)))
 
+        # Trajectory player directions (22 players: 11 left + 11 right)
+        traj_p_dirs = traj.player_dirs[step]  # shape (22, 2)
+        l_dir_obs = np.array(obs['left_team_direction'])  # shape (11, 2)
+        r_dir_obs = np.array(obs['right_team_direction'])  # shape (11, 2)
+        obs_p_dirs = np.concatenate([l_dir_obs, r_dir_obs], axis=0)
+        p_dir_diff = float(np.max(np.abs(traj_p_dirs - obs_p_dirs)))
+
         # Trajectory ball (3 coordinates: x, y, z)
         traj_ball = traj.ball_coords[step]
         b_obs = np.array(obs['ball'])
         b_diff = float(np.max(np.abs(traj_ball - b_obs)))
+
+        # Trajectory ball direction (3 coordinates: vx, vy, vz)
+        traj_b_dir = traj.ball_dirs[step]
+        b_dir_obs = np.array(obs['ball_direction'])
+        b_dir_diff = float(np.max(np.abs(traj_b_dir - b_dir_obs)))
 
         # Trajectory score
         traj_score = list(traj.scores[step])
         obs_score = list(obs['score'])
         score_match = (traj_score == obs_score)
 
-        # Additional replay-critical fields: directions, game_mode, ownership
-        # These fields must exist (validated by _assert_obs_schema above) and be
-        # consistent with what was recorded, proving the archive restores full game state.
-        ld_diff = float(np.max(np.abs(
-            np.array(obs['left_team_direction']) - np.array(obs['left_team_direction'])
-        )))  # self-consistency: obs is deterministic after set_state
-        game_mode_valid = isinstance(obs['game_mode'], (int, np.integer))
-        owned_team_valid = obs['ball_owned_team'] in (-1, 0, 1)
+        # Trajectory game_mode, ball_owned_team, ball_owned_player equivalence
+        if traj.game_mode is not None:
+            game_mode_match = bool(int(obs['game_mode']) == int(traj.game_mode[step]))
+        else:
+            game_mode_match = isinstance(obs['game_mode'], (int, np.integer))
 
-        step_passed = (
-            p_diff < 1e-4 and b_diff < 1e-4 and score_match
-            and game_mode_valid and owned_team_valid
+        if traj.ball_owned_team is not None:
+            owned_team_match = bool(int(obs['ball_owned_team']) == int(traj.ball_owned_team[step]))
+        else:
+            owned_team_match = obs['ball_owned_team'] in (-1, 0, 1)
+
+        if traj.ball_owned_player is not None:
+            owned_player_match = bool(int(obs['ball_owned_player']) == int(traj.ball_owned_player[step]))
+        else:
+            owned_player_match = isinstance(obs['ball_owned_player'], (int, np.integer)) and (-1 <= obs['ball_owned_player'] <= 10)
+
+        step_passed = bool(
+            p_diff < 1e-4
+            and p_dir_diff < 1e-4
+            and b_diff < 1e-4
+            and b_dir_diff < 1e-4
+            and score_match
+            and game_mode_match
+            and owned_team_match
+            and owned_player_match
         )
         if not step_passed:
             all_passed = False
@@ -263,7 +287,9 @@ def run_end_to_end_archive_test(states_file: str, trajectory_file: str) -> dict:
         step_results[f"step_{step}"] = {
             "passed": step_passed,
             "player_max_diff": p_diff,
+            "player_dir_max_diff": p_dir_diff,
             "ball_max_diff": b_diff,
+            "ball_dir_max_diff": b_dir_diff,
             "score_match": score_match,
             "game_mode": int(obs['game_mode']),
             "ball_owned_team": int(obs['ball_owned_team']),

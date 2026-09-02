@@ -97,7 +97,7 @@ def test_grf_state_archive_validation_and_corruption_detection(tmp_path):
 
     tampered_reader = GRFStateArchiveReader(str(test_file))
     with pytest.raises((ReplayIntegrityError, zlib.error, pickle.UnpicklingError)):
-        tampered_reader.validate()
+        tampered_reader.validate(check_global_sha=True)
 
 
 def test_grf_state_archive_legacy_pickle_fallback(tmp_path):
@@ -344,6 +344,313 @@ def test_grf_state_archive_schema_v2_mismatch(tmp_path):
     # validate() must detect the stale schema string and raise ReplayIntegrityError
     with pytest.raises(ReplayIntegrityError, match="schema version mismatch"):
         patched_reader.validate()
+
+
+def test_grf_state_archive_schema_missing(tmp_path):
+    """Verify that validate() raises ReplayIntegrityError when state_schema is completely missing from header.
+
+    Removes state_schema key from header JSON. The reader must reject the archive.
+    """
+    test_file = tmp_path / "test_schema_missing.grfstate"
+    fake_states = [f"state_{i}".encode('utf-8') * 20 for i in range(10)]
+
+    with GRFStateArchiveWriter(str(test_file), match_id="schema_missing_match", chunk_size=5) as writer:
+        for s in fake_states:
+            writer.append(s)
+
+    raw_data = bytearray(test_file.read_bytes())
+    magic_len = len(b"FOOTY_GRF_STATE_V2\n")
+    HEADER_SLOT_SIZE = 16384
+
+    header_bytes = bytes(raw_data[magic_len: magic_len + HEADER_SLOT_SIZE]).rstrip()
+    header_dict = json.loads(header_bytes)
+
+    # Delete state_schema key
+    del header_dict["state_schema"]
+    patched_header = json.dumps(header_dict).encode("utf-8").ljust(HEADER_SLOT_SIZE, b" ")
+    raw_data[magic_len: magic_len + HEADER_SLOT_SIZE] = patched_header
+    test_file.write_bytes(bytes(raw_data))
+
+    missing_schema_reader = GRFStateArchiveReader(str(test_file))
+    with pytest.raises(ReplayIntegrityError, match="schema version mismatch"):
+        missing_schema_reader.validate()
+
+
+def test_grf_state_archive_trajectory_pairing_mismatch(tmp_path):
+    """Verify that pairing an archive with a trajectory having different match_id or total_steps raises ReplayIntegrityError."""
+    archive_file = tmp_path / "match_001.grfstate"
+    fake_states = [f"state_{i}".encode('utf-8') * 20 for i in range(15)]
+
+    with GRFStateArchiveWriter(str(archive_file), match_id="match_001", chunk_size=5) as writer:
+        for s in fake_states:
+            writer.append(s)
+
+    reader = GRFStateArchiveReader(str(archive_file))
+
+    # Match ID mismatch
+    with pytest.raises(ReplayIntegrityError, match="match ID mismatch"):
+        reader.validate(expected_match_id="match_002")
+
+    # Step count mismatch
+    with pytest.raises(ReplayIntegrityError, match="step count mismatch"):
+        reader.validate(expected_steps=20)
+
+
+def test_trajectory_structural_validation(tmp_path):
+    """Verify that MatchTrajectory __post_init__ catches shape mismatches, dtype mismatches, non-atomic V2, and NaNs."""
+    manifest = MatchManifest(
+        match_id="m_val", home_team="H", away_team="A", home_score=0, away_score=0,
+        score=(0, 0), total_steps=10, possession=(50.0, 50.0), shots=(0, 0),
+        shots_on_target=(0, 0), xg=(0.0, 0.0)
+    )
+
+    # Wrong shape
+    with pytest.raises(ValueError, match="shape mismatch"):
+        MatchTrajectory(
+            match_id="m_val", seed=1, total_steps=10,
+            player_coords=np.zeros((9, 22, 2), dtype=np.float32),  # 9 instead of 10
+            player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+            ball_coords=np.zeros((10, 3), dtype=np.float32),
+            ball_dirs=np.zeros((10, 3), dtype=np.float32),
+            actions=np.zeros((10, 20), dtype=np.uint8),
+            scores=np.zeros((10, 2), dtype=np.uint8),
+            manifest=manifest
+        )
+
+    # Wrong dtype
+    with pytest.raises(ValueError, match="dtype mismatch"):
+        MatchTrajectory(
+            match_id="m_val", seed=1, total_steps=10,
+            player_coords=np.zeros((10, 22, 2), dtype=np.float64),  # float64 instead of float32
+            player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+            ball_coords=np.zeros((10, 3), dtype=np.float32),
+            ball_dirs=np.zeros((10, 3), dtype=np.float32),
+            actions=np.zeros((10, 20), dtype=np.uint8),
+            scores=np.zeros((10, 2), dtype=np.uint8),
+            manifest=manifest
+        )
+
+    # Non-atomic V2 fields (game_mode provided, but ball_owned_team missing)
+    with pytest.raises(ValueError, match="provided atomically together"):
+        MatchTrajectory(
+            match_id="m_val", seed=1, total_steps=10,
+            player_coords=np.zeros((10, 22, 2), dtype=np.float32),
+            player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+            ball_coords=np.zeros((10, 3), dtype=np.float32),
+            ball_dirs=np.zeros((10, 3), dtype=np.float32),
+            actions=np.zeros((10, 20), dtype=np.uint8),
+            scores=np.zeros((10, 2), dtype=np.uint8),
+            manifest=manifest,
+            game_mode=np.zeros(10, dtype=np.int8)
+        )
+
+    # Invalid categorical domain
+    bad_teams = np.zeros(10, dtype=np.int8)
+    bad_teams[0] = 42
+    with pytest.raises(ValueError, match="invalid team values"):
+        MatchTrajectory(
+            match_id="m_val", seed=1, total_steps=10,
+            player_coords=np.zeros((10, 22, 2), dtype=np.float32),
+            player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+            ball_coords=np.zeros((10, 3), dtype=np.float32),
+            ball_dirs=np.zeros((10, 3), dtype=np.float32),
+            actions=np.zeros((10, 20), dtype=np.uint8),
+            scores=np.zeros((10, 2), dtype=np.uint8),
+            manifest=manifest,
+            game_mode=np.zeros(10, dtype=np.int8),
+            ball_owned_team=bad_teams,
+            ball_owned_player=np.zeros(10, dtype=np.int8)
+        )
+
+    # NaN in player_coords
+    bad_coords = np.zeros((10, 22, 2), dtype=np.float32)
+    bad_coords[0, 0, 0] = np.nan
+    with pytest.raises(ValueError, match="contains non-finite values"):
+        MatchTrajectory(
+            match_id="m_val", seed=1, total_steps=10,
+            player_coords=bad_coords,
+            player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+            ball_coords=np.zeros((10, 3), dtype=np.float32),
+            ball_dirs=np.zeros((10, 3), dtype=np.float32),
+            actions=np.zeros((10, 20), dtype=np.uint8),
+            scores=np.zeros((10, 2), dtype=np.uint8),
+            manifest=manifest
+        )
+
+
+def test_trajectory_game_mode_domain_validation(tmp_path):
+    """Verify that MatchTrajectory __post_init__ rejects game_mode values outside [0, 6]."""
+    manifest = MatchManifest(
+        match_id="m_gm", home_team="H", away_team="A", home_score=0, away_score=0,
+        score=(0, 0), total_steps=10, possession=(50.0, 50.0), shots=(0, 0),
+        shots_on_target=(0, 0), xg=(0.0, 0.0)
+    )
+    bad_modes = np.zeros(10, dtype=np.int8)
+    bad_modes[0] = 99
+    with pytest.raises(ValueError, match="invalid game_mode values"):
+        MatchTrajectory(
+            match_id="m_gm", seed=1, total_steps=10,
+            player_coords=np.zeros((10, 22, 2), dtype=np.float32),
+            player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+            ball_coords=np.zeros((10, 3), dtype=np.float32),
+            ball_dirs=np.zeros((10, 3), dtype=np.float32),
+            actions=np.zeros((10, 20), dtype=np.uint8),
+            scores=np.zeros((10, 2), dtype=np.uint8),
+            manifest=manifest,
+            game_mode=bad_modes,
+            ball_owned_team=np.zeros(10, dtype=np.int8),
+            ball_owned_player=np.zeros(10, dtype=np.int8)
+        )
+
+
+def test_trajectory_schema_on_load_enforcement(tmp_path):
+    """Verify that load_from_npz raises ReplayIntegrityError when declared schema is V2 but arrays are missing."""
+    traj_file = tmp_path / "declared_v2_missing_arrays.npz"
+    manifest_dict = {
+        "match_id": "m_declared_v2", "home_team": "H", "away_team": "A",
+        "home_score": 0, "away_score": 0, "total_steps": 10,
+        "trajectory_schema": "FOOTY_TRAJECTORY_V2"
+    }
+    np.savez_compressed(
+        str(traj_file),
+        player_coords=np.zeros((10, 22, 2), dtype=np.float32),
+        player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+        ball_coords=np.zeros((10, 3), dtype=np.float32),
+        ball_dirs=np.zeros((10, 3), dtype=np.float32),
+        actions=np.zeros((10, 20), dtype=np.uint8),
+        scores=np.zeros((10, 2), dtype=np.uint8),
+        seed=np.array([42], dtype=np.int64),
+        manifest=np.array([json.dumps(manifest_dict)], dtype=object)
+    )
+
+    with pytest.raises(ReplayIntegrityError, match="declared schema 'FOOTY_TRAJECTORY_V2'"):
+        MatchTrajectory.load_from_npz(traj_file)
+
+
+def test_trajectory_schema_on_load_rejects_v1_with_v2_arrays(tmp_path):
+    """Verify that load_from_npz raises ReplayIntegrityError when manifest declares V1 but V2 arrays are present."""
+    traj_file = tmp_path / "declared_v1_has_v2_arrays.npz"
+    manifest_dict = {
+        "match_id": "m_declared_v1", "home_team": "H", "away_team": "A",
+        "home_score": 0, "away_score": 0, "total_steps": 10,
+        "trajectory_schema": "FOOTY_TRAJECTORY_V1"
+    }
+    np.savez_compressed(
+        str(traj_file),
+        player_coords=np.zeros((10, 22, 2), dtype=np.float32),
+        player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+        ball_coords=np.zeros((10, 3), dtype=np.float32),
+        ball_dirs=np.zeros((10, 3), dtype=np.float32),
+        actions=np.zeros((10, 20), dtype=np.uint8),
+        scores=np.zeros((10, 2), dtype=np.uint8),
+        seed=np.array([42], dtype=np.int64),
+        manifest=np.array([json.dumps(manifest_dict)], dtype=object),
+        game_mode=np.zeros(10, dtype=np.int8),
+        ball_owned_team=np.zeros(10, dtype=np.int8),
+        ball_owned_player=np.zeros(10, dtype=np.int8),
+    )
+
+    with pytest.raises(ReplayIntegrityError, match="declared legacy schema 'FOOTY_TRAJECTORY_V1'"):
+        MatchTrajectory.load_from_npz(traj_file)
+
+
+def test_trajectory_schema_on_load_rejects_unknown_schema(tmp_path):
+    """Verify that load_from_npz raises ReplayIntegrityError when trajectory_schema is unknown/unsupported."""
+    traj_file = tmp_path / "unknown_schema.npz"
+    manifest_dict = {
+        "match_id": "m_unknown", "home_team": "H", "away_team": "A",
+        "home_score": 0, "away_score": 0, "total_steps": 10,
+        "trajectory_schema": "FOOTY_TRAJECTORY_V999"
+    }
+    np.savez_compressed(
+        str(traj_file),
+        player_coords=np.zeros((10, 22, 2), dtype=np.float32),
+        player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+        ball_coords=np.zeros((10, 3), dtype=np.float32),
+        ball_dirs=np.zeros((10, 3), dtype=np.float32),
+        actions=np.zeros((10, 20), dtype=np.uint8),
+        scores=np.zeros((10, 2), dtype=np.uint8),
+        seed=np.array([42], dtype=np.int64),
+        manifest=np.array([json.dumps(manifest_dict)], dtype=object)
+    )
+
+    with pytest.raises(ReplayIntegrityError, match="Unsupported trajectory schema version: 'FOOTY_TRAJECTORY_V999'"):
+        MatchTrajectory.load_from_npz(traj_file)
+
+
+def test_trajectory_matching_pairing_passes(tmp_path):
+    """Verify that matching Archive A and Trajectory A validate cleanly."""
+    archive_file = tmp_path / "match_pair.grfstate"
+    fake_states = [f"state_{i}".encode('utf-8') * 20 for i in range(10)]
+    with GRFStateArchiveWriter(str(archive_file), match_id="match_pair", chunk_size=5) as writer:
+        for s in fake_states:
+            writer.append(s)
+
+    reader = GRFStateArchiveReader(str(archive_file))
+    # Validate with matching step count and match_id passes without raising
+    reader.validate(expected_steps=10, expected_match_id="match_pair")
+    assert reader.total_steps == 10
+    assert reader.match_id == "match_pair"
+
+
+def test_grf_state_archive_cross_match_pairing_mismatch(tmp_path):
+    """Verify that attempting to validate/pair Trajectory A with Archive B (different match_id) raises ReplayIntegrityError."""
+    archive_file = tmp_path / "match_A.grfstate"
+    traj_file = tmp_path / "match_B.npz"
+
+    fake_states = [f"state_{i}".encode('utf-8') * 20 for i in range(10)]
+    with GRFStateArchiveWriter(str(archive_file), match_id="match_A", chunk_size=5) as writer:
+        for s in fake_states:
+            writer.append(s)
+
+    manifest_B = MatchManifest(
+        match_id="match_B",
+        home_team="Team B1",
+        away_team="Team B2",
+        home_score=1,
+        away_score=0,
+        score=(1, 0),
+        total_steps=10,
+        possession=(50.0, 50.0),
+        shots=(2, 1),
+        shots_on_target=(1, 0),
+        xg=(0.5, 0.2),
+    )
+    traj_B = MatchTrajectory(
+        match_id="match_B",
+        seed=123,
+        total_steps=10,
+        player_coords=np.zeros((10, 22, 2), dtype=np.float32),
+        player_dirs=np.zeros((10, 22, 2), dtype=np.float32),
+        ball_coords=np.zeros((10, 3), dtype=np.float32),
+        ball_dirs=np.zeros((10, 3), dtype=np.float32),
+        actions=np.zeros((10, 20), dtype=np.uint8),
+        scores=np.zeros((10, 2), dtype=np.uint8),
+        manifest=manifest_B,
+    )
+    traj_B.save_to_npz(traj_file)
+
+    reader = GRFStateArchiveReader(str(archive_file))
+    loaded_traj = MatchTrajectory.load_from_npz(traj_file)
+
+    # Cross-match pairing validation must raise ReplayIntegrityError
+    with pytest.raises(ReplayIntegrityError, match="match ID mismatch"):
+        reader.validate(expected_steps=loaded_traj.total_steps, expected_match_id=loaded_traj.match_id)
+
+
+def test_obs_schema_validation():
+    """Verify that _assert_obs_schema passes for complete obs dict and raises ReplayIntegrityError for incomplete dict."""
+    from logic.wsl_workers.grf_equivalence_worker import _assert_obs_schema
+    from logic.replay_schema import GRF_REQUIRED_OBS_FIELDS
+
+    valid_obs = {k: 0 for k in GRF_REQUIRED_OBS_FIELDS}
+    # Valid obs schema must pass without error
+    _assert_obs_schema(valid_obs, "test_valid")
+
+    incomplete_obs = {k: 0 for k in list(GRF_REQUIRED_OBS_FIELDS)[:-1]}
+    # Incomplete obs schema must raise ReplayIntegrityError
+    with pytest.raises(ReplayIntegrityError, match="missing required fields"):
+        _assert_obs_schema(incomplete_obs, "test_incomplete")
 
 
 def test_grf_goal_replay_multiple_events_same_step(tmp_path):

@@ -15,12 +15,11 @@ import hashlib
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Iterator, Tuple
 
+from logic.replay_schema import GRF_STATE_SCHEMA_VERSION, REPLAY_FORMAT_VERSION, SIM_STEP_SECONDS, SIM_FPS
 
 MAGIC_HEADER_V1 = b"FOOTY_GRF_STATE_V1\n"
-MAGIC_HEADER_V2 = b"FOOTY_GRF_STATE_V2\n"
-DEFAULT_CHUNK_SIZE = 50
-SIM_STEP_SECONDS = 0.1
-SIM_FPS = 10.0
+MAGIC_HEADER_V2 = f"{REPLAY_FORMAT_VERSION}\n".encode("utf-8")
+DEFAULT_CHUNK_SIZE = 200
 
 
 class ReplayIntegrityError(Exception):
@@ -117,7 +116,7 @@ class GRFStateArchiveWriter:
             "compression": "zlib",
             "sim_fps": SIM_FPS,
             "sim_step_seconds": SIM_STEP_SECONDS,
-            "state_schema": "grf_chunked_zlib_v2",
+            "state_schema": GRF_STATE_SCHEMA_VERSION,
             "sha256": self._global_sha256.hexdigest(),
             "data_start_pos": self._data_start_pos,
             "data_end_pos": data_end_pos,
@@ -223,6 +222,9 @@ class GRFStateArchiveReader:
                 "total_steps": self.total_steps
             }
 
+    def __len__(self) -> int:
+        return self.total_steps
+
     def close(self) -> None:
         """Close internal open file handle."""
         if hasattr(self, "_file") and self._file is not None and not self._file.closed:
@@ -308,9 +310,10 @@ class GRFStateArchiveReader:
     def validate(
         self,
         expected_steps: Optional[int] = None,
-        expected_match_id: Optional[str] = None
+        expected_match_id: Optional[str] = None,
+        check_global_sha: bool = False
     ) -> None:
-        """Validate archive integrity, step count, match ID, schema version, and SHA256 checksum."""
+        """Validate archive integrity, step count, match ID, schema version, and optionally SHA256 checksum."""
         if expected_steps is not None and self.total_steps != expected_steps:
             raise ReplayIntegrityError(
                 f"State archive step count mismatch: archive has {self.total_steps} steps, "
@@ -324,16 +327,16 @@ class GRFStateArchiveReader:
             )
 
         # Schema version validation: V2 archives must declare grf_chunked_zlib_v2.
-        # Reject stale V1 schema strings in V2 files to prevent cross-version replay corruption.
+        # Reject stale V1 schema strings or missing schema fields to prevent cross-version replay corruption.
         if not self._is_legacy_pickle:
-            schema = self.header.get("state_schema", "")
-            if schema and schema != "grf_chunked_zlib_v2":
+            schema = self.header.get("state_schema")
+            if schema != GRF_STATE_SCHEMA_VERSION:
                 raise ReplayIntegrityError(
                     f"State archive schema version mismatch: found '{schema}', "
-                    f"expected 'grf_chunked_zlib_v2'. Archive may be from an incompatible version."
+                    f"expected '{GRF_STATE_SCHEMA_VERSION}'. Archive may be from an incompatible version."
                 )
 
-        if not self._is_legacy_pickle and self.sha256:
+        if check_global_sha and not self._is_legacy_pickle and self.sha256:
             calc_sha = hashlib.sha256()
             for s in self.iter_states():
                 calc_sha.update(s)
