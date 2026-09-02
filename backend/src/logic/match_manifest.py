@@ -1,11 +1,13 @@
 """
-Footy Deterministic Match Artifact Manifest Schema (v5.1).
+Footy Deterministic Match Artifact Manifest Schema (v5.2).
 Provides:
 1. Explicit separation of Canonical Deterministic Metadata vs Runtime Metadata.
-2. Canonical Manifest SHA256 digest calculation for deterministic reproducibility contracts.
-3. Simulation Config SHA256 hashing (tactics, rules, simulation parameters).
-4. Relative path artifact packaging and transactional status transitions.
-5. Idempotent rendering checks and atomic video publication with SHA256 gate.
+2. Two-Tier Identity Hashes:
+   - simulation_identity_sha256 (Deterministic simulation inputs + canonical simulation outputs)
+   - artifact_package_sha256 (Complete package contract including verified video & artifact files)
+3. Strict Git Provenance tracking (Returns 'UNKNOWN' rather than silent fallback; marks provenance_complete).
+4. Transactional, crash-durable publication with directory-level fsync and SHA256 integrity gates.
+5. Idempotent rendering cache-hit verification.
 """
 
 import os
@@ -50,23 +52,36 @@ def compute_dict_sha256(data: Dict[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def fsync_dir(dir_path: str):
+    """Safely flushes directory metadata to disk on POSIX systems."""
+    try:
+        if hasattr(os, "O_DIRECTORY"):
+            fd = os.open(dir_path, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+    except Exception:
+        pass
+
+
 def get_git_commit(repo_dir: Optional[str] = None) -> str:
-    """Discovers current git commit hash."""
+    """Discovers current git commit hash. Returns 'UNKNOWN' if git is not available."""
     try:
         cmd = ["git", "rev-parse", "--short", "HEAD"]
         cwd = repo_dir or os.path.dirname(os.path.abspath(__file__))
         res = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd, timeout=2)
-        if res.returncode == 0:
+        if res.returncode == 0 and res.stdout.strip():
             return res.stdout.strip()
     except Exception:
         pass
-    return "f58e327"
+    return "UNKNOWN"
 
 
 @dataclass
 class MatchManifest:
     """
-    Deterministic Match Manifest (Schema v5.1).
+    Deterministic Match Manifest (Schema v5.2).
     Maintains strict boundary between canonical deterministic fields and transient runtime telemetry.
     """
     schema_version: int = 5
@@ -76,6 +91,7 @@ class MatchManifest:
     engine_commit: str = ""
     policy_version: str = "tikick_v1"
     policy_commit: str = ""
+    provenance_complete: bool = True
     config_sha256: str = ""
     operating_mode: str = "REPLAYABLE"  # "FAST", "REPLAYABLE", "BROADCAST"
     seed: int = 42
@@ -85,7 +101,7 @@ class MatchManifest:
     away_team: str = "Away Team"
     score: List[int] = field(default_factory=lambda: [0, 0])
     
-    # Portable relative paths
+    # Portable relative paths & artifact digests
     trajectory_rel_path: Optional[str] = None
     trajectory_sha256: Optional[str] = None
     state_archive_rel_path: Optional[str] = None
@@ -94,9 +110,11 @@ class MatchManifest:
     video_sha256: Optional[str] = None
     
     events_count: int = 0
-    canonical_manifest_sha256: Optional[str] = None
+    simulation_identity_sha256: Optional[str] = None
+    artifact_package_sha256: Optional[str] = None
+    canonical_manifest_sha256: Optional[str] = None  # Alias for simulation_identity_sha256
 
-    # Transient runtime metadata (excluded from canonical hash)
+    # Transient runtime metadata (excluded from deterministic hashes)
     created_at: str = ""
     updated_at: str = ""
     hostname: str = ""
@@ -109,16 +127,19 @@ class MatchManifest:
             self.engine_commit = get_git_commit()
         if not self.policy_commit:
             self.policy_commit = self.engine_commit
+        if self.engine_commit == "UNKNOWN":
+            self.provenance_complete = False
         if not self.hostname:
             self.hostname = socket.gethostname()
 
-    def get_canonical_dict(self) -> Dict[str, Any]:
-        """Returns only the deterministic canonical metadata dictionary."""
+    def get_simulation_identity_dict(self) -> Dict[str, Any]:
+        """Returns the canonical deterministic dictionary representing the simulation run."""
         return {
             "schema_version": self.schema_version,
             "match_id": self.match_id,
             "engine_commit": self.engine_commit,
             "policy_commit": self.policy_commit,
+            "provenance_complete": self.provenance_complete,
             "config_sha256": self.config_sha256,
             "operating_mode": self.operating_mode,
             "seed": self.seed,
@@ -132,11 +153,27 @@ class MatchManifest:
             "events_count": self.events_count,
         }
 
+    def compute_simulation_identity_hash(self) -> str:
+        """Computes deterministic SHA256 digest of simulation identity fields."""
+        can_dict = self.get_simulation_identity_dict()
+        self.simulation_identity_sha256 = compute_dict_sha256(can_dict)
+        self.canonical_manifest_sha256 = self.simulation_identity_sha256
+        return self.simulation_identity_sha256
+
     def compute_canonical_hash(self) -> str:
-        """Computes deterministic SHA256 digest of canonical fields."""
-        can_dict = self.get_canonical_dict()
-        self.canonical_manifest_sha256 = compute_dict_sha256(can_dict)
-        return self.canonical_manifest_sha256
+        """Alias for compute_simulation_identity_hash."""
+        return self.compute_simulation_identity_hash()
+
+    def compute_artifact_package_hash(self) -> str:
+        """Computes deterministic SHA256 digest of the complete artifact package including video."""
+        sim_hash = self.compute_simulation_identity_hash()
+        package_dict = {
+            "simulation_identity_sha256": sim_hash,
+            "video_sha256": self.video_sha256 or "",
+            "status": self.status,
+        }
+        self.artifact_package_sha256 = compute_dict_sha256(package_dict)
+        return self.artifact_package_sha256
 
     def update_status(self, new_status: ArtifactLifecycle):
         """Updates lifecycle state with timestamp."""
@@ -146,7 +183,8 @@ class MatchManifest:
 
     def save_package(self, package_root: str) -> str:
         """
-        Atomically saves the manifest.json inside the package root directory using fsync + replace.
+        Atomically and crash-durably saves manifest.json inside the package root directory.
+        Performs fsync on temporary file, atomic os.replace, and fsync on parent directory.
         """
         import time
         root = Path(package_root)
@@ -155,7 +193,8 @@ class MatchManifest:
         if not self.created_at:
             self.created_at = self.updated_at
         
-        self.compute_canonical_hash()
+        self.compute_simulation_identity_hash()
+        self.compute_artifact_package_hash()
 
         manifest_path = root / "manifest.json"
         tmp_manifest_path = root / f"manifest.json.tmp.{os.getpid()}"
@@ -169,6 +208,7 @@ class MatchManifest:
                 pass
         
         os.replace(tmp_manifest_path, manifest_path)
+        fsync_dir(str(root))
         return str(manifest_path)
 
     @classmethod
@@ -190,11 +230,11 @@ class MatchManifest:
     def publish_video_atomic(self, package_root: str, tmp_video_path: str, target_rel_path: str) -> str:
         """
         Atomically publishes an encoded MP4 video:
-        1. Computes SHA256 of completed video file
-        2. Renames temporary video to final destination
+        1. Computes SHA256 of completed temporary video file
+        2. Performs directory-level fsync and atomic rename
         3. Updates video_rel_path and video_sha256 in manifest
         4. Transitions status to BROADCAST_READY
-        5. Saves updated manifest.json atomically
+        5. Saves updated manifest.json transactionally
         """
         root = Path(package_root)
         target_path = root / target_rel_path
@@ -207,6 +247,7 @@ class MatchManifest:
 
         sha = compute_file_sha256(tmp_video_path)
         os.replace(tmp_video_path, str(target_path))
+        fsync_dir(str(target_path.parent))
 
         self.video_rel_path = target_rel_path
         self.video_sha256 = sha

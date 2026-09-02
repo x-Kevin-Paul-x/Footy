@@ -280,28 +280,72 @@ class SimulationProcessPool:
             processes.append(p)
             p.start()
 
+        fixtures_by_id = {str(f["match_id"]): f for f in fixtures}
+        retry_counts = {str(f["match_id"]): 0 for f in fixtures}
         results_by_id = {}
         completed_count = 0
+        max_retries = 2
 
         try:
             while completed_count < num_fixtures:
                 try:
                     msg = result_queue.get(timeout=0.5)
                 except Exception:
-                    # Check if any worker died unexpectedly
-                    for p in processes:
+                    # Monitor worker process health
+                    for idx, p in enumerate(processes):
                         if not p.is_alive() and p.exitcode != 0:
-                            raise RuntimeError(f"Worker process {p.pid} terminated unexpectedly with exit code {p.exitcode}")
+                            # Worker died unexpectedly (e.g. SIGKILL / segfault)
+                            # Respawn replacement worker to drain remaining queue
+                            core_pin = (
+                                self.physical_cores[idx % len(self.physical_cores)]
+                                if (self.use_affinity and self.physical_cores)
+                                else None
+                            )
+                            new_p = ctx.Process(
+                                target=_dynamic_queue_worker_runner,
+                                args=(
+                                    idx + 100,
+                                    task_queue,
+                                    result_queue,
+                                    ckpt_path,
+                                    tikick_dir,
+                                    max_steps,
+                                    replay_mode.value,
+                                    core_pin
+                                )
+                            )
+                            processes[idx] = new_p
+                            new_p.start()
                     continue
 
+                m_id = str(msg.get("match_id", ""))
                 if not msg["success"]:
-                    for p in processes:
-                        if p.is_alive():
-                            p.terminate()
-                    raise RuntimeError(
-                        f"Simulation worker failed on match {msg['match_id']}: {msg['error']}\n{msg.get('traceback', '')}"
-                    )
-                results_by_id[msg["match_id"]] = msg["data"]
+                    if m_id in fixtures_by_id and retry_counts[m_id] < max_retries:
+                        retry_counts[m_id] += 1
+                        print(f"[SUPERVISOR] Auto-retrying failed match {m_id} (Attempt {retry_counts[m_id]}/{max_retries})...")
+                        # Clean any partial trajectory file before retry
+                        fix = fixtures_by_id[m_id]
+                        if fix.get("trajectory_file") and os.path.exists(fix["trajectory_file"]):
+                            try:
+                                os.remove(fix["trajectory_file"])
+                            except OSError:
+                                pass
+                        if fix.get("states_file") and os.path.exists(fix["states_file"]):
+                            try:
+                                os.remove(fix["states_file"])
+                            except OSError:
+                                pass
+                        task_queue.put(fix)
+                        continue
+                    else:
+                        for p in processes:
+                            if p.is_alive():
+                                p.terminate()
+                        raise RuntimeError(
+                            f"Simulation worker failed on match {msg['match_id']}: {msg['error']}\n{msg.get('traceback', '')}"
+                        )
+
+                results_by_id[m_id] = msg["data"]
                 completed_count += 1
         finally:
             for p in processes:

@@ -365,17 +365,33 @@ class SimulationWorker:
             if self.active_shot and self.active_shot["team"] == 0:
                 scorer = self.active_shot["shooter"]
                 self.sot_h += 1
+                for ev in reversed(self.events):
+                    if ev.get("type") == "shot" and ev.get("team") == "home" and ev.get("step") == self.active_shot["step"]:
+                        ev["on_target"] = True
+                        break
             else:
-                # Direct tap-in / unclassified finish: credit shot, SoT, and tap-in xG
+                # Physical strike reconstruction from spatial state (no hardcoded fallback)
+                striker_idx = self.last_home_touch if (0 <= self.last_home_touch < len(self.home_players)) else 9
+                strike_x = float(o0['left_team'][striker_idx][0])
+                strike_y = float(o0['left_team'][striker_idx][1])
+                shooter_profile = self.home_tactics.roster[striker_idx] if striker_idx < len(self.home_tactics.roster) else self.home_tactics.roster[0]
+                away_gk_profile = self.away_tactics.roster[0] if len(self.away_tactics.roster) > 0 else None
+                away_gk_pos = (float(o0['right_team'][0][0]), float(o0['right_team'][0][1]))
+
+                strike_xg = compute_shot_xg(
+                    shooter_x=strike_x, shooter_y=strike_y, goal_x=1.0,
+                    defenders=np.array(o0['right_team'], dtype=np.float32),
+                    shooting_attr=getattr(shooter_profile, 'shooting', 70.0),
+                    gk_pos=away_gk_pos,
+                    gk_save_coverage=getattr(away_gk_profile, 'gk_save_coverage', 1.0)
+                )
                 self.shots_h += 1
                 self.sot_h += 1
-                tap_in_xg = 0.65
-                self.xg_h += tap_in_xg
-                if self.last_home_touch < len(self.home_players):
-                    scorer = self.home_players[self.last_home_touch]
+                self.xg_h += strike_xg
+                scorer = self.home_players[striker_idx] if striker_idx < len(self.home_players) else f"Player {striker_idx}"
                 self.events.append({
                     "minute": m_min, "step": step, "type": "shot", "team": "home",
-                    "player": scorer, "xg": tap_in_xg, "on_target": True
+                    "player": scorer, "xg": round(strike_xg, 3), "on_target": True
                 })
 
             self.events.append({
@@ -390,17 +406,33 @@ class SimulationWorker:
             if self.active_shot and self.active_shot["team"] == 1:
                 scorer = self.active_shot["shooter"]
                 self.sot_a += 1
+                for ev in reversed(self.events):
+                    if ev.get("type") == "shot" and ev.get("team") == "away" and ev.get("step") == self.active_shot["step"]:
+                        ev["on_target"] = True
+                        break
             else:
-                # Direct tap-in / unclassified finish: credit shot, SoT, and tap-in xG
+                # Physical strike reconstruction from spatial state (no hardcoded fallback)
+                striker_idx = self.last_away_touch if (0 <= self.last_away_touch < len(self.away_players)) else 9
+                strike_x = float(o0['right_team'][striker_idx][0])
+                strike_y = float(o0['right_team'][striker_idx][1])
+                shooter_profile = self.away_tactics.roster[striker_idx] if striker_idx < len(self.away_tactics.roster) else self.away_tactics.roster[0]
+                home_gk_profile = self.home_tactics.roster[0] if len(self.home_tactics.roster) > 0 else None
+                home_gk_pos = (float(o0['left_team'][0][0]), float(o0['left_team'][0][1]))
+
+                strike_xg = compute_shot_xg(
+                    shooter_x=strike_x, shooter_y=strike_y, goal_x=-1.0,
+                    defenders=np.array(o0['left_team'], dtype=np.float32),
+                    shooting_attr=getattr(shooter_profile, 'shooting', 70.0),
+                    gk_pos=home_gk_pos,
+                    gk_save_coverage=getattr(home_gk_profile, 'gk_save_coverage', 1.0)
+                )
                 self.shots_a += 1
                 self.sot_a += 1
-                tap_in_xg = 0.65
-                self.xg_a += tap_in_xg
-                if self.last_away_touch < len(self.away_players):
-                    scorer = self.away_players[self.last_away_touch]
+                self.xg_a += strike_xg
+                scorer = self.away_players[striker_idx] if striker_idx < len(self.away_players) else f"Player {striker_idx}"
                 self.events.append({
                     "minute": m_min, "step": step, "type": "shot", "team": "away",
-                    "player": scorer, "xg": tap_in_xg, "on_target": True
+                    "player": scorer, "xg": round(strike_xg, 3), "on_target": True
                 })
 
             self.events.append({

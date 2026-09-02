@@ -102,18 +102,23 @@ def test_event_state_correspondence():
         w_end = min(len(ball_coords), step + 6)
         window_balls = ball_coords[w_start:w_end]
 
-        # For Home goals: ball enters right goal (x > 0.90)
-        # For Away goals: ball enters left goal (x < -0.90)
+        # Exact physical goal mouth crossing:
+        # Home: ball crosses right goal line (x >= 0.98) within posts (|y| <= 0.08)
+        # Away: ball crosses left goal line (x <= -0.98) within posts (|y| <= 0.08)
         if g["team"] == "home":
             max_x = np.max(window_balls[:, 0])
-            print(f"    --> Goal {idx+1} (Home, min {g['minute']}, step {step}): max ball_x in window = {max_x:.3f}")
-            assert max_x > 0.85, f"Home goal ball position not deep in attacking box (max x={max_x})"
+            min_y = np.min(np.abs(window_balls[:, 1]))
+            print(f"    --> Goal {idx+1} (Home, min {g['minute']}, step {step}): max ball_x = {max_x:.3f}, min |ball_y| = {min_y:.3f}")
+            assert max_x >= 0.98, f"Home goal did not cross goal line (max x={max_x})"
+            assert min_y <= 0.08, f"Home goal y-coordinate outside goal posts (min |y|={min_y})"
         else:
             min_x = np.min(window_balls[:, 0])
-            print(f"    --> Goal {idx+1} (Away, min {g['minute']}, step {step}): min ball_x in window = {min_x:.3f}")
-            assert min_x < -0.85, f"Away goal ball position not deep in attacking box (min x={min_x})"
+            min_y = np.min(np.abs(window_balls[:, 1]))
+            print(f"    --> Goal {idx+1} (Away, min {g['minute']}, step {step}): min ball_x = {min_x:.3f}, min |ball_y| = {min_y:.3f}")
+            assert min_x <= -0.98, f"Away goal did not cross goal line (min x={min_x})"
+            assert min_y <= 0.08, f"Away goal y-coordinate outside goal posts (min |y|={min_y})"
 
-    print(f"    --> [PASS] All {len(goal_events)} goal events correspond to physical ball goal-line entry.")
+    print(f"    --> [PASS] All {len(goal_events)} goal events strictly satisfy physical goal-line crossing and goal-mouth post boundaries.")
 
     # -------------------------------------------------------------------------
     # 4. Possession Frame-by-Frame Accounting
