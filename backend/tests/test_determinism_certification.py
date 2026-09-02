@@ -12,7 +12,10 @@ import shutil
 import numpy as np
 from pathlib import Path
 
-backend_src = Path(__file__).resolve().parent.parent / "src"
+import tempfile
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+backend_src = REPO_ROOT / "src"
 if str(backend_src) not in sys.path:
     sys.path.insert(0, str(backend_src))
 
@@ -21,10 +24,9 @@ from logic.simulation.simulation_worker import SimulationWorker, ReplayMode
 from logic.simulation.policy_backend import CPUSinglePolicy
 from logic.match_manifest import compute_file_sha256
 
-FOOTY_ROOT = Path("/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy")
-CKPT_PATH = str(FOOTY_ROOT / "backend" / "checkpoints" / "tikick" / "actor.pt")
-TIKICK_DIR = str(FOOTY_ROOT / "backend" / "third_party" / "tikick")
-CERT_DIR = Path("/root/test_determinism_cert")
+CKPT_PATH = os.getenv("FOOTY_CHECKPOINT", str(REPO_ROOT / "checkpoints" / "tikick" / "actor.pt"))
+TIKICK_DIR = os.getenv("FOOTY_TIKICK_DIR", str(REPO_ROOT / "third_party" / "tikick"))
+CERT_DIR = Path(tempfile.gettempdir()) / "test_determinism_cert"
 
 
 def test_determinism_certification():

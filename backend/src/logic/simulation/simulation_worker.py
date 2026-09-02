@@ -329,7 +329,8 @@ class SimulationWorker:
                 shooter_name = self.home_players[b_player] if b_player < len(self.home_players) else f"Player {b_player}"
                 self.events.append({
                     "minute": m_min, "step": step, "type": "shot", "team": "home",
-                    "player": shooter_name, "xg": round(calc_xg, 3), "on_target": False
+                    "player": shooter_name, "xg": round(calc_xg, 3), "on_target": False,
+                    "outcome": "PENDING"
                 })
                 self.active_shot = {"team": 0, "shooter": shooter_name, "xg": calc_xg, "step": step}
         elif b_own == 1 and b_player >= 1 and (b_player - 1) < len(r_act_tactical):
@@ -351,12 +352,65 @@ class SimulationWorker:
                 shooter_name = self.away_players[b_player] if b_player < len(self.away_players) else f"Player {b_player}"
                 self.events.append({
                     "minute": m_min, "step": step, "type": "shot", "team": "away",
-                    "player": shooter_name, "xg": round(calc_xg, 3), "on_target": False
+                    "player": shooter_name, "xg": round(calc_xg, 3), "on_target": False,
+                    "outcome": "PENDING"
                 })
                 self.active_shot = {"team": 1, "shooter": shooter_name, "xg": calc_xg, "step": step}
 
+        # Physical Shot Outcome Classifier & State Machine
         if self.active_shot is not None:
-            if step - self.active_shot["step"] > 25:
+            shot_team = self.active_shot["team"]
+            opp_team = 1 - shot_team
+            ball_x = float(o0['ball'][0])
+            ball_y = float(o0['ball'][1])
+
+            # 1. Check GK Save (Opposing GK touches ball in defending third)
+            if b_own == opp_team and b_player == 0:
+                if (shot_team == 0 and ball_x > 0.65) or (shot_team == 1 and ball_x < -0.65):
+                    if shot_team == 0:
+                        self.sot_h += 1
+                        gk_name = self.away_players[0] if len(self.away_players) > 0 else "Goalkeeper"
+                    else:
+                        self.sot_a += 1
+                        gk_name = self.home_players[0] if len(self.home_players) > 0 else "Goalkeeper"
+
+                    for ev in reversed(self.events):
+                        if ev.get("type") == "shot" and ev.get("step") == self.active_shot["step"]:
+                            ev["on_target"] = True
+                            ev["outcome"] = "SAVED"
+                            break
+
+                    self.events.append({
+                        "minute": m_min, "step": step, "type": "save",
+                        "team": "away" if shot_team == 0 else "home", "player": gk_name
+                    })
+                    self.active_shot = None
+
+            # 2. Check Outfield Defender Block
+            elif b_own == opp_team and b_player > 0:
+                for ev in reversed(self.events):
+                    if ev.get("type") == "shot" and ev.get("step") == self.active_shot["step"]:
+                        ev["on_target"] = False
+                        ev["outcome"] = "BLOCKED"
+                        break
+                self.active_shot = None
+
+            # 3. Check Off-Target Endline Crossing outside posts
+            elif (shot_team == 0 and ball_x >= 1.0 and abs(ball_y) > 0.08) or \
+                 (shot_team == 1 and ball_x <= -1.0 and abs(ball_y) > 0.08):
+                for ev in reversed(self.events):
+                    if ev.get("type") == "shot" and ev.get("step") == self.active_shot["step"]:
+                        ev["on_target"] = False
+                        ev["outcome"] = "OFF_TARGET"
+                        break
+                self.active_shot = None
+
+            # 4. Timeout fallback
+            elif step - self.active_shot["step"] > 25:
+                for ev in reversed(self.events):
+                    if ev.get("type") == "shot" and ev.get("step") == self.active_shot["step"] and ev.get("outcome") == "PENDING":
+                        ev["outcome"] = "OFF_TARGET"
+                        break
                 self.active_shot = None
 
         # Goal Detection
@@ -368,6 +422,7 @@ class SimulationWorker:
                 for ev in reversed(self.events):
                     if ev.get("type") == "shot" and ev.get("team") == "home" and ev.get("step") == self.active_shot["step"]:
                         ev["on_target"] = True
+                        ev["outcome"] = "GOAL"
                         break
             else:
                 # Physical strike reconstruction from spatial state (no hardcoded fallback)
@@ -391,7 +446,8 @@ class SimulationWorker:
                 scorer = self.home_players[striker_idx] if striker_idx < len(self.home_players) else f"Player {striker_idx}"
                 self.events.append({
                     "minute": m_min, "step": step, "type": "shot", "team": "home",
-                    "player": scorer, "xg": round(strike_xg, 3), "on_target": True
+                    "player": scorer, "xg": round(strike_xg, 3), "on_target": True,
+                    "outcome": "GOAL"
                 })
 
             self.events.append({
@@ -409,6 +465,7 @@ class SimulationWorker:
                 for ev in reversed(self.events):
                     if ev.get("type") == "shot" and ev.get("team") == "away" and ev.get("step") == self.active_shot["step"]:
                         ev["on_target"] = True
+                        ev["outcome"] = "GOAL"
                         break
             else:
                 # Physical strike reconstruction from spatial state (no hardcoded fallback)
@@ -432,7 +489,8 @@ class SimulationWorker:
                 scorer = self.away_players[striker_idx] if striker_idx < len(self.away_players) else f"Player {striker_idx}"
                 self.events.append({
                     "minute": m_min, "step": step, "type": "shot", "team": "away",
-                    "player": scorer, "xg": round(strike_xg, 3), "on_target": True
+                    "player": scorer, "xg": round(strike_xg, 3), "on_target": True,
+                    "outcome": "GOAL"
                 })
 
             self.events.append({

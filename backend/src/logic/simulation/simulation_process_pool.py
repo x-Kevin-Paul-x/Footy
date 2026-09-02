@@ -67,14 +67,12 @@ def _dynamic_queue_worker_runner(
     tikick_dir: str,
     max_steps: int,
     replay_mode_val: str,
-    core_id: Optional[int]
+    core_id: Optional[int] = None,
+    in_flight_dict: Optional[Any] = None
 ):
-    """
-    Persistent worker loop pulling matches dynamically from task_queue.
-    Initializes GRF environment and CPUSinglePolicy ONCE per worker lifecycle.
-    """
+    """Entry point for an isolated worker pulling matches dynamically from task_queue."""
     try:
-        # 1. Thread oversubscription controls
+        # 1. Thread concurrency capping
         os.environ["OMP_NUM_THREADS"] = "1"
         os.environ["MKL_NUM_THREADS"] = "1"
         os.environ["OPENBLAS_NUM_THREADS"] = "1"
@@ -108,6 +106,10 @@ def _dynamic_queue_worker_runner(
             if fix is None:  # Sentinel to terminate
                 break
 
+            match_id_str = str(fix.get("match_id", ""))
+            if in_flight_dict is not None:
+                in_flight_dict[w_id] = match_id_str
+
             t_match_start = time.perf_counter()
             try:
                 worker = SimulationWorker(fix, max_steps=max_steps, replay_mode=replay_mode)
@@ -120,8 +122,12 @@ def _dynamic_queue_worker_runner(
                 res = worker.finalize()
                 t_match_end = time.perf_counter()
                 res["match_duration_sec"] = round(t_match_end - t_match_start, 3)
+                if in_flight_dict is not None:
+                    in_flight_dict[w_id] = None
                 result_queue.put({"success": True, "match_id": worker.match_id, "data": res})
             except Exception as ex:
+                if in_flight_dict is not None:
+                    in_flight_dict[w_id] = None
                 import traceback
                 result_queue.put({
                     "success": False,
@@ -130,6 +136,8 @@ def _dynamic_queue_worker_runner(
                     "traceback": traceback.format_exc()
                 })
     except Exception as ex:
+        if in_flight_dict is not None:
+            in_flight_dict[w_id] = None
         import traceback
         result_queue.put({
             "success": False,
@@ -243,6 +251,8 @@ class SimulationProcessPool:
         replay_mode: ReplayMode
     ) -> List[Dict[str, Any]]:
         ctx = mp.get_context("spawn")
+        manager = ctx.Manager()
+        in_flight_dict = manager.dict()
         task_queue = ctx.Queue()
         result_queue = ctx.Queue()
 
@@ -259,6 +269,7 @@ class SimulationProcessPool:
 
         processes = []
         for w_id in range(workers_to_spawn):
+            in_flight_dict[w_id] = None
             core_pin = (
                 self.physical_cores[w_id % len(self.physical_cores)]
                 if (self.use_affinity and self.physical_cores)
@@ -274,7 +285,8 @@ class SimulationProcessPool:
                     tikick_dir,
                     max_steps,
                     replay_mode.value,
-                    core_pin
+                    core_pin,
+                    in_flight_dict
                 )
             )
             processes.append(p)
@@ -291,10 +303,28 @@ class SimulationProcessPool:
                 try:
                     msg = result_queue.get(timeout=0.5)
                 except Exception:
-                    # Monitor worker process health
+                    # Monitor worker process health & recover in-flight jobs on abrupt death
                     for idx, p in enumerate(processes):
                         if not p.is_alive() and p.exitcode != 0:
-                            # Worker died unexpectedly (e.g. SIGKILL / segfault)
+                            lost_m_id = in_flight_dict.get(idx)
+                            if lost_m_id and lost_m_id in fixtures_by_id:
+                                if retry_counts[lost_m_id] < max_retries:
+                                    retry_counts[lost_m_id] += 1
+                                    print(f"[SUPERVISOR] Detected abrupt worker death (PID {p.pid}, code {p.exitcode}) on in-flight match {lost_m_id}. Auto-retrying (Attempt {retry_counts[lost_m_id]}/{max_retries})...")
+                                    fix = fixtures_by_id[lost_m_id]
+                                    if fix.get("trajectory_file") and os.path.exists(fix["trajectory_file"]):
+                                        try:
+                                            os.remove(fix["trajectory_file"])
+                                        except OSError:
+                                            pass
+                                    if fix.get("states_file") and os.path.exists(fix["states_file"]):
+                                        try:
+                                            os.remove(fix["states_file"])
+                                        except OSError:
+                                            pass
+                                    task_queue.put(fix)
+                                    in_flight_dict[idx] = None
+
                             # Respawn replacement worker to drain remaining queue
                             core_pin = (
                                 self.physical_cores[idx % len(self.physical_cores)]
@@ -304,14 +334,15 @@ class SimulationProcessPool:
                             new_p = ctx.Process(
                                 target=_dynamic_queue_worker_runner,
                                 args=(
-                                    idx + 100,
+                                    idx,
                                     task_queue,
                                     result_queue,
                                     ckpt_path,
                                     tikick_dir,
                                     max_steps,
                                     replay_mode.value,
-                                    core_pin
+                                    core_pin,
+                                    in_flight_dict
                                 )
                             )
                             processes[idx] = new_p

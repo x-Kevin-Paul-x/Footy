@@ -18,9 +18,10 @@ import threading
 import numpy as np
 from pathlib import Path
 from unittest.mock import patch, mock_open
+import tempfile
 
-# Add backend/src to path
-backend_src = Path(__file__).resolve().parent.parent / "src"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+backend_src = REPO_ROOT / "src"
 if str(backend_src) not in sys.path:
     sys.path.insert(0, str(backend_src))
 
@@ -30,14 +31,14 @@ from logic.simulation.simulation_worker import SimulationWorker, ReplayMode
 from logic.replay.replay_pipeline import ReplayPipeline, InstrumentedFrameQueue
 from logic.replay.replay_encoder import create_encoder
 
-FOOTY_ROOT = Path("/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy")
-CKPT_PATH = str(FOOTY_ROOT / "backend" / "checkpoints" / "tikick" / "actor.pt")
-TIKICK_DIR = str(FOOTY_ROOT / "backend" / "third_party" / "tikick")
-
+CKPT_PATH = os.getenv("FOOTY_CHECKPOINT", str(REPO_ROOT / "checkpoints" / "tikick" / "actor.pt"))
+TIKICK_DIR = os.getenv("FOOTY_TIKICK_DIR", str(REPO_ROOT / "third_party" / "tikick"))
+RESILIENCE_DIR = Path(tempfile.gettempdir()) / "test_resilience"
 
 def test_archive_corruption_integrity():
     """1. Validates that bit-level archive corruption is caught by SHA256 validation."""
-    test_file = "/tmp/test_corrupt.grfstate"
+    test_file = str(RESILIENCE_DIR / "test_corrupt.grfstate")
+    os.makedirs(RESILIENCE_DIR, exist_ok=True)
     writer = GRFStateArchiveWriter(test_file, match_id="resilience_m01", chunk_size=10)
     for i in range(50):
         writer.append(f"fake_grf_state_bytes_{i:04d}".encode("utf-8") * 20)

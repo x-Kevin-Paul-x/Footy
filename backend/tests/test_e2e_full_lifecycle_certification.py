@@ -17,7 +17,10 @@ import time
 import shutil
 from pathlib import Path
 
-backend_src = Path(__file__).resolve().parent.parent / "src"
+import tempfile
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+backend_src = REPO_ROOT / "src"
 if str(backend_src) not in sys.path:
     sys.path.insert(0, str(backend_src))
 
@@ -27,10 +30,9 @@ from logic.simulation.policy_backend import CPUSinglePolicy
 from logic.replay.persistent_replay_engine import PersistentReplayEngine
 from logic.match_manifest import MatchManifest, compute_file_sha256, ArtifactLifecycle
 
-FOOTY_ROOT = Path("/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy")
-CKPT_PATH = str(FOOTY_ROOT / "backend" / "checkpoints" / "tikick" / "actor.pt")
-TIKICK_DIR = str(FOOTY_ROOT / "backend" / "third_party" / "tikick")
-E2E_DIR = Path("/root/test_e2e_certification")
+CKPT_PATH = os.getenv("FOOTY_CHECKPOINT", str(REPO_ROOT / "checkpoints" / "tikick" / "actor.pt"))
+TIKICK_DIR = os.getenv("FOOTY_TIKICK_DIR", str(REPO_ROOT / "third_party" / "tikick"))
+E2E_DIR = Path(tempfile.gettempdir()) / "test_e2e_certification"
 
 
 def run_sim_mode(pkg_dir: Path, match_id: str, seed: int, mode: ReplayMode) -> dict:
