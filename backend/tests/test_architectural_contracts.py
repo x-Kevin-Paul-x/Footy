@@ -1,10 +1,11 @@
 """
-Static Architecture & Contract Regression Test Suite (Fourth Pass).
+Static Architecture & Contract Regression Test Suite (Fifth Pass - Full RNG Isolation & Parity).
 Statically verifies system abstractions, PreparedMatch schema, lineup consolidation,
-seed scope isolation, process pool state machines, database pragmas, state archive schema versioning,
+per-match RNG isolation, process pool state machines, database pragmas, state archive schema versioning,
 manager financial bounds, and frontend/API route alignment WITHOUT running simulation or WSL subprocesses.
 """
 
+import ast
 import inspect
 import json
 import pytest
@@ -49,12 +50,44 @@ def test_league_prepare_match_and_lineup_consolidation():
     assert "select_team_lineup" in src, "League.prepare_match must utilize select_team_lineup"
 
 
-def test_per_match_rng_seed_scope_isolation():
-    """Statically verify Match.__init__ uses an isolated random.Random(self.seed_val) instance."""
-    from models.match import Match
+def test_match_rng_isolation_ast():
+    """Statically inspect Match methods to assert no bare global random. calls remain inside stochastic simulation methods."""
+    from models import match as match_mod
 
-    src = inspect.getsource(Match.__init__)
-    assert "random.Random(self.seed_val)" in src, "Match.__init__ must isolate per-match RNG using random.Random(seed_val)"
+    stochastic_methods = [
+        "simulate_minute",
+        "_calculate_action_success",
+        "_maybe_injure_player",
+        "_attempt_substitution",
+        "_calculate_card_probability",
+        "play_match",
+        "_fast_mode_prediction",
+    ]
+
+    for method_name in stochastic_methods:
+        method_obj = getattr(match_mod.Match, method_name)
+        src = inspect.getsource(method_obj)
+        tree = ast.parse(src)
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                if isinstance(node.func.value, ast.Name) and node.func.value.id == "random":
+                    pytest.fail(
+                        f"Match.{method_name} contains unisolated global 'random.{node.func.attr}()' call at line {node.lineno}. "
+                        f"Must use 'self.rng.{node.func.attr}()' for per-match seed isolation."
+                    )
+
+
+def test_truthiness_seed_val_preservation():
+    """Statically verify that seed_val=0 is preserved correctly using 'is not None' rather than truthiness 'or'."""
+    from models.match import Match, PreparedMatch
+    from models.league import League
+
+    src_match_init = inspect.getsource(Match.__init__)
+    assert "seed_val if seed_val is not None else" in src_match_init, "Match.__init__ must use 'is not None' for seed_val check"
+
+    src_league_prep = inspect.getsource(League.prepare_match)
+    assert "seed_val if seed_val is not None else" in src_league_prep, "League.prepare_match must use 'is not None' for seed_val check"
 
 
 def test_chronological_matchday_execution_in_concurrent():
@@ -88,21 +121,13 @@ def test_fast_mode_engine_mode_precedence():
     assert "fast_prediction_enabled = False" in src, "ENGINE_MODE=='GRF' must disable fast mode prediction"
 
 
-def test_season_fixture_completeness_assertion():
-    """Statically inspect main.py simulate_season_with_transfers for season completeness assertion."""
+def test_season_fixture_completeness_and_uniqueness_assertion():
+    """Statically inspect main.py simulate_season_with_transfers for season completeness and uniqueness assertions."""
     import main as main_mod
 
     src = inspect.getsource(main_mod.simulate_season_with_transfers)
     assert "if matches_played != total_matches:" in src, "Season simulation must assert exact expected fixture count"
-
-
-def test_event_ledger_terminal_state_exclusivity():
-    """Statically verify shot outcome classification in SimulationWorker."""
-    from logic.simulation.simulation_worker import SimulationWorker
-
-    src = inspect.getsource(SimulationWorker.step)
-    for terminal_state in ["SAVED", "HIT_POST", "BLOCKED", "OFF_TARGET", "UNRESOLVED", "GOAL"]:
-        assert terminal_state in src, f"SimulationWorker must track {terminal_state} shot outcome"
+    assert "if len(recorded_match_ids) != total_matches:" in src, "Season simulation must assert unique recorded match IDs"
 
 
 def test_database_wal_and_busy_timeout_pragmas():

@@ -141,11 +141,11 @@ class Match:
         self.home_team = home_team
         self.away_team = away_team
         self.prepared_match = prepared_match
-        self.seed_val = seed_val or (prepared_match.seed_val if prepared_match else None)
+        self.seed_val = seed_val if seed_val is not None else (prepared_match.seed_val if prepared_match else None)
         self.match_id = prepared_match.match_id if prepared_match else None
 
-        # Isolated per-match RNG seeded deterministically by seed_val
-        match_rng = random.Random(self.seed_val) if self.seed_val is not None else random
+        # Isolated per-match RNG instance seeded deterministically by seed_val
+        self.rng = random.Random(self.seed_val) if self.seed_val is not None else random.Random(42)
 
         self.score = [0, 0]  # [home, away]
         self.possession = [0, 0]  # Possession time in minutes
@@ -167,8 +167,8 @@ class Match:
         # Enhanced match attributes
         stadium_cap = getattr(home_team, "stadium_capacity", 30000)
         self.home_advantage = 1.05 + min(0.10, (stadium_cap / 80000) * 0.08)
-        self.intensity = match_rng.uniform(0.8, 1.2)
-        self.weather = match_rng.choice(["sunny", "rainy", "windy", "snowy"])
+        self.intensity = self.rng.uniform(0.8, 1.2)
+        self.weather = self.rng.choice(["sunny", "rainy", "windy", "snowy"])
         
         # Substitution tracking
         self.home_substitutions_made = 0
@@ -458,7 +458,7 @@ class Match:
             attackers = [p for p in attacking_lineup if p.position in ["ST", "CF", "SS", "RW", "LW"] and p not in sent_off_att]
             if not attackers:
                 return False
-            attacker = random.choice(attackers)
+            attacker = self.rng.choice(attackers)
             
             # Goalkeeper save chance
             defenders = [p for p in defending_lineup if p.position == "GK" and p not in sent_off_def]
@@ -489,7 +489,7 @@ class Match:
             
             # Final probability calculation
             success_chance = (shot_rating - save_rating + 50) / 150  # Normalized to 0-1 range
-            return random.random() < success_chance
+            return self.rng.random() < success_chance
             
         elif action_type == "pass":
             base_chance = 0.75  # Base 75% pass success rate
@@ -514,7 +514,7 @@ class Match:
             weather_mod = self.weather_effects[self.weather]["passing"]
             
             final_chance = base_chance * (pass_skill / max(1, defense_pressure)) * weather_mod
-            return random.random() < min(0.95, final_chance)
+            return self.rng.random() < min(0.95, final_chance)
             
         elif action_type == "tackle":
             attacking_lineup = self.home_lineup if attacking_team == self.home_team else self.away_lineup
@@ -529,8 +529,8 @@ class Match:
             if not active_attackers or not active_defenders:
                 return False
                 
-            attacker = random.choice(active_attackers)
-            defender = random.choice(active_defenders)
+            attacker = self.rng.choice(active_attackers)
+            defender = self.rng.choice(active_defenders)
             
             dribble_skill = (attacker.attributes.get("dribbling", {}).get("ball_control", 50) + 
                            attacker.attributes.get("dribbling", {}).get("agility", 50)) / 2
@@ -544,11 +544,11 @@ class Match:
             success_chance = tackle_skill * def_condition / (dribble_skill * att_condition + tackle_skill * def_condition)
             
             # Check for cards if tackle fails
-            tackle_success = random.random() < success_chance
+            tackle_success = self.rng.random() < success_chance
             if not tackle_success:
                 yellow_prob, red_prob = self._calculate_card_probability(defender, "tackle", False)
                 
-                if random.random() < red_prob:
+                if self.rng.random() < red_prob:
                     card_result = defender.receive_card("red")
                     if card_result == "red":
                         self._send_off_player(defender, defending_team)
@@ -557,7 +557,7 @@ class Match:
                             "home" if defending_team == self.home_team else "away",
                             f"{defender.name} receives a red card for a dangerous tackle!"
                         ))
-                elif random.random() < yellow_prob:
+                elif self.rng.random() < yellow_prob:
                     card_result = defender.receive_card("yellow")
                     self.events.append(MatchEvent(
                         self.minute, "yellow_card", defender.name,
@@ -626,9 +626,9 @@ class Match:
         
         total_chance = base_chance * (1 + fatigue_factor + age_factor + intensity_factor) * position_factor
         
-        if random.random() < total_chance:
+        if self.rng.random() < total_chance:
             # Determine injury severity
-            severity_roll = random.random()
+            severity_roll = self.rng.random()
             if severity_roll < 0.7:
                 injury_type = "minor"
             elif severity_roll < 0.9:
@@ -688,7 +688,7 @@ class Match:
                 elif goal_diff < -1:  # Away team well ahead, more defensive
                     action_weights = [0.15, 0.45, 0.4]
         
-        action = random.choices(
+        action = self.rng.choices(
             ["attack", "midfield", "defense"],
             weights=action_weights
         )[0]
@@ -710,11 +710,11 @@ class Match:
             if pass_success:
                 self.passes_completed[score_idx] += 1
                 self.shots[score_idx] += 1
-                shot_xg = round(random.uniform(0.04, 0.28), 3)
+                shot_xg = round(self.rng.uniform(0.04, 0.28), 3)
                 self.xg[score_idx] = round(self.xg[score_idx] + shot_xg, 3)
-                if random.random() < 0.1:  # 10% chance for a corner
+                if self.rng.random() < 0.1:  # 10% chance for a corner
                     self.corners[score_idx] += 1
-                if random.random() < 0.07:  # 7% chance for offside
+                if self.rng.random() < 0.07:  # 7% chance for offside
                     self.offsides[score_idx] += 1
                 if self._calculate_action_success(attacking_team, defending_team, "shot"):
                     self.score[score_idx] += 1
@@ -730,19 +730,19 @@ class Match:
                     midfielders = [p for p in active_players if p.position in ["CM", "CAM", "LM", "RM", "LW", "RW"]]
                     
                     if forwards:
-                        scorer = random.choice(forwards)
+                        scorer = self.rng.choice(forwards)
                     elif midfielders:
-                        scorer = random.choice(midfielders)
+                        scorer = self.rng.choice(midfielders)
                     else:
-                        scorer = random.choice(active_players) if active_players else None
+                        scorer = self.rng.choice(active_players) if active_players else None
                     
                     if scorer:
                         scorer.stats["goals"] += 1
                         
                         # Potential assist
                         potential_assisters = [p for p in active_players if p != scorer]
-                        if potential_assisters and random.random() < 0.6:
-                            assister = random.choice(potential_assisters)
+                        if potential_assisters and self.rng.random() < 0.6:
+                            assister = self.rng.choice(potential_assisters)
                             assister.stats["assists"] += 1
                             event_details = f"Goal! {scorer.name} scores! Assisted by {assister.name}."
                         else:
@@ -757,18 +757,18 @@ class Match:
                         ))
                 
                 # Switch possession after attack
-                if random.random() < 0.65:
+                if self.rng.random() < 0.65:
                     self.current_possession = "away" if self.current_possession == "home" else "home"
             else:
                 # Failed attack, possession changes
-                self.fouls[score_idx] += 1 if random.random() < 0.15 else 0  # 15% chance for foul
+                self.fouls[score_idx] += 1 if self.rng.random() < 0.15 else 0  # 15% chance for foul
                 self.current_possession = "away" if self.current_possession == "home" else "home"
                 
         elif action == "midfield":
             # Midfield battle
             if self._calculate_action_success(attacking_team, defending_team, "pass"):
                 # Successful buildup
-                if random.random() < 0.3:  # 30% chance to lose possession anyway
+                if self.rng.random() < 0.3:  # 30% chance to lose possession anyway
                     self.current_possession = "away" if self.current_possession == "home" else "home"
             else:
                 # Lost possession
@@ -791,18 +791,18 @@ class Match:
             lineup = self.home_lineup if team == self.home_team else self.away_lineup
             for player in lineup:
                 # Reduced fatigue per minute for realism
-                fatigue = random.uniform(0.02, 0.05) * self.intensity
+                fatigue = self.rng.uniform(0.02, 0.05) * self.intensity
                 player.stats["fitness"] = max(0, player.stats["fitness"] - fatigue)
 
                 # Injury check (only for active players)
                 self._maybe_injure_player(player)
                 
                 # Apply age decline (very gradually during matches)
-                if random.random() < 0.001:  # Very rare during individual matches
+                if self.rng.random() < 0.001:  # Very rare during individual matches
                     player.apply_age_decline()
         
         # Attempt substitutions for both teams
-        if self.minute > 45 and random.random() < 0.1:  # 10% chance per minute after halftime
+        if self.minute > 45 and self.rng.random() < 0.1:  # 10% chance per minute after halftime
             self._attempt_substitution(self.home_team, self.minute)
             self._attempt_substitution(self.away_team, self.minute)
         
@@ -978,7 +978,7 @@ class Match:
                 logger.warning("GRF Simulation error, falling back to heuristic engine in AUTO mode: %s", e)
         
         # Simulate 90 minutes + injury time
-        injury_time = random.randint(1, 5)
+        injury_time = self.rng.randint(1, 5)
         total_minutes = 90 + injury_time
         
         for minute in range(total_minutes):
@@ -997,9 +997,9 @@ class Match:
             for player in team.players:
                 # Recovery based on whether they played
                 if player in self.home_lineup or player in self.away_lineup:
-                    recovery = random.randint(20, 40)  # Starters recover less
+                    recovery = self.rng.randint(20, 40)  # Starters recover less
                 else:
-                    recovery = random.randint(40, 60)  # Bench players recover more
+                    recovery = self.rng.randint(40, 60)  # Bench players recover more
                 
                 player.stats["fitness"] = min(100, player.stats["fitness"] + recovery)
                 
@@ -1013,7 +1013,7 @@ class Match:
             team_performance = 0.7 if (player in self.home_lineup and self.score[0] >= self.score[1]) or \
                                    (player in self.away_lineup and self.score[1] >= self.score[0]) else 0.4
             
-            individual_performance = random.uniform(0.3, 0.9)
+            individual_performance = self.rng.uniform(0.3, 0.9)
             fitness_factor = player.stats["fitness"] / 100
             
             match_rating = (team_performance + individual_performance) * fitness_factor
@@ -1298,9 +1298,9 @@ class Match:
         )
         
         # Add some randomness to prevent deterministic outcomes
-        if random.random() < 0.15:  # 15% chance to adjust by 1 goal
-            adjustment = random.choice([-1, 1])
-            if random.random() < 0.5:
+        if self.rng.random() < 0.15:  # 15% chance to adjust by 1 goal
+            adjustment = self.rng.choice([-1, 1])
+            if self.rng.random() < 0.5:
                 home_goals = max(0, home_goals + adjustment)
             else:
                 away_goals = max(0, away_goals + adjustment)
@@ -1311,14 +1311,14 @@ class Match:
             "home_team_id": getattr(self.home_team, 'team_id', 0),
             "away_team_id": getattr(self.away_team, 'team_id', 0),
             "score": [home_goals, away_goals],
-            "possession": [55 + random.randint(-10, 10), 45 + random.randint(-10, 10)],
-            "shots": [random.randint(8, 18), random.randint(6, 16)],
-            "shots_on_target": [max(home_goals, random.randint(3, 8)), max(away_goals, random.randint(2, 7))],
-            "passes_attempted": [random.randint(400, 600), random.randint(350, 550)],
-            "passes_completed": [random.randint(300, 500), random.randint(280, 450)],
-            "fouls": [random.randint(8, 16), random.randint(8, 16)],
-            "corners": [random.randint(3, 10), random.randint(2, 9)],
-            "offsides": [random.randint(1, 5), random.randint(1, 5)],
+            "possession": [55 + self.rng.randint(-10, 10), 45 + self.rng.randint(-10, 10)],
+            "shots": [self.rng.randint(8, 18), self.rng.randint(6, 16)],
+            "shots_on_target": [max(home_goals, self.rng.randint(3, 8)), max(away_goals, self.rng.randint(2, 7))],
+            "passes_attempted": [self.rng.randint(400, 600), self.rng.randint(350, 550)],
+            "passes_completed": [self.rng.randint(300, 500), self.rng.randint(280, 450)],
+            "fouls": [self.rng.randint(8, 16), self.rng.randint(8, 16)],
+            "corners": [self.rng.randint(3, 10), self.rng.randint(2, 9)],
+            "offsides": [self.rng.randint(1, 5), self.rng.randint(1, 5)],
             "weather": "sunny",
             "events": [],
             "substitutions": [],

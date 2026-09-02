@@ -222,6 +222,7 @@ class ManagerBrain:
         action_type: str = "match",
         raw_state: Optional[Dict] = None,
         action_mask: Optional[Union[np.ndarray, List[float], List[int]]] = None,
+        rng: Optional[random.Random] = None,
     ) -> Any:
         """Select action using Action-Masked DQN or epsilon-greedy Q-learning."""
         if self.use_dqn and self.dqn_agent and raw_state and len(possible_actions) == 5:
@@ -234,10 +235,11 @@ class ManagerBrain:
             )
             return possible_actions[action_idx]
 
-        # Fallback to tabular Q-learning / heuristic
+        # Fallback to tabular Q-learning / heuristic with injected RNG or global
+        active_rng = rng or random
         qtable = self._get_qtable(action_type)
-        if random.random() < self.get_exploration_rate():
-            return random.choice(possible_actions)
+        if active_rng.random() < self.get_exploration_rate():
+            return active_rng.choice(possible_actions)
 
         state_tuple = state if isinstance(state, tuple) else self.encode_state(raw_state or {})
         return max(possible_actions, key=lambda a: qtable.get_value(state_tuple, a))

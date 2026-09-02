@@ -552,6 +552,7 @@ def simulate_season_with_transfers(premier_league, transfer_market):
     # Play matches until January (concurrent multi-process matchdays)
     matches_played = 0
     total_matches = len(premier_league.schedule)
+    recorded_match_ids = set()
     january_start = total_matches // 2
     matches_per_week = max(1, len(premier_league.teams) // 2)
     chunk_size = matches_per_week * 2  # 2 matchdays = 20 matches concurrently
@@ -576,6 +577,7 @@ def simulate_season_with_transfers(premier_league, transfer_market):
                 match_global_idx = curr_start + idx_in_batch
                 if match_result is not None:
                     match_result['date'] = scheduled_date.isoformat()
+                    recorded_match_ids.add(str(match_result.get("match_id", match_global_idx)))
                 save_match_to_db(match_result, premier_league.season_year, match_global_idx + 1)
                 matches_played += 1
 
@@ -641,6 +643,7 @@ def simulate_season_with_transfers(premier_league, transfer_market):
                 match_global_idx = curr_start + idx_in_batch
                 if match_result is not None:
                     match_result['date'] = scheduled_date.isoformat()
+                    recorded_match_ids.add(str(match_result.get("match_id", match_global_idx)))
                 save_match_to_db(match_result, premier_league.season_year, match_global_idx + 1)
                 matches_played += 1
 
@@ -658,11 +661,16 @@ def simulate_season_with_transfers(premier_league, transfer_market):
             # Instantly sync updated league standings, team records, and player stats after every matchday
             sync_simulation_state_to_db(premier_league, transfer_market)
 
-    # Assert season fixture completeness
+    # Assert season fixture completeness and uniqueness
     if matches_played != total_matches:
         raise RuntimeError(
             f"Season simulation incomplete for {premier_league.season_year}: "
             f"played {matches_played}/{total_matches} expected fixtures."
+        )
+    if len(recorded_match_ids) != total_matches:
+        raise RuntimeError(
+            f"Season simulation duplicate fixture detected for {premier_league.season_year}: "
+            f"recorded {len(recorded_match_ids)} unique match IDs out of {total_matches} expected."
         )
 
     # Process contract expiries at end of season

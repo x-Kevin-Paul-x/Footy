@@ -92,10 +92,10 @@ class League:
         key = f"{self.name}_{self.season_year}_{home_team.team_id}_{away_team.team_id}"
         return int.from_bytes(hashlib.sha256(key.encode("utf-8")).digest()[:4], "little")
 
-    def select_team_lineup(self, team, opponent=None):
+    def select_team_lineup(self, team, opponent=None, rng=None):
         """Canonical lineup selection function used uniformly before backend dispatch."""
         if team.manager:
-            lineup, positions = team.manager.select_lineup(team.players, opponent=opponent)
+            lineup, positions = team.manager.select_lineup(team.players, opponent=opponent, rng=rng)
         else:
             lineup, positions = self._select_default_lineup(team)
         return lineup, positions
@@ -128,9 +128,10 @@ class League:
 
         m_id = match_id or f"match_{self.season_year}_{home_team.team_id}_{away_team.team_id}"
         s_val = seed_val if seed_val is not None else self.derive_match_seed(home_team, away_team)
+        match_rng = random.Random(s_val)
 
-        h_lineup, h_pos = self.select_team_lineup(home_team, opponent=away_team)
-        a_lineup, a_pos = self.select_team_lineup(away_team, opponent=home_team)
+        h_lineup, h_pos = self.select_team_lineup(home_team, opponent=away_team, rng=match_rng)
+        a_lineup, a_pos = self.select_team_lineup(away_team, opponent=home_team, rng=match_rng)
 
         def select_matchday_bench(team, lineup, max_bench=7):
             available = [p for p in team.players if p not in lineup and getattr(p, "is_available_for_selection", lambda: True)()]
