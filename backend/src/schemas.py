@@ -65,8 +65,8 @@ class MatchSimulationRequest(BaseModel):
     generate_video: bool = False
     max_steps: int = 3000
     record_grf_states: Optional[bool] = None
-    record_dump: bool = False
-    render_mode: str = "auto"
+    record_dump: bool = True
+    render_mode: str = "3d"
 
 
 class MatchSimulationResponse(BaseModel):
@@ -82,4 +82,10 @@ class MatchSimulationResponse(BaseModel):
     video_url: Optional[str] = None
     render_mode_used: Optional[str] = None
     render_source: Optional[str] = None
+
+
+class SimulationSettings(BaseModel):
+    default_render_mode: str = "3d"  # "3d" (Option 1 - Live Broadcast) or "2d" (Option 2 - Tactical Radar)
+    max_steps: int = 1200
+
 

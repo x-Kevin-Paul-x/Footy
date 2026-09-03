@@ -12,7 +12,13 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional
 import numpy as np
 import torch
-import gym
+try:
+    import gym
+except ImportError:
+    try:
+        import gymnasium as gym
+    except ImportError:
+        gym = None
 
 
 class TiKickModelConfig:

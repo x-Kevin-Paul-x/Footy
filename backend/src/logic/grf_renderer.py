@@ -31,8 +31,9 @@ _KIT_PALETTE = [
 ]
 
 
-def team_color_from_name(name: str) -> str:
-    idx = int(hashlib.md5(name.encode()).hexdigest()[:4], 16) % len(_KIT_PALETTE)
+def team_color_from_name(name: Any) -> str:
+    str_name = getattr(name, "name", str(name))
+    idx = int(hashlib.md5(str_name.encode('utf-8')).hexdigest()[:4], 16) % len(_KIT_PALETTE)
     return _KIT_PALETTE[idx]
 
 
@@ -576,4 +577,161 @@ def render_video_from_trajectory(
 
     writer.close()
     return f"/recordings/{os.path.basename(output_mp4)}"
+
+
+def transcode_live_avi_to_broadcast_mp4(
+    raw_avi_path: str,
+    output_mp4_path: str,
+    manifest: MatchManifest,
+    home_color: Optional[str] = None,
+    away_color: Optional[str] = None,
+    progress_callback: Optional[Any] = None
+) -> str:
+    """
+    Overlays TV-style broadcast presentation (Lineup card, floating scoreboard pill,
+    goal celebration popups, half-time and full-time studio cards) onto a native 3D
+    video recorded directly during live C++ simulation. Guarantees 100% deterministic
+    consistency with match scorecard and zero floating-point graphics replay drift.
+    """
+    if cv2 is None or imageio is None:
+        raise RuntimeError("cv2 and imageio are required for video transcoding")
+
+    cap = cv2.VideoCapture(raw_avi_path)
+    if not cap.isOpened():
+        raise FileNotFoundError(f"Cannot open live recording AVI: {raw_avi_path}")
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    if total_frames <= 0:
+        cap.release()
+        raise ValueError(f"Recording AVI {raw_avi_path} contains 0 frames")
+
+    os.makedirs(os.path.dirname(output_mp4_path) or '.', exist_ok=True)
+    writer = imageio.get_writer(
+        output_mp4_path,
+        fps=15,
+        codec='libx264',
+        pixelformat='yuv420p',
+        quality=8
+    )
+
+    home_team = manifest.home_team
+    away_team = manifest.away_team
+    h_col = home_color or team_color_from_name(home_team)
+    a_col = away_color or team_color_from_name(away_team)
+    home_bgr = hex_to_bgr(h_col)
+    away_bgr = hex_to_bgr(a_col)
+
+    # 1. Pre-match starting lineup card (3 seconds)
+    intro_card = draw_pre_match_card(
+        w=1280, h=720, home_team=home_team, away_team=away_team,
+        home_players=manifest.home_players, away_players=manifest.away_players,
+        home_formation=manifest.home_formation, away_formation=manifest.away_formation,
+        home_bgr=home_bgr, away_bgr=away_bgr
+    )
+    for _ in range(45):
+        writer.append_data(intro_card)
+
+    goal_events_by_step = {}
+    for ev in manifest.events:
+        if ev.get("type") == "goal":
+            s_idx = ev.get("step")
+            if s_idx is None:
+                g_min = ev.get("minute", 0)
+                s_idx = int((g_min / 90.0) * total_frames)
+            goal_events_by_step.setdefault(s_idx, []).append(ev)
+
+    curr_score = [0, 0]
+    goal_banner = None
+    goal_banner_cd = 0
+
+    for step in range(total_frames):
+        ret, frame_bgr = cap.read()
+        if not ret or frame_bgr is None:
+            break
+
+        match_min = max(1, min(90, int((step / max(total_frames, 1)) * 90) + 1))
+        is_second_half = step > (total_frames // 2)
+
+        # Update score and trigger celebration banner at goal events
+        if step in goal_events_by_step:
+            for g_ev in goal_events_by_step[step]:
+                g_team = g_ev.get("team", "home")
+                g_scorer = g_ev.get("player") or g_ev.get("scorer", "Goal")
+                g_min = g_ev.get("minute", match_min)
+                if g_team == "home":
+                    curr_score[0] += 1
+                else:
+                    curr_score[1] += 1
+                team_label = home_team if g_team == "home" else away_team
+                goal_banner = f"GOAL!  {g_scorer} ({team_label})  {g_min}'"
+                goal_banner_cd = 45
+
+        # Resize frame if needed to 1280x720
+        h_f, w_f = frame_bgr.shape[:2]
+        if (w_f, h_f) != (1280, 720):
+            frame_bgr = cv2.resize(frame_bgr, (1280, 720), interpolation=cv2.INTER_LINEAR)
+
+        frame_annotated = draw_hud(
+            frame=frame_bgr,
+            home_team=home_team,
+            away_team=away_team,
+            score=(curr_score[0], curr_score[1]),
+            match_min=match_min,
+            home_bgr=home_bgr,
+            away_bgr=away_bgr,
+            goal_banner=goal_banner if goal_banner_cd > 0 else None,
+            is_second_half=is_second_half
+        )
+        if goal_banner_cd > 0:
+            goal_banner_cd -= 1
+
+        writer.append_data(cv2.cvtColor(frame_annotated, cv2.COLOR_BGR2RGB))
+
+        # Half-Time Studio Recap Card (at halftime step)
+        if step == (total_frames // 2):
+            ht_card = draw_studio_stats_card(
+                w=1280, h=720, title="HALF TIME",
+                home_team=home_team, away_team=away_team,
+                score=(curr_score[0], curr_score[1]),
+                h_poss=manifest.possession[0], a_poss=manifest.possession[1],
+                h_shots=manifest.shots[0], a_shots=manifest.shots[1],
+                h_sot=manifest.shots_on_target[0], a_sot=manifest.shots_on_target[1],
+                h_xg=manifest.xg[0], a_xg=manifest.xg[1],
+                home_bgr=home_bgr, away_bgr=away_bgr,
+                events=[e for e in manifest.events if e.get("minute", 0) <= 45]
+            )
+            for _ in range(45):
+                writer.append_data(ht_card)
+
+        if progress_callback and (step % 50 == 0 or step == total_frames - 1):
+            pct = min(98, 5 + int((step / max(total_frames - 1, 1)) * 93))
+            progress_callback(pct, step, total_frames, match_min)
+
+    cap.release()
+
+    # Full-time card with Man of the Match
+    motm = None
+    goals = [e for e in manifest.events if e.get("type") == "goal"]
+    if goals:
+        motm = goals[-1].get("player")
+    elif manifest.home_players and manifest.away_players:
+        motm = manifest.home_players[8] if manifest.home_score >= manifest.away_score else manifest.away_players[9]
+
+    ft_card = draw_studio_stats_card(
+        w=1280, h=720, title="FULL TIME",
+        home_team=home_team, away_team=away_team,
+        score=(manifest.home_score, manifest.away_score),
+        h_poss=manifest.possession[0], a_poss=manifest.possession[1],
+        h_shots=manifest.shots[0], a_shots=manifest.shots[1],
+        h_sot=manifest.shots_on_target[0], a_sot=manifest.shots_on_target[1],
+        h_xg=manifest.xg[0], a_xg=manifest.xg[1],
+        home_bgr=home_bgr, away_bgr=away_bgr,
+        events=manifest.events,
+        motm_player=motm
+    )
+    for _ in range(60):
+        writer.append_data(ft_card)
+
+    writer.close()
+    return f"/recordings/{os.path.basename(output_mp4_path)}"
 

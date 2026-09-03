@@ -23,22 +23,25 @@ _grf_simulator_attempted = False
 def get_grf_simulator():
     """
     Get or initialize the GRF + TiKick match simulator.
-    Returns a GRFNativeRunner which exposes .simulate() (compatible with play_match)
+    Returns a FootyMatchSimulator which exposes .simulate() (compatible with play_match)
     and .run_match() (used directly by the API for on-demand renders).
-    GRFNativeRunner.simulate() runs GRF via WSL with write_full_episode_dumps=True
-    so every match automatically saves a trace for consistent 3D replay later.
+    FootyMatchSimulator acts as the canonical bridge between Footy domain objects
+    (teams, lineups, player attributes) and GRFNativeRunner.
+    Does not permanently cache transient initialization failures.
     """
-    global _grf_simulator, _grf_simulator_attempted
-    if not _grf_simulator_attempted:
-        _grf_simulator_attempted = True
-        try:
-            from logic.grf_native_runner import GRFNativeRunner
-            runner = GRFNativeRunner()
-            if runner.is_available():
-                _grf_simulator = runner
-        except Exception as e:
-            logger.warning("GRF simulator not available in current runtime: %s", e)
-    return _grf_simulator
+    global _grf_simulator
+    if _grf_simulator is not None:
+        return _grf_simulator
+
+    try:
+        from logic.match_engine_grf import FootyMatchSimulator
+        runner = FootyMatchSimulator()
+        if runner.is_available():
+            _grf_simulator = runner
+            return _grf_simulator
+    except Exception as e:
+        logger.warning("GRF simulator not available in current runtime: %s", e)
+    return None
 
 def get_match_predictor():
     """Get or initialize the match predictor for fast mode."""
@@ -83,17 +86,69 @@ class Substitution:
     player_in: str
     reason: str = "tactical"
 
+@dataclass
+class PreparedMatch:
+    match_id: str
+    seed_val: int
+    home_team: Any
+    away_team: Any
+    home_lineup: List[Any]
+    away_lineup: List[Any]
+    home_positions: List[str]
+    away_positions: List[str]
+    home_bench: List[Any]
+    away_bench: List[Any]
+    home_formation: str
+    away_formation: str
+    home_tactics: Any
+    away_tactics: Any
+    home_profiles: List[Dict[str, Any]]
+    away_profiles: List[Dict[str, Any]]
+
+    def to_fixture_dict(self) -> Dict[str, Any]:
+        h_name = getattr(self.home_team, "name", str(self.home_team))
+        a_name = getattr(self.away_team, "name", str(self.away_team))
+        return {
+            "match_id": self.match_id,
+            "seed_val": self.seed_val,
+            "home_team": h_name,
+            "away_team": a_name,
+            "home_team_obj": self.home_team,
+            "away_team_obj": self.away_team,
+            "home_team_name": h_name,
+            "away_team_name": a_name,
+            "home_formation": self.home_formation,
+            "away_formation": self.away_formation,
+            "home_players": [p.get("name", "") if isinstance(p, dict) else getattr(p, "name", str(p)) for p in self.home_profiles],
+            "away_players": [p.get("name", "") if isinstance(p, dict) else getattr(p, "name", str(p)) for p in self.away_profiles],
+            "home_profiles": self.home_profiles,
+            "away_profiles": self.away_profiles,
+            "home_lineup_objs": self.home_lineup,
+            "away_lineup_objs": self.away_lineup,
+            "home_bench_objs": self.home_bench,
+            "away_bench_objs": self.away_bench,
+        }
+
 class Match:
-    def __init__(self, home_team, away_team):
+    def __init__(self, home_team, away_team, prepared_match: Optional[PreparedMatch] = None, seed_val: Optional[int] = None):
         """
         Initialize a match between two teams.
         
         Args:
             home_team (Team): Home team
             away_team (Team): Away team
+            prepared_match (PreparedMatch, optional): Canonical pre-constructed match inputs
+            seed_val (int, optional): Deterministic match seed
         """
         self.home_team = home_team
         self.away_team = away_team
+        self.prepared_match = prepared_match
+        self.seed_val = seed_val if seed_val is not None else (prepared_match.seed_val if prepared_match else None)
+        self.match_id = prepared_match.match_id if prepared_match else None
+
+        # Isolated per-match RNG instance seeded deterministically by seed_val
+        self.rng = random.Random(self.seed_val) if self.seed_val is not None else random.Random(42)
+
         self.score = [0, 0]  # [home, away]
         self.possession = [0, 0]  # Possession time in minutes
         self.shots = [0, 0]  # [home shots, away shots]
@@ -112,11 +167,10 @@ class Match:
         self.xg = [0.0, 0.0]  # [home_xg, away_xg] Expected Goals tracking
         
         # Enhanced match attributes
-        # Dynamic home advantage based on stadium capacity & attendance
         stadium_cap = getattr(home_team, "stadium_capacity", 30000)
         self.home_advantage = 1.05 + min(0.10, (stadium_cap / 80000) * 0.08)
-        self.intensity = random.uniform(0.8, 1.2)
-        self.weather = random.choice(["sunny", "rainy", "windy", "snowy"])
+        self.intensity = self.rng.uniform(0.8, 1.2)
+        self.weather = self.rng.choice(["sunny", "rainy", "windy", "snowy"])
         
         # Substitution tracking
         self.home_substitutions_made = 0
@@ -127,13 +181,21 @@ class Match:
         self.home_players_sent_off = []
         self.away_players_sent_off = []
         
-        # Initialize lineups
-        self.home_lineup = []
-        self.home_positions = []
-        self.home_bench = []
-        self.away_lineup = []
-        self.away_positions = []
-        self.away_bench = []
+        # Initialize lineups from prepared match if available
+        if prepared_match:
+            self.home_lineup = list(prepared_match.home_lineup)
+            self.home_positions = list(prepared_match.home_positions)
+            self.home_bench = list(prepared_match.home_bench)
+            self.away_lineup = list(prepared_match.away_lineup)
+            self.away_positions = list(prepared_match.away_positions)
+            self.away_bench = list(prepared_match.away_bench)
+        else:
+            self.home_lineup = []
+            self.home_positions = []
+            self.home_bench = []
+            self.away_lineup = []
+            self.away_positions = []
+            self.away_bench = []
         
         # Updated weather effects (more balanced)
         self.weather_effects = {
@@ -398,7 +460,7 @@ class Match:
             attackers = [p for p in attacking_lineup if p.position in ["ST", "CF", "SS", "RW", "LW"] and p not in sent_off_att]
             if not attackers:
                 return False
-            attacker = random.choice(attackers)
+            attacker = self.rng.choice(attackers)
             
             # Goalkeeper save chance
             defenders = [p for p in defending_lineup if p.position == "GK" and p not in sent_off_def]
@@ -429,7 +491,7 @@ class Match:
             
             # Final probability calculation
             success_chance = (shot_rating - save_rating + 50) / 150  # Normalized to 0-1 range
-            return random.random() < success_chance
+            return self.rng.random() < success_chance
             
         elif action_type == "pass":
             base_chance = 0.75  # Base 75% pass success rate
@@ -454,7 +516,7 @@ class Match:
             weather_mod = self.weather_effects[self.weather]["passing"]
             
             final_chance = base_chance * (pass_skill / max(1, defense_pressure)) * weather_mod
-            return random.random() < min(0.95, final_chance)
+            return self.rng.random() < min(0.95, final_chance)
             
         elif action_type == "tackle":
             attacking_lineup = self.home_lineup if attacking_team == self.home_team else self.away_lineup
@@ -469,8 +531,8 @@ class Match:
             if not active_attackers or not active_defenders:
                 return False
                 
-            attacker = random.choice(active_attackers)
-            defender = random.choice(active_defenders)
+            attacker = self.rng.choice(active_attackers)
+            defender = self.rng.choice(active_defenders)
             
             dribble_skill = (attacker.attributes.get("dribbling", {}).get("ball_control", 50) + 
                            attacker.attributes.get("dribbling", {}).get("agility", 50)) / 2
@@ -484,11 +546,11 @@ class Match:
             success_chance = tackle_skill * def_condition / (dribble_skill * att_condition + tackle_skill * def_condition)
             
             # Check for cards if tackle fails
-            tackle_success = random.random() < success_chance
+            tackle_success = self.rng.random() < success_chance
             if not tackle_success:
                 yellow_prob, red_prob = self._calculate_card_probability(defender, "tackle", False)
                 
-                if random.random() < red_prob:
+                if self.rng.random() < red_prob:
                     card_result = defender.receive_card("red")
                     if card_result == "red":
                         self._send_off_player(defender, defending_team)
@@ -497,7 +559,7 @@ class Match:
                             "home" if defending_team == self.home_team else "away",
                             f"{defender.name} receives a red card for a dangerous tackle!"
                         ))
-                elif random.random() < yellow_prob:
+                elif self.rng.random() < yellow_prob:
                     card_result = defender.receive_card("yellow")
                     self.events.append(MatchEvent(
                         self.minute, "yellow_card", defender.name,
@@ -566,9 +628,9 @@ class Match:
         
         total_chance = base_chance * (1 + fatigue_factor + age_factor + intensity_factor) * position_factor
         
-        if random.random() < total_chance:
+        if self.rng.random() < total_chance:
             # Determine injury severity
-            severity_roll = random.random()
+            severity_roll = self.rng.random()
             if severity_roll < 0.7:
                 injury_type = "minor"
             elif severity_roll < 0.9:
@@ -628,7 +690,7 @@ class Match:
                 elif goal_diff < -1:  # Away team well ahead, more defensive
                     action_weights = [0.15, 0.45, 0.4]
         
-        action = random.choices(
+        action = self.rng.choices(
             ["attack", "midfield", "defense"],
             weights=action_weights
         )[0]
@@ -650,11 +712,11 @@ class Match:
             if pass_success:
                 self.passes_completed[score_idx] += 1
                 self.shots[score_idx] += 1
-                shot_xg = round(random.uniform(0.04, 0.28), 3)
+                shot_xg = round(self.rng.uniform(0.04, 0.28), 3)
                 self.xg[score_idx] = round(self.xg[score_idx] + shot_xg, 3)
-                if random.random() < 0.1:  # 10% chance for a corner
+                if self.rng.random() < 0.1:  # 10% chance for a corner
                     self.corners[score_idx] += 1
-                if random.random() < 0.07:  # 7% chance for offside
+                if self.rng.random() < 0.07:  # 7% chance for offside
                     self.offsides[score_idx] += 1
                 if self._calculate_action_success(attacking_team, defending_team, "shot"):
                     self.score[score_idx] += 1
@@ -670,19 +732,19 @@ class Match:
                     midfielders = [p for p in active_players if p.position in ["CM", "CAM", "LM", "RM", "LW", "RW"]]
                     
                     if forwards:
-                        scorer = random.choice(forwards)
+                        scorer = self.rng.choice(forwards)
                     elif midfielders:
-                        scorer = random.choice(midfielders)
+                        scorer = self.rng.choice(midfielders)
                     else:
-                        scorer = random.choice(active_players) if active_players else None
+                        scorer = self.rng.choice(active_players) if active_players else None
                     
                     if scorer:
                         scorer.stats["goals"] += 1
                         
                         # Potential assist
                         potential_assisters = [p for p in active_players if p != scorer]
-                        if potential_assisters and random.random() < 0.6:
-                            assister = random.choice(potential_assisters)
+                        if potential_assisters and self.rng.random() < 0.6:
+                            assister = self.rng.choice(potential_assisters)
                             assister.stats["assists"] += 1
                             event_details = f"Goal! {scorer.name} scores! Assisted by {assister.name}."
                         else:
@@ -697,18 +759,18 @@ class Match:
                         ))
                 
                 # Switch possession after attack
-                if random.random() < 0.65:
+                if self.rng.random() < 0.65:
                     self.current_possession = "away" if self.current_possession == "home" else "home"
             else:
                 # Failed attack, possession changes
-                self.fouls[score_idx] += 1 if random.random() < 0.15 else 0  # 15% chance for foul
+                self.fouls[score_idx] += 1 if self.rng.random() < 0.15 else 0  # 15% chance for foul
                 self.current_possession = "away" if self.current_possession == "home" else "home"
                 
         elif action == "midfield":
             # Midfield battle
             if self._calculate_action_success(attacking_team, defending_team, "pass"):
                 # Successful buildup
-                if random.random() < 0.3:  # 30% chance to lose possession anyway
+                if self.rng.random() < 0.3:  # 30% chance to lose possession anyway
                     self.current_possession = "away" if self.current_possession == "home" else "home"
             else:
                 # Lost possession
@@ -731,24 +793,24 @@ class Match:
             lineup = self.home_lineup if team == self.home_team else self.away_lineup
             for player in lineup:
                 # Reduced fatigue per minute for realism
-                fatigue = random.uniform(0.02, 0.05) * self.intensity
+                fatigue = self.rng.uniform(0.02, 0.05) * self.intensity
                 player.stats["fitness"] = max(0, player.stats["fitness"] - fatigue)
 
                 # Injury check (only for active players)
                 self._maybe_injure_player(player)
                 
                 # Apply age decline (very gradually during matches)
-                if random.random() < 0.001:  # Very rare during individual matches
+                if self.rng.random() < 0.001:  # Very rare during individual matches
                     player.apply_age_decline()
         
         # Attempt substitutions for both teams
-        if self.minute > 45 and random.random() < 0.1:  # 10% chance per minute after halftime
+        if self.minute > 45 and self.rng.random() < 0.1:  # 10% chance per minute after halftime
             self._attempt_substitution(self.home_team, self.minute)
             self._attempt_substitution(self.away_team, self.minute)
         
         self.minute += 1
     
-    def play_match(self, use_grf: bool = False, render_video: bool = False, match_id: Optional[str] = None):
+    def play_match(self, use_grf: bool = False, render_video: bool = False, match_id: Optional[str] = None, seed_val: Optional[int] = None):
         """
         Simulate the entire match with enhanced features.
         Supports Fast Heuristic Mode, Match Predictor, and High-Fidelity GRF + TiKick Multi-Agent Simulation.
@@ -756,41 +818,54 @@ class Match:
         Returns:
             dict: Match statistics and events
         """
-        # FAST_MODE: Use proxy model for quick prediction during RL training
-        if FAST_MODE:
+        from config import ENGINE_MODE
+
+        # ENGINE_MODE="GRF" takes precedence and guarantees strict GRF simulation
+        if ENGINE_MODE == "GRF":
+            fast_prediction_enabled = False
+        else:
+            fast_prediction_enabled = FAST_MODE
+
+        # FAST_MODE: Use proxy model for quick prediction during RL training (unless strict GRF mode is active)
+        if fast_prediction_enabled:
             predictor = get_match_predictor()
             if predictor:
                 return self._fast_mode_prediction(predictor)
         
-        from config import ENGINE_MODE
         should_use_grf = use_grf or (ENGINE_MODE in ["GRF", "AUTO"])
         grf_sim = get_grf_simulator() if should_use_grf else None
 
-        # Select lineups using improved selection
-        if self.home_team.manager:
-            self.home_lineup, self.home_positions = self.home_team.manager.select_lineup(
-                self.home_team.players,
-                opponent=self.away_team
-            )
-        else:
-            self.home_lineup, self.home_positions = self._select_default_lineup(self.home_team)
+        # Select lineups if not already provided via PreparedMatch
+        if not self.home_lineup:
+            if self.home_team.manager:
+                self.home_lineup, self.home_positions = self.home_team.manager.select_lineup(
+                    self.home_team.players,
+                    opponent=self.away_team,
+                    rng=self.rng
+                )
+            else:
+                self.home_lineup, self.home_positions = self._select_default_lineup(self.home_team)
 
-        if self.away_team.manager:
-            self.away_lineup, self.away_positions = self.away_team.manager.select_lineup(
-                self.away_team.players,
-                opponent=self.home_team
-            )
-        else:
-            self.away_lineup, self.away_positions = self._select_default_lineup(self.away_team)
+        if not self.away_lineup:
+            if self.away_team.manager:
+                self.away_lineup, self.away_positions = self.away_team.manager.select_lineup(
+                    self.away_team.players,
+                    opponent=self.home_team,
+                    rng=self.rng
+                )
+            else:
+                self.away_lineup, self.away_positions = self._select_default_lineup(self.away_team)
 
-        # Create official matchday bench (7-9 named substitutes)
+        # Create official matchday bench if not already provided
         def select_matchday_bench(team, lineup, max_bench=7):
             available = [p for p in team.players if p not in lineup and p.is_available_for_selection()]
             available.sort(key=lambda p: (p.get_overall_rating() if hasattr(p, "get_overall_rating") and callable(p.get_overall_rating) else getattr(p, "potential", 70)), reverse=True)
             return available[:max_bench]
 
-        self.home_bench = select_matchday_bench(self.home_team, self.home_lineup, max_bench=7)
-        self.away_bench = select_matchday_bench(self.away_team, self.away_lineup, max_bench=7)
+        if not self.home_bench:
+            self.home_bench = select_matchday_bench(self.home_team, self.home_lineup, max_bench=7)
+        if not self.away_bench:
+            self.away_bench = select_matchday_bench(self.away_team, self.away_lineup, max_bench=7)
 
         # Validate lineups
         self.home_lineup, self.home_positions = self._validate_lineup(self.home_lineup, self.home_positions, self.home_team)
@@ -811,9 +886,10 @@ class Match:
                     away_team=self.away_team,
                     max_steps=FOOTY_GRF_MAX_STEPS,
                     render_video=render_video,
-                    match_id=match_id,
+                    match_id=match_id or self.match_id,
                     home_lineup=self.home_lineup,
                     away_lineup=self.away_lineup,
+                    seed_val=self.seed_val,
                 )
                 self.score = grf_res["score"]
                 self.xg = grf_res.get("xg", [0.0, 0.0])
@@ -844,6 +920,7 @@ class Match:
 
                 from datetime import datetime
                 summary = {
+                    "match_id": match_id or getattr(self, "match_id", None) or f"match_{self.home_team.team_id}_{self.away_team.team_id}",
                     "date": datetime.now().isoformat(),
                     "home_team_id": self.home_team.team_id,
                     "away_team_id": self.away_team.team_id,
@@ -899,10 +976,14 @@ class Match:
 
                 return summary
             except Exception as e:
-                logger.warning("GRF Simulation error, falling back to heuristic engine: %s", e)
+                from config import ENGINE_MODE
+                if ENGINE_MODE == "GRF":
+                    logger.error("GRF Simulation failed and ENGINE_MODE=='GRF': %s", e)
+                    raise RuntimeError(f"GRF Simulation failed under strict GRF mode: {e}") from e
+                logger.warning("GRF Simulation error, falling back to heuristic engine in AUTO mode: %s", e)
         
         # Simulate 90 minutes + injury time
-        injury_time = random.randint(1, 5)
+        injury_time = self.rng.randint(1, 5)
         total_minutes = 90 + injury_time
         
         for minute in range(total_minutes):
@@ -921,9 +1002,9 @@ class Match:
             for player in team.players:
                 # Recovery based on whether they played
                 if player in self.home_lineup or player in self.away_lineup:
-                    recovery = random.randint(20, 40)  # Starters recover less
+                    recovery = self.rng.randint(20, 40)  # Starters recover less
                 else:
-                    recovery = random.randint(40, 60)  # Bench players recover more
+                    recovery = self.rng.randint(40, 60)  # Bench players recover more
                 
                 player.stats["fitness"] = min(100, player.stats["fitness"] + recovery)
                 
@@ -937,7 +1018,7 @@ class Match:
             team_performance = 0.7 if (player in self.home_lineup and self.score[0] >= self.score[1]) or \
                                    (player in self.away_lineup and self.score[1] >= self.score[0]) else 0.4
             
-            individual_performance = random.uniform(0.3, 0.9)
+            individual_performance = self.rng.uniform(0.3, 0.9)
             fitness_factor = player.stats["fitness"] / 100
             
             match_rating = (team_performance + individual_performance) * fitness_factor
@@ -946,6 +1027,7 @@ class Match:
         from datetime import datetime
         # Enhanced match summary
         summary = {
+            "match_id": match_id or getattr(self, "match_id", None) or f"match_{self.home_team.team_id}_{self.away_team.team_id}",
             "date": datetime.now().isoformat(),
             "home_team_id": self.home_team.team_id,
             "away_team_id": self.away_team.team_id,
@@ -1222,9 +1304,9 @@ class Match:
         )
         
         # Add some randomness to prevent deterministic outcomes
-        if random.random() < 0.15:  # 15% chance to adjust by 1 goal
-            adjustment = random.choice([-1, 1])
-            if random.random() < 0.5:
+        if self.rng.random() < 0.15:  # 15% chance to adjust by 1 goal
+            adjustment = self.rng.choice([-1, 1])
+            if self.rng.random() < 0.5:
                 home_goals = max(0, home_goals + adjustment)
             else:
                 away_goals = max(0, away_goals + adjustment)
@@ -1235,14 +1317,14 @@ class Match:
             "home_team_id": getattr(self.home_team, 'team_id', 0),
             "away_team_id": getattr(self.away_team, 'team_id', 0),
             "score": [home_goals, away_goals],
-            "possession": [55 + random.randint(-10, 10), 45 + random.randint(-10, 10)],
-            "shots": [random.randint(8, 18), random.randint(6, 16)],
-            "shots_on_target": [max(home_goals, random.randint(3, 8)), max(away_goals, random.randint(2, 7))],
-            "passes_attempted": [random.randint(400, 600), random.randint(350, 550)],
-            "passes_completed": [random.randint(300, 500), random.randint(280, 450)],
-            "fouls": [random.randint(8, 16), random.randint(8, 16)],
-            "corners": [random.randint(3, 10), random.randint(2, 9)],
-            "offsides": [random.randint(1, 5), random.randint(1, 5)],
+            "possession": [55 + self.rng.randint(-10, 10), 45 + self.rng.randint(-10, 10)],
+            "shots": [self.rng.randint(8, 18), self.rng.randint(6, 16)],
+            "shots_on_target": [max(home_goals, self.rng.randint(3, 8)), max(away_goals, self.rng.randint(2, 7))],
+            "passes_attempted": [self.rng.randint(400, 600), self.rng.randint(350, 550)],
+            "passes_completed": [self.rng.randint(300, 500), self.rng.randint(280, 450)],
+            "fouls": [self.rng.randint(8, 16), self.rng.randint(8, 16)],
+            "corners": [self.rng.randint(3, 10), self.rng.randint(2, 9)],
+            "offsides": [self.rng.randint(1, 5), self.rng.randint(1, 5)],
             "weather": "sunny",
             "events": [],
             "substitutions": [],

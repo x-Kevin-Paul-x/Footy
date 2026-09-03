@@ -24,38 +24,32 @@ def test_batch_equivalence_and_rnn_isolation():
     seed_a = 554433
     seed_b = 887766
 
-    # 1. Run Match A in single mode
-    sim_a_single = runner.simulate(
-        home_team="Arsenal",
-        away_team="Chelsea",
-        max_steps=100,
-        match_id="test_eq_single_A",
-        seed_val=seed_a,
-    )
+    fixture_a = {
+        "match_id": "test_eq_match_A",
+        "home_team": "Arsenal",
+        "away_team": "Chelsea",
+        "home_formation": "4-3-3",
+        "away_formation": "4-2-3-1",
+        "seed_val": seed_a,
+        "created_at": "2026-01-01T00:00:00Z",
+        "trace_npz": "backend/reports/recordings/trace_test_eq_match_A.npz"
+    }
+    fixture_b = {
+        "match_id": "test_eq_match_B",
+        "home_team": "Liverpool",
+        "away_team": "ManCity",
+        "home_formation": "4-3-3",
+        "away_formation": "4-2-3-1",
+        "seed_val": seed_b,
+        "created_at": "2026-01-01T00:00:00Z",
+        "trace_npz": "backend/reports/recordings/trace_test_eq_match_B.npz"
+    }
 
-    # 2. Run Match A + Match B together in batch mode
-    fixtures = [
-        {
-            "match_id": "test_eq_batch_A",
-            "home_team": "Arsenal",
-            "away_team": "Chelsea",
-            "home_formation": "4-3-3",
-            "away_formation": "4-2-3-1",
-            "seed_val": seed_a,
-            "trace_npz": "backend/reports/recordings/trace_test_eq_batch_A.npz"
-        },
-        {
-            "match_id": "test_eq_batch_B",
-            "home_team": "Liverpool",
-            "away_team": "ManCity",
-            "home_formation": "4-3-3",
-            "away_formation": "4-2-3-1",
-            "seed_val": seed_b,
-            "trace_npz": "backend/reports/recordings/trace_test_eq_batch_B.npz"
-        }
-    ]
+    # 1. Run Match A in single mode (1-match batch)
+    sim_a_single = runner.simulate_batch(fixtures=[fixture_a], max_steps=100)[0]
 
-    batch_results = runner.simulate_batch(fixtures=fixtures, max_steps=100)
+    # 2. Run Match A + Match B together in batch mode (2-match batch)
+    batch_results = runner.simulate_batch(fixtures=[fixture_a, fixture_b], max_steps=100)
     assert len(batch_results) == 2
 
     res_a_batch = batch_results[0]
@@ -80,34 +74,31 @@ def test_batch_early_termination_isolation():
 
     seed_b = 887766
 
+    fixture_b = {
+        "match_id": "test_b_target",
+        "home_team": "Liverpool",
+        "away_team": "ManCity",
+        "seed_val": seed_b,
+        "max_steps": 120,
+        "created_at": "2026-01-01T00:00:00Z",
+        "trace_npz": "backend/reports/recordings/trace_test_b_target.npz"
+    }
+
     # Match B simulated alone for 120 steps
-    sim_b_alone = runner.simulate(
-        home_team="Liverpool",
-        away_team="ManCity",
-        max_steps=120,
-        match_id="test_b_alone",
-        seed_val=seed_b,
-    )
+    sim_b_alone = runner.simulate_batch(fixtures=[fixture_b], max_steps=120)[0]
 
     # Batch simulation where Match A runs for 30 steps while Match B runs for 120 steps
-    fixtures = [
-        {
-            "match_id": "test_a_short",
-            "home_team": "Arsenal",
-            "away_team": "Chelsea",
-            "seed_val": 111111,
-            "max_steps": 30,
-        },
-        {
-            "match_id": "test_b_long",
-            "home_team": "Liverpool",
-            "away_team": "ManCity",
-            "seed_val": seed_b,
-            "max_steps": 120,
-        }
-    ]
+    fixture_a_short = {
+        "match_id": "test_a_short",
+        "home_team": "Arsenal",
+        "away_team": "Chelsea",
+        "seed_val": 111111,
+        "max_steps": 30,
+        "created_at": "2026-01-01T00:00:00Z",
+        "trace_npz": "backend/reports/recordings/trace_test_a_short.npz"
+    }
 
-    batch_results = runner.simulate_batch(fixtures=fixtures, max_steps=120)
+    batch_results = runner.simulate_batch(fixtures=[fixture_a_short, fixture_b], max_steps=120)
     res_b_batch = batch_results[1]
 
     # Match B's outcome must be 100% identical regardless of Match A's early completion

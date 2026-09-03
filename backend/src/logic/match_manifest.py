@@ -99,6 +99,8 @@ class MatchManifest:
     simulation_dt: float = 0.1
     home_team: str = "Home Team"
     away_team: str = "Away Team"
+    home_formation: str = "4-3-3"
+    away_formation: str = "4-2-3-1"
     score: List[int] = field(default_factory=lambda: [0, 0])
     
     # Portable relative paths & artifact digests
@@ -147,6 +149,8 @@ class MatchManifest:
             "simulation_dt": self.simulation_dt,
             "home_team": self.home_team,
             "away_team": self.away_team,
+            "home_formation": self.home_formation,
+            "away_formation": self.away_formation,
             "score": self.score,
             "trajectory_sha256": self.trajectory_sha256 or "",
             "state_archive_sha256": self.state_archive_sha256 or "",

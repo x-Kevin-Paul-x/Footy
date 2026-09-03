@@ -191,7 +191,7 @@ const MatchDetail: React.FC = () => {
     fetchMatch();
   }, [matchId]);
 
-  const handleGenerateReplay = async () => {
+  const handleGenerateReplay = async (selectedMode: "3d" | "2d" = "3d") => {
     if (!match) return;
     setIsGeneratingVideo(true);
     try {
@@ -202,6 +202,7 @@ const MatchDetail: React.FC = () => {
         home_formation: match.home_formation,
         away_formation: match.away_formation,
         generate_video: true,
+        render_mode: selectedMode,
       });
       if (res.video_url) {
         setVideoUrl(res.video_url);

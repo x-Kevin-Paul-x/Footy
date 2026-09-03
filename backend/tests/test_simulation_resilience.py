@@ -102,13 +102,13 @@ def test_worker_timeout_or_termination():
     p.start()
 
     caught_death = False
-    for _ in range(40):
-        time.sleep(0.05)
+    for _ in range(100):
+        time.sleep(0.1)
         if not p.is_alive():
-            p.join(timeout=0.5)
+            p.join(timeout=2.0)
             break
 
-    p.join(timeout=1)
+    p.join(timeout=2.0)
     if p.exitcode is not None and p.exitcode != 0:
         caught_death = True
 

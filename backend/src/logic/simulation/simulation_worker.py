@@ -13,8 +13,18 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 import numpy as np
 
-import gym
-import gfootball.env as football_env
+try:
+    import gym
+except ImportError:
+    try:
+        import gymnasium as gym
+    except ImportError:
+        gym = None
+
+try:
+    import gfootball.env as football_env
+except ImportError:
+    football_env = None
 
 from logic.grf_trajectory import MatchTrajectory, MatchManifest
 from logic.grf_state_archive import GRFStateArchiveWriter, ReplayIntegrityError
@@ -114,9 +124,14 @@ class SimulationWorker:
         self.trace_npz = fixture.get("trace_npz") or fixture.get("trajectory_file")
         self.states_file = fixture.get("states_file")
 
+        # Render mode & live 3D recording setup (Option 1 vs Option 2)
+        self.render_mode = str(fixture.get("render_mode", os.getenv("FOOTY_DEFAULT_RENDER_MODE", "3d"))).lower()
+        self.record_3d_video = (self.render_mode == "3d")
+
         # Dump recording setup
         dump_path = fixture.get("trace_dump")
-        self.record_dump = bool(dump_path or fixture.get("record_dump", False))
+        self.dump_path = dump_path
+        self.record_dump = bool(self.record_3d_video or dump_path or fixture.get("record_dump", False))
         self.match_dump_dir = f"/tmp/dumps/worker_{self.match_id}_{int(time.time()*1000)%100000}"
         if self.record_dump:
             os.makedirs(self.match_dump_dir, exist_ok=True)
@@ -179,6 +194,12 @@ class SimulationWorker:
             other_opts['tracesdir'] = self.match_dump_dir
             other_opts['dump_full_episodes'] = True
 
+        if self.record_3d_video:
+            other_opts['write_video'] = True
+            other_opts['display_game_stats'] = False
+            other_opts['render_resolution_x'] = 1280
+            other_opts['render_resolution_y'] = 720
+
         self.env = football_env.create_environment(
             env_name="11_vs_11_kaggle",
             stacked=False,
@@ -186,7 +207,8 @@ class SimulationWorker:
             rewards='scoring',
             write_goal_dumps=False,
             write_full_episode_dumps=self.record_dump,
-            render=False,
+            render=self.record_3d_video,
+            write_video=self.record_3d_video,
             number_of_left_players_agent_controls=10,
             number_of_right_players_agent_controls=10,
             other_config_options=other_opts
@@ -282,8 +304,8 @@ class SimulationWorker:
             if b_player >= 0:
                 self.last_away_touch = b_player
 
-        sim_time_sec = step * SIM_STEP_SECONDS
-        m_min = max(1, min(90, int(sim_time_sec / 60) + 1))
+        total_match_steps = self.max_steps if getattr(self, "max_steps", None) else 1200
+        m_min = max(1, min(90, int((step / max(1, total_match_steps)) * 90) + 1))
 
         # Pass State Machine
         if b_own == 0 and b_player >= 1 and (b_player - 1) < len(l_act):
@@ -455,7 +477,7 @@ class SimulationWorker:
 
             self.events.append({
                 "minute": m_min, "step": step, "type": "goal", "team": "home",
-                "scorer": scorer, "score": f"{self.curr_score[0]}-{self.curr_score[1]}",
+                "player": scorer, "scorer": scorer, "score": f"{self.curr_score[0]}-{self.curr_score[1]}",
                 "causality": {
                     "ball_coord": [float(o0['ball'][0]), float(o0['ball'][1]), float(o0['ball'][2])],
                     "goal_mouth_y": float(o0['ball'][1]),
@@ -499,7 +521,7 @@ class SimulationWorker:
 
             self.events.append({
                 "minute": m_min, "step": step, "type": "goal", "team": "away",
-                "scorer": scorer, "score": f"{self.curr_score[0]}-{self.curr_score[1]}",
+                "player": scorer, "scorer": scorer, "score": f"{self.curr_score[0]}-{self.curr_score[1]}",
                 "causality": {
                     "ball_coord": [float(o0['ball'][0]), float(o0['ball'][1]), float(o0['ball'][2])],
                     "goal_mouth_y": float(o0['ball'][1]),
@@ -557,19 +579,26 @@ class SimulationWorker:
             "match_id": self.match_id,
             "home_team": self.home_team,
             "away_team": self.away_team,
+            "score": [self.curr_score[0], self.curr_score[1]],
             "home_score": self.curr_score[0],
             "away_score": self.curr_score[1],
+            "xg": [xg_h_derived, xg_a_derived],
             "home_xg": xg_h_derived,
             "away_xg": xg_a_derived,
+            "shots": [shots_h_derived, shots_a_derived],
             "home_shots": shots_h_derived,
             "away_shots": shots_a_derived,
+            "shots_on_target": [sot_h_derived, sot_a_derived],
             "home_shots_on_target": sot_h_derived,
             "away_shots_on_target": sot_a_derived,
+            "possession": [poss_h, poss_a],
             "home_possession": poss_h,
             "away_possession": poss_a,
+            "passes_completed": [self.passes_h_cmp, self.passes_a_cmp],
             "home_passes_completed": self.passes_h_cmp,
-            "home_passes_attempted": self.passes_h_att,
             "away_passes_completed": self.passes_a_cmp,
+            "passes_attempted": [self.passes_h_att, self.passes_a_att],
+            "home_passes_attempted": self.passes_h_att,
             "away_passes_attempted": self.passes_a_att,
             "events": self.events,
             "simulation_steps": total_steps,
@@ -627,5 +656,41 @@ class SimulationWorker:
             )
             traj.save_to_npz(Path(self.trace_npz))
             result_dict["trace_npz"] = self.trace_npz
+            result_dict["trajectory_hash"] = traj.compute_trajectory_hash()
+
+        # Finalize and persist native .dump and live 3D broadcast recording
+        try:
+            self.env.close()
+        except Exception:
+            pass
+
+        import glob, shutil
+        if self.record_3d_video:
+            avi_files = sorted(glob.glob(f"{self.match_dump_dir}/episode_done_*.avi"))
+            if avi_files:
+                raw_avi = avi_files[-1]
+                target_mp4 = f"/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/backend/reports/recordings/match_{self.match_id}.mp4"
+                try:
+                    from logic.grf_renderer import transcode_live_avi_to_broadcast_mp4
+                    transcode_live_avi_to_broadcast_mp4(
+                        raw_avi_path=raw_avi,
+                        output_mp4_path=target_mp4,
+                        manifest=manifest,
+                        home_color=self.home_color,
+                        away_color=self.away_color
+                    )
+                    result_dict["video_url"] = f"/recordings/match_{self.match_id}.mp4"
+                    result_dict["render_mode_used"] = "3d"
+                except Exception as e:
+                    print(f"Error transcoding live 3D video in worker: {e}", file=sys.stderr)
+
+        if self.record_dump and self.dump_path:
+            dump_files = sorted(glob.glob(f"{self.match_dump_dir}/episode_done_*.dump"))
+            if dump_files:
+                os.makedirs(os.path.dirname(self.dump_path) or ".", exist_ok=True)
+                shutil.move(dump_files[-1], self.dump_path)
+                result_dict["dump_file"] = self.dump_path
+
+        shutil.rmtree(self.match_dump_dir, ignore_errors=True)
 
         return result_dict

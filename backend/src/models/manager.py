@@ -2,7 +2,7 @@ import random
 import numpy as np
 import names
 from collections import defaultdict
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Any, Optional
 from logic.manager_profile import ManagerProfile
 from logic.manager_brain import ManagerBrain, StateEncoder
 from database.manager_db import create_manager, get_manager, update_manager, delete_manager
@@ -959,8 +959,8 @@ class Manager:
         
         return actions
     
-    def select_lineup(self, available_players: List[Any], opponent=None) -> Tuple[List[Any], List[str]]:
-        """Select team lineup using Q-learning."""
+    def select_lineup(self, available_players: List[Any], opponent=None, rng: Optional[random.Random] = None) -> Tuple[List[Any], List[str]]:
+        """Select team lineup using Q-learning or deterministic per-match RNG."""
         # Exclude injured players
         healthy_players = [p for p in available_players if not getattr(p, "is_injured", False)]
         raw_state = self.get_state()
@@ -975,8 +975,8 @@ class Manager:
         if not possible_actions:
             return self._select_basic_lineup(healthy_players)
         
-        # Select action using Q-learning
-        action = self.brain.select_action(state, possible_actions, "lineup")
+        # Select action using Q-learning / preparation RNG
+        action = self.brain.select_action(state, possible_actions, "lineup", raw_state=raw_state, rng=rng)
         self.last_match_state = state
         self.last_match_action = action
         

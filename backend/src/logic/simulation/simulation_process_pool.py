@@ -250,6 +250,11 @@ class SimulationProcessPool:
         max_steps: int,
         replay_mode: ReplayMode
     ) -> List[Dict[str, Any]]:
+        """
+        Executes centralized GPU/CPU batched inference under a Fail-Fast fault contract.
+        If any worker pipe disconnects, times out, or raises an error, the batch immediately aborts,
+        cleans up all child processes, and raises a descriptive RuntimeError.
+        """
         ctx = mp.get_context("spawn")
         manager = ctx.Manager()
         in_flight_dict = manager.dict()
@@ -262,10 +267,6 @@ class SimulationProcessPool:
         # Enqueue all fixtures into task queue
         for fix in fixtures:
             task_queue.put(fix)
-
-        # Append termination sentinels for each worker
-        for _ in range(workers_to_spawn):
-            task_queue.put(None)
 
         processes = []
         for w_id in range(workers_to_spawn):
@@ -293,13 +294,28 @@ class SimulationProcessPool:
             p.start()
 
         fixtures_by_id = {str(f["match_id"]): f for f in fixtures}
+        fixture_states = {str(f["match_id"]): "QUEUED" for f in fixtures}
         retry_counts = {str(f["match_id"]): 0 for f in fixtures}
         results_by_id = {}
-        completed_count = 0
         max_retries = 2
 
+        def clean_partial_artifacts(fix: Dict[str, Any]):
+            for k in ["trajectory_file", "trace_npz", "states_file", "trace_dump"]:
+                filepath = fix.get(k)
+                if filepath and os.path.exists(filepath):
+                    try:
+                        os.remove(filepath)
+                    except OSError:
+                        pass
+
         try:
-            while completed_count < num_fixtures:
+            while len(results_by_id) < num_fixtures:
+                # Synchronize in-flight worker states with fixture_states
+                for w_idx in range(len(processes)):
+                    curr_inflight = in_flight_dict.get(w_idx)
+                    if curr_inflight and curr_inflight in fixture_states and fixture_states[curr_inflight] != "SUCCESS":
+                        fixture_states[curr_inflight] = f"RUNNING({w_idx})"
+
                 try:
                     msg = result_queue.get(timeout=0.5)
                 except Exception:
@@ -307,23 +323,24 @@ class SimulationProcessPool:
                     for idx, p in enumerate(processes):
                         if not p.is_alive() and p.exitcode != 0:
                             lost_m_id = in_flight_dict.get(idx)
-                            if lost_m_id and lost_m_id in fixtures_by_id:
-                                if retry_counts[lost_m_id] < max_retries:
-                                    retry_counts[lost_m_id] += 1
-                                    print(f"[SUPERVISOR] Detected abrupt worker death (PID {p.pid}, code {p.exitcode}) on in-flight match {lost_m_id}. Auto-retrying (Attempt {retry_counts[lost_m_id]}/{max_retries})...")
-                                    fix = fixtures_by_id[lost_m_id]
-                                    if fix.get("trajectory_file") and os.path.exists(fix["trajectory_file"]):
-                                        try:
-                                            os.remove(fix["trajectory_file"])
-                                        except OSError:
-                                            pass
-                                    if fix.get("states_file") and os.path.exists(fix["states_file"]):
-                                        try:
-                                            os.remove(fix["states_file"])
-                                        except OSError:
-                                            pass
+
+                            lost_ids = []
+                            if lost_m_id and lost_m_id in fixtures_by_id and lost_m_id not in results_by_id:
+                                lost_ids.append(lost_m_id)
+
+                            for m_to_retry in lost_ids:
+                                if retry_counts[m_to_retry] < max_retries:
+                                    retry_counts[m_to_retry] += 1
+                                    print(f"[SUPERVISOR] Detected abrupt worker death (PID {p.pid}, code {p.exitcode}) on match {m_to_retry}. Auto-retrying (Attempt {retry_counts[m_to_retry]}/{max_retries})...")
+                                    fixture_states[m_to_retry] = "RETRY_PENDING"
+                                    fix = fixtures_by_id[m_to_retry]
+                                    clean_partial_artifacts(fix)
                                     task_queue.put(fix)
-                                    in_flight_dict[idx] = None
+                                    fixture_states[m_to_retry] = "QUEUED"
+                                else:
+                                    fixture_states[m_to_retry] = "FAILED"
+
+                            in_flight_dict[idx] = None
 
                             # Respawn replacement worker to drain remaining queue
                             core_pin = (
@@ -354,21 +371,14 @@ class SimulationProcessPool:
                     if m_id in fixtures_by_id and retry_counts[m_id] < max_retries:
                         retry_counts[m_id] += 1
                         print(f"[SUPERVISOR] Auto-retrying failed match {m_id} (Attempt {retry_counts[m_id]}/{max_retries})...")
-                        # Clean any partial trajectory file before retry
+                        fixture_states[m_id] = "RETRY_PENDING"
                         fix = fixtures_by_id[m_id]
-                        if fix.get("trajectory_file") and os.path.exists(fix["trajectory_file"]):
-                            try:
-                                os.remove(fix["trajectory_file"])
-                            except OSError:
-                                pass
-                        if fix.get("states_file") and os.path.exists(fix["states_file"]):
-                            try:
-                                os.remove(fix["states_file"])
-                            except OSError:
-                                pass
+                        clean_partial_artifacts(fix)
                         task_queue.put(fix)
+                        fixture_states[m_id] = "QUEUED"
                         continue
                     else:
+                        fixture_states[m_id] = "FAILED"
                         for p in processes:
                             if p.is_alive():
                                 p.terminate()
@@ -376,8 +386,14 @@ class SimulationProcessPool:
                             f"Simulation worker failed on match {msg['match_id']}: {msg['error']}\n{msg.get('traceback', '')}"
                         )
 
-                results_by_id[m_id] = msg["data"]
-                completed_count += 1
+                # Result Deduplication Guarantee
+                if m_id not in results_by_id:
+                    results_by_id[m_id] = msg["data"]
+                    fixture_states[m_id] = "SUCCESS"
+
+            # Send termination sentinels to cleanly shutdown workers
+            for _ in range(workers_to_spawn):
+                task_queue.put(None)
         finally:
             for p in processes:
                 if p.is_alive():
@@ -421,8 +437,12 @@ class SimulationProcessPool:
         current_obs: Dict[str, np.ndarray] = {}
 
         try:
-            # Wait for all workers to send initial observations
-            for m_id, pipe in active_pipes.items():
+            # Wait for all workers to send initial observations with polling timeout
+            for i, (m_id, pipe) in enumerate(active_pipes.items()):
+                if not pipe.poll(timeout=15.0):
+                    if not workers[i].is_alive():
+                        raise RuntimeError(f"Batched worker for match {m_id} exited prematurely with exitcode {workers[i].exitcode}")
+                    raise TimeoutError(f"Batched worker for match {m_id} timed out during initialization")
                 msg = pipe.recv()
                 if msg["type"] == "error":
                     raise RuntimeError(f"Worker {m_id} failed during initialization: {msg['error']}")
@@ -437,13 +457,19 @@ class SimulationProcessPool:
 
                 # Disperse actions to corresponding worker pipes
                 for i, m_id in enumerate(active_ids):
-                    acts = actions_batch[i * 20:(i + 1) * 20]
-                    active_pipes[m_id].send({"type": "step", "actions": acts})
+                    active_pipes[m_id].send({"type": "step", "actions": actions_batch[i * 20:(i + 1) * 20]})
 
-                # Receive next observations or match completion
+                # Receive next observations or match completion with polling protection
                 completed_ids = []
                 for m_id in active_ids:
-                    msg = active_pipes[m_id].recv()
+                    p_conn = active_pipes[m_id]
+                    if not p_conn.poll(timeout=15.0):
+                        raise RuntimeError(f"Batched worker for match {m_id} timed out waiting for step completion")
+                    try:
+                        msg = p_conn.recv()
+                    except (EOFError, BrokenPipeError) as e:
+                        raise RuntimeError(f"Batched worker pipe disconnected for match {m_id}: {e}")
+
                     if msg["type"] == "obs":
                         current_obs[m_id] = msg["obs"]
                     elif msg["type"] == "done":

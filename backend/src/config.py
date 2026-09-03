@@ -41,7 +41,7 @@ LOCAL_CHECKPOINTS_DIR = BACKEND_DIR / "checkpoints" / "tikick"
 TIKICK_CHECKPOINT_PATH = LOCAL_CHECKPOINTS_DIR / "actor.pt"
 LOCAL_TIKICK_DIR = BACKEND_DIR / "third_party" / "tikick"
 BALLER_DIR = PROJECT_ROOT.parent / "Baller"
-ENGINE_MODE = os.getenv("FOOTY_ENGINE_MODE", "AUTO")  # Options: AUTO, GRF, HEURISTIC
+ENGINE_MODE = os.getenv("FOOTY_ENGINE_MODE", "GRF")  # Options: GRF (default), AUTO, HEURISTIC
 
 API_PORT = _env_int("FOOTY_API_PORT", 5001)
 API_DEBUG = _env_bool("FOOTY_API_DEBUG", True)

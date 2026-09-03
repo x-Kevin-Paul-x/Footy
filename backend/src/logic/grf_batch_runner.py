@@ -36,12 +36,12 @@ def to_wsl_path(win_path: Path) -> str:
 
 class GRFBatchRunner:
     def __init__(self):
-        self.wsl_python = "/root/venv_baller/bin/python3"
+        self.wsl_python = os.environ.get("FOOTY_WSL_PYTHON", "/root/venv_baller/bin/python3")
         self.local_ckpt = TIKICK_CHECKPOINT_PATH
         self.local_tikick = LOCAL_TIKICK_DIR
         self.max_steps = FOOTY_GRF_MAX_STEPS
         self.batch_worker_wsl = to_wsl_path(
-            BASE_DIR / "backend" / "src" / "logic" / "wsl_workers" / "grf_batch_worker.py"
+            BASE_DIR / "logic" / "wsl_workers" / "grf_batch_worker.py"
         )
 
     _cached_available = None
@@ -78,6 +78,7 @@ class GRFBatchRunner:
             m_id = str(fix["match_id"])
             npz_win = RECORDINGS_DIR / f"trace_{m_id}.npz"
             dump_win = RECORDINGS_DIR / f"trace_{m_id}.dump"
+            states_win = RECORDINGS_DIR / f"trace_{m_id}.grfstate"
             wsl_fixtures.append({
                 "match_id": m_id,
                 "home_team": fix.get("home_team", "Home"),
@@ -98,9 +99,12 @@ class GRFBatchRunner:
                 "away_tempo": fix.get("away_tempo", 50.0),
                 "home_color": fix.get("home_color") or team_color_from_name(fix.get("home_team", "Home")),
                 "away_color": fix.get("away_color") or team_color_from_name(fix.get("away_team", "Away")),
-                "trace_npz": to_wsl_path(npz_win),
-                "trace_dump": to_wsl_path(dump_win),
+                "trace_npz": to_wsl_path(Path(fix["trace_npz"])) if fix.get("trace_npz") else to_wsl_path(npz_win),
+                "trace_dump": to_wsl_path(Path(fix["trace_dump"])) if fix.get("trace_dump") else to_wsl_path(dump_win),
+                "states_file": to_wsl_path(Path(fix["states_file"])) if fix.get("states_file") else to_wsl_path(states_win),
+                "record_dump": True,
                 "seed_val": fix.get("seed_val"),
+                "created_at": fix.get("created_at"),
             })
 
         tikick_wsl = to_wsl_path(self.local_tikick)
