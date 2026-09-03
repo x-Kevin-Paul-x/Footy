@@ -183,7 +183,7 @@ class GRFNativeRunner:
                     self.sim_worker_wsl, json.dumps(payload)
                 ]
             logger.info("GRF Simulator: running simulation (3d=%s) for match=%s", is_3d_render, m_id)
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=360)
             if "MATCH_SIM_RESULT_JSON:" in res.stdout:
                 json_str = res.stdout.split("MATCH_SIM_RESULT_JSON:")[1].splitlines()[0]
                 sim_res = json.loads(json_str)

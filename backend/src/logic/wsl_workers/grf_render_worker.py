@@ -120,8 +120,11 @@ def render_from_dump(payload: Dict[str, Any]):
     env.reset()
 
     os.makedirs(os.path.dirname(output_mp4) or '.', exist_ok=True)
-    writer = imageio.get_writer(output_mp4, fps=15, codec='libx264',
-                                pixelformat='yuv420p', quality=8)
+    writer = imageio.get_writer(
+        output_mp4, fps=15, codec='libx264',
+        pixelformat='yuv420p',
+        ffmpeg_params=['-crf', '28', '-preset', 'faster', '-b:v', '220k', '-maxrate', '350k', '-bufsize', '500k']
+    )
 
     intro_card = draw_pre_match_card(
         w=1280, h=720, home_team=home_team, away_team=away_team,
@@ -287,6 +290,18 @@ def render_from_dump(payload: Dict[str, Any]):
 
     env.close()
     writer.close()
+
+    # Space Optimization: clean redundant dump file after 3D video is rendered
+    try:
+        if dump_file and os.path.exists(dump_file):
+            os.remove(dump_file)
+        dir_name = os.path.dirname(output_mp4)
+        for ext in [".grfstate", "_states.grfstate"]:
+            cand = os.path.join(dir_name, f"trace_{match_id}{ext}")
+            if os.path.exists(cand):
+                os.remove(cand)
+    except Exception:
+        pass
 
     if progress_file:
         write_progress_atomic(progress_file, {

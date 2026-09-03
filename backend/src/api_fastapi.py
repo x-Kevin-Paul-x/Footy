@@ -257,6 +257,9 @@ async def run_simulation_task():
     try:
         async with simulation_lock:
             logger.info("Starting background simulation task")
+            from database.db_setup import reset_database, clean_old_simulation_data
+            clean_old_simulation_data()
+            reset_database()
             ensure_report_directories()
 
             await manager.broadcast_event("SIMULATION_START", message="Simulation starting...")
@@ -1113,10 +1116,10 @@ async def simulate_grf_match(req: MatchSimulationRequest):
             away_color=a_color,
             match_id=match_id_str,
             seed_val=seed_val,
-            render_video=False,
-            record_grf_states=rec_states,
+            render_video=should_render_video,
+            record_grf_states=False,
             record_dump=req.record_dump,
-            render_mode=req.render_mode or "auto",
+            render_mode=req.render_mode or "3d",
         )
 
         h_score    = int(grf_out.get("score", [0, 0])[0])
@@ -1125,10 +1128,34 @@ async def simulate_grf_match(req: MatchSimulationRequest):
         real_poss  = grf_out.get("possession", [50.0, 50.0])
         real_shots = grf_out.get("shots", [h_score, a_score])
         real_xg    = grf_out.get("xg", [round(h_score * 0.45, 2), round(a_score * 0.45, 2)])
-        video_url  = None
+        video_url  = grf_out.get("video_url")
 
-        # Phase B - Standalone Video Rendering if requested
-        if should_render_video:
+        # If 3D video was rendered, ensure integer match ID files and DB are linked
+        if video_url:
+            try:
+                import shutil
+                v_filename = os.path.basename(video_url)
+                src_v = RECORDINGS_DIR / v_filename
+                if src_v.exists() and req.match_id and str(req.match_id) != match_id_str:
+                    alias_v = RECORDINGS_DIR / f"match_{req.match_id}.mp4"
+                    if not alias_v.exists():
+                        shutil.copy2(src_v, alias_v)
+
+                # Persist video link to DB match record
+                if req.match_id:
+                    with get_db_session() as db:
+                        m_row = db.query(Match).filter(
+                            (Match.match_id == int(req.match_id) if str(req.match_id).isdigit() else False) |
+                            (Match.match_number == int(req.match_id) if str(req.match_id).isdigit() else False)
+                        ).first()
+                        if m_row:
+                            m_row.trace_file = video_url
+                            db.commit()
+            except Exception as e:
+                logger.warning("Failed to link match video alias in DB: %s", e)
+
+        # Fallback background rendering if video was requested but not generated during live sim
+        elif should_render_video:
             trace_npz = str(RECORDINGS_DIR / f"trace_{match_id_str}.npz")
             prog_file = RECORDINGS_DIR / f"progress_{match_id_str}.json"
             try:
@@ -1146,7 +1173,6 @@ async def simulate_grf_match(req: MatchSimulationRequest):
             except Exception:
                 pass
 
-            # Start video render as background task so HTTP request returns quickly
             async def _bg_render():
                 try:
                     await asyncio.to_thread(

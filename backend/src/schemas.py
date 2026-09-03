@@ -63,7 +63,7 @@ class MatchSimulationRequest(BaseModel):
     home_formation: str = "4-3-3"
     away_formation: str = "4-2-3-1"
     generate_video: bool = False
-    max_steps: int = 3000
+    max_steps: int = 1200
     record_grf_states: Optional[bool] = None
     record_dump: bool = True
     render_mode: str = "3d"

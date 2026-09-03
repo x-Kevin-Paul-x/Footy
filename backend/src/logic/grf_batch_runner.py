@@ -100,9 +100,11 @@ class GRFBatchRunner:
                 "home_color": fix.get("home_color") or team_color_from_name(fix.get("home_team", "Home")),
                 "away_color": fix.get("away_color") or team_color_from_name(fix.get("away_team", "Away")),
                 "trace_npz": to_wsl_path(Path(fix["trace_npz"])) if fix.get("trace_npz") else to_wsl_path(npz_win),
-                "trace_dump": to_wsl_path(Path(fix["trace_dump"])) if fix.get("trace_dump") else to_wsl_path(dump_win),
-                "states_file": to_wsl_path(Path(fix["states_file"])) if fix.get("states_file") else to_wsl_path(states_win),
-                "record_dump": True,
+                "trace_dump": None,
+                "states_file": None,
+                "record_dump": False,
+                "record_3d_video": False,
+                "render_mode": "2d",
                 "seed_val": fix.get("seed_val"),
                 "created_at": fix.get("created_at"),
             })
@@ -126,7 +128,7 @@ class GRFBatchRunner:
             ]
 
             logger.info("GRF Batch Runner: executing %d fixtures in parallel via batch worker", len(fixtures))
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
 
             if "MATCH_BATCH_SIM_RESULT_JSON:" in res.stdout:
                 json_str = res.stdout.split("MATCH_BATCH_SIM_RESULT_JSON:")[1].splitlines()[0]

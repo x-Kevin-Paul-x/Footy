@@ -36,11 +36,14 @@ logger = logging.getLogger("footy.simulation")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 
 def initialize_database():
-    """Ensure database tables and report directories exist without destroying history."""
-    logger.info("Verifying database infrastructure...")
+    """Wipe previous simulation data and ensure fresh database tables and directories exist."""
+    logger.info("Initializing fresh simulation environment...")
+    from database.db_setup import reset_database, clean_old_simulation_data
+    clean_old_simulation_data()
+    reset_database()
     initialize_fresh_database()
     ensure_report_directories()
-    logger.info("Database and directories ready!")
+    logger.info("Database and directories ready with fresh state!")
 
 def create_premier_league():
     """Create Premier League with 20 teams and enhanced realism"""

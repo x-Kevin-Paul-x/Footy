@@ -464,9 +464,28 @@ def get_match_details(match_id: Any) -> Optional[Dict[str, Any]]:
 
         # Check for replay video file
         from config import RECORDINGS_DIR
-        video_filename = f"match_{match_id}.mp4"
-        video_path = RECORDINGS_DIR / video_filename
-        match_details["video_url"] = f"/recordings/{video_filename}" if video_path.exists() else None
+        candidates = [
+            f"match_{match_id}.mp4",
+            f"match_match_{match_id}.mp4",
+        ]
+        sy = match_details.get("season_year")
+        hid = match_details.get("home_team_id")
+        aid = match_details.get("away_team_id")
+        if sy and hid and aid:
+            candidates.extend([
+                f"match_{sy}_{hid}_{aid}.mp4",
+                f"match_match_{sy}_{hid}_{aid}.mp4"
+            ])
+        tf = match_obj.trace_file if match_obj else None
+        if tf and str(tf).endswith(".mp4"):
+            candidates.insert(0, os.path.basename(str(tf)))
+
+        resolved_video = None
+        for c in candidates:
+            if (RECORDINGS_DIR / c).exists():
+                resolved_video = f"/recordings/{c}"
+                break
+        match_details["video_url"] = resolved_video
 
         return match_details
     except Exception as e:

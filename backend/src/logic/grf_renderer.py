@@ -465,7 +465,8 @@ def render_video_from_trajectory(
     os.makedirs(os.path.dirname(output_mp4) or '.', exist_ok=True)
     writer = imageio.get_writer(
         output_mp4, fps=15, codec='libx264',
-        pixelformat='yuv420p', quality=8
+        pixelformat='yuv420p',
+        ffmpeg_params=['-crf', '28', '-preset', 'faster', '-b:v', '220k', '-maxrate', '350k', '-bufsize', '500k']
     )
 
     # 1. Pre-Match Card (3 seconds = 45 frames)
@@ -611,7 +612,7 @@ def transcode_live_avi_to_broadcast_mp4(
         fps=15,
         codec='libx264',
         pixelformat='yuv420p',
-        quality=8
+        ffmpeg_params=['-crf', '28', '-preset', 'faster', '-b:v', '220k', '-maxrate', '350k', '-bufsize', '500k']
     )
 
     home_team = manifest.home_team
@@ -733,5 +734,24 @@ def transcode_live_avi_to_broadcast_mp4(
         writer.append_data(ft_card)
 
     writer.close()
+
+    # Space Optimization: Remove intermediate raw AVI and redundant traces/dumps
+    try:
+        if os.path.exists(raw_avi_path):
+            os.remove(raw_avi_path)
+    except Exception:
+        pass
+
+    try:
+        dir_name = os.path.dirname(output_mp4_path)
+        m_id = manifest.match_id
+        # Remove redundant dumps, grfstates, and npz traces (the 3D video is already permanently saved)
+        for ext in [".dump", ".grfstate", "_states.grfstate", ".npz"]:
+            cand = os.path.join(dir_name, f"trace_{m_id}{ext}")
+            if os.path.exists(cand):
+                os.remove(cand)
+    except Exception:
+        pass
+
     return f"/recordings/{os.path.basename(output_mp4_path)}"
 

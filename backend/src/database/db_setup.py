@@ -41,6 +41,45 @@ def initialize_fresh_database(db_file=DB_FILE):
     create_tables(db_file)
     logger.info("Database initialization completed!")
 
+def clean_old_simulation_data():
+    """Purge old recordings, traces, season reports, and transfer logs for a clean new simulation run."""
+    from config import RECORDINGS_DIR, REPORTS_DIR
+    logger.info("Purging old simulation recordings, reports, and logs...")
+
+    # 1. Clear recordings directory
+    if RECORDINGS_DIR.exists():
+        for item in RECORDINGS_DIR.iterdir():
+            if item.is_file() and not item.name.startswith("."):
+                try:
+                    item.unlink()
+                except Exception:
+                    pass
+
+    # 2. Clear season reports
+    for rep in REPORTS_DIR.glob("season_*.json"):
+        try:
+            rep.unlink()
+        except Exception:
+            pass
+
+    overview = REPORTS_DIR / "seasons_overview.json"
+    if overview.exists():
+        try:
+            overview.unlink()
+        except Exception:
+            pass
+
+    # 3. Clear transfer logs
+    trans_dir = REPORTS_DIR / "transfer_logs"
+    if trans_dir.exists():
+        for tf in trans_dir.glob("*.txt"):
+            try:
+                tf.unlink()
+            except Exception:
+                pass
+
+    logger.info("Cleaned up old simulation data successfully!")
+
 if __name__ == '__main__':
     create_tables()
     print("Tables created successfully in", DB_FILE)
