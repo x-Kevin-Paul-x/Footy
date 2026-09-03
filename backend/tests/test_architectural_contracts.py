@@ -8,6 +8,7 @@ manager financial bounds, and frontend/API route alignment WITHOUT running simul
 import ast
 import inspect
 import json
+import textwrap
 import pytest
 from pathlib import Path
 
@@ -67,7 +68,7 @@ def test_match_rng_isolation_ast():
     for method_name in stochastic_methods:
         method_obj = getattr(match_mod.Match, method_name)
         src = inspect.getsource(method_obj)
-        tree = ast.parse(src)
+        tree = ast.parse(textwrap.dedent(src))
 
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):

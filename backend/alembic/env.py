@@ -28,10 +28,14 @@ for p in [str(backend_src), str(backend_dir)]:
 from database.models import Base
 target_metadata = Base.metadata
 
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
+# Configure canonical SQLite database path regardless of execution CWD
+_data_override = os.environ.get("FOOTY_DATA_DIR")
+if _data_override:
+    canonical_db = Path(_data_override) / "football_sim.db"
+else:
+    canonical_db = backend_dir / "data" / "football_sim.db"
+
+config.set_main_option("sqlalchemy.url", f"sqlite:///{canonical_db.as_posix()}")
 
 
 def run_migrations_offline() -> None:

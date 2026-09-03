@@ -21,6 +21,8 @@ import {
   FormControl,
   Select,
   MenuItem,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSimulationSocket } from "../hooks/useSimulationSocket";
@@ -30,7 +32,9 @@ import {
   getSeasonReportData,
   getMatchesBySeason,
   runSimulation,
-  getEngineStatus
+  getEngineStatus,
+  getSimulationSettings,
+  updateSimulationSettings
 } from "../services/api";
 import {
   XAxis,
@@ -126,6 +130,18 @@ const Dashboard: React.FC = () => {
   const { data: engineStatus } = useQuery({
     queryKey: ['engineStatus'],
     queryFn: getEngineStatus,
+  });
+
+  const { data: simSettings } = useQuery({
+    queryKey: ['simulationSettings'],
+    queryFn: getSimulationSettings,
+  });
+
+  const updateSettingsMutation = useMutation({
+    mutationFn: updateSimulationSettings,
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['simulationSettings'], updated);
+    }
   });
 
   const runSimMutation = useMutation({
@@ -255,7 +271,51 @@ const Dashboard: React.FC = () => {
           </Typography>
         </Box>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1.5 }}>
+          {/* Option 1 vs Option 2 Render Mode Toggle */}
+          <ToggleButtonGroup
+            size="small"
+            value={simSettings?.default_render_mode || "3d"}
+            exclusive
+            onChange={(_, newMode) => {
+              if (newMode) {
+                updateSettingsMutation.mutate({ default_render_mode: newMode });
+              }
+            }}
+            sx={{
+              bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+              borderRadius: 2.5,
+              p: 0.4,
+              border: `1px solid ${theme.palette.divider}`,
+              '& .MuiToggleButton-root': {
+                border: 'none',
+                borderRadius: 2,
+                px: 1.8,
+                py: 0.6,
+                fontSize: '0.78rem',
+                fontWeight: 800,
+                textTransform: 'none',
+                color: 'text.secondary',
+                transition: 'all 0.2s ease',
+                '&.Mui-selected': {
+                  bgcolor: theme.palette.primary.main,
+                  color: '#fff',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.25)',
+                  '&:hover': {
+                    bgcolor: theme.palette.primary.dark,
+                  }
+                }
+              }
+            }}
+          >
+            <ToggleButton value="3d">
+              🎥 3D Broadcast (Option 1)
+            </ToggleButton>
+            <ToggleButton value="2d">
+              ⚽ 2D Radar (Option 2)
+            </ToggleButton>
+          </ToggleButtonGroup>
+
           <Button
             variant="contained"
             onClick={() => runSimMutation.mutate()}

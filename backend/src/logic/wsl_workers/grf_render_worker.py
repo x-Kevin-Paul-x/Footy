@@ -12,6 +12,8 @@ import json
 import time
 from pathlib import Path
 from typing import Dict, List, Any, Optional
+import numpy as np
+import cv2
 
 # Ensure backend/src is on sys.path
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -26,8 +28,7 @@ from logic.grf_renderer import (
     team_color_from_name,
     hex_to_bgr,
     draw_pre_match_card,
-    draw_half_time_card,
-    draw_full_time_card,
+    draw_studio_stats_card,
     draw_hud
 )
 
@@ -112,7 +113,7 @@ def render_from_dump(payload: Dict[str, Any]):
     cfg['render_resolution_x'] = 1280
     cfg['render_resolution_y'] = 720
     cfg['real_time'] = False
-    cfg['physics_steps_per_frame'] = 1
+    # CRITICAL: Preserve original physics_steps_per_frame (10) from replay dump!
 
     env = football_env.FootballEnv(cfg)
     env.render()
@@ -131,13 +132,29 @@ def render_from_dump(payload: Dict[str, Any]):
     for _ in range(45):
         writer.append_data(intro_card)
 
+    traj = None
+    trajectory_file = payload.get("trajectory_file")
+    if trajectory_file and os.path.exists(trajectory_file):
+        try:
+            traj = MatchTrajectory.load_from_npz(Path(trajectory_file))
+        except Exception:
+            pass
+
+    goal_events_by_step = {}
+    if traj:
+        for ev in traj.manifest.events:
+            if ev.get("type") == "goal":
+                s_idx = ev.get("step")
+                if s_idx is not None:
+                    goal_events_by_step.setdefault(s_idx, []).append(ev)
+
     curr_score = [0, 0]
     last_score = [0, 0]
     left_poss = 0
     right_poss = 0
     shots_h = 0
     shots_a = 0
-    events = []
+    events = traj.manifest.events if traj else []
     goal_banner = None
     goal_banner_cd = 0
     last_home_touch = 10
@@ -147,7 +164,12 @@ def render_from_dump(payload: Dict[str, Any]):
         obs, rew, done, info = env.step([])
         raw_o = obs[0] if isinstance(obs, list) else obs
 
-        curr_score = [int(raw_o['score'][0]), int(raw_o['score'][1])]
+        # Sync score from trajectory ground-truth if available, otherwise from raw_obs
+        if traj and step < len(traj.scores):
+            curr_score = [int(traj.scores[step][0]), int(traj.scores[step][1])]
+        else:
+            curr_score = [int(raw_o['score'][0]), int(raw_o['score'][1])]
+
         ball_owned = raw_o.get('ball_owned_team', -1)
         ball_player = raw_o.get('ball_owned_player', -1)
         if ball_owned == 0:
@@ -159,34 +181,50 @@ def render_from_dump(payload: Dict[str, Any]):
             if ball_player >= 0:
                 last_away_touch = ball_player
 
-        match_min = max(1, min(90, int((step / max(total_steps, 1)) * 90)))
+        match_min = max(1, min(90, int((step / max(total_steps, 1)) * 90) + 1))
         is_second_half = step > (total_steps // 2)
 
-        if curr_score[0] > last_score[0]:
+        if step in goal_events_by_step:
+            for g_ev in goal_events_by_step[step]:
+                g_team = g_ev.get("team", "home")
+                g_scorer = g_ev.get("player") or g_ev.get("scorer") or (home_players[0] if g_team == "home" else away_players[0])
+                g_min = g_ev.get("minute", match_min)
+                team_label = home_team if g_team == "home" else away_team
+                goal_banner = f"GOAL!  {g_scorer} ({team_label})  {g_min}'"
+                goal_banner_cd = 45
+            last_score = list(curr_score)
+        elif curr_score[0] > last_score[0]:
             shots_h += 1
             scorer_idx = max(0, min(len(home_players) - 1, last_home_touch))
             scorer = home_players[scorer_idx].split('(')[0].strip()
-            goal_banner = f"GOAL!  {scorer}  ({match_min}')"
-            goal_banner_cd = 30
+            # If trajectory manifest has goal at this minute, pick that player
+            if traj:
+                matching_goals = [e for e in traj.manifest.events if e.get("type") == "goal" and e.get("team") == "home" and abs(e.get("minute", 0) - match_min) <= 3]
+                if matching_goals:
+                    scorer = matching_goals[0].get("player", scorer)
+            goal_banner = f"GOAL!  {scorer} ({home_team})  {match_min}'"
+            goal_banner_cd = 45
             last_score = list(curr_score)
-            events.append({
-                "minute": match_min, "step": step, "type": "goal", "team": "home",
-                "scorer": scorer, "score": f"{curr_score[0]}-{curr_score[1]}"
-            })
-
-        if curr_score[1] > last_score[1]:
+        elif curr_score[1] > last_score[1]:
             shots_a += 1
             scorer_idx = max(0, min(len(away_players) - 1, last_away_touch))
             scorer = away_players[scorer_idx].split('(')[0].strip()
-            goal_banner = f"GOAL!  {scorer}  ({match_min}')"
-            goal_banner_cd = 30
+            if traj:
+                matching_goals = [e for e in traj.manifest.events if e.get("type") == "goal" and e.get("team") == "away" and abs(e.get("minute", 0) - match_min) <= 3]
+                if matching_goals:
+                    scorer = matching_goals[0].get("player", scorer)
+            goal_banner = f"GOAL!  {scorer} ({away_team})  {match_min}'"
+            goal_banner_cd = 45
             last_score = list(curr_score)
-            events.append({
-                "minute": match_min, "step": step, "type": "goal", "team": "away",
-                "scorer": scorer, "score": f"{curr_score[0]}-{curr_score[1]}"
-            })
 
-        frame_rgb = env.render()
+        frame_rgb = env.render(mode="rgb_array")
+        if frame_rgb is None or isinstance(frame_rgb, bool):
+            continue
+        if frame_rgb.dtype != np.uint8:
+            if np.issubdtype(frame_rgb.dtype, np.floating) and frame_rgb.max() <= 1.01:
+                frame_rgb = (frame_rgb * 255.0).clip(0, 255).astype(np.uint8)
+            else:
+                frame_rgb = np.clip(frame_rgb, 0, 255).astype(np.uint8)
         import cv2
         frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
         frame_bgr = draw_hud(
@@ -205,8 +243,59 @@ def render_from_dump(payload: Dict[str, Any]):
 
         writer.append_data(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
 
+        # Half-Time Studio Recap Card (at step 600)
+        if step == (total_steps // 2) and traj:
+            ht_card = draw_studio_stats_card(
+                w=1280, h=720, title="HALF TIME",
+                home_team=home_team, away_team=away_team,
+                score=(curr_score[0], curr_score[1]),
+                h_poss=traj.manifest.possession[0], a_poss=traj.manifest.possession[1],
+                h_shots=traj.manifest.shots[0], a_shots=traj.manifest.shots[1],
+                h_sot=traj.manifest.shots_on_target[0], a_sot=traj.manifest.shots_on_target[1],
+                h_xg=traj.manifest.xg[0], a_xg=traj.manifest.xg[1],
+                home_bgr=home_bgr, away_bgr=away_bgr,
+                events=[e for e in traj.manifest.events if e.get("minute", 0) <= 45]
+            )
+            for _ in range(45):
+                writer.append_data(ht_card)
+
+        if progress_file and (step % 30 == 0 or step == total_steps - 1):
+            pct = int((step / max(1, total_steps)) * 95)
+            write_progress_atomic(progress_file, {
+                "status": "rendering", "progress": pct, "step": step,
+                "total_steps": total_steps, "match_minute": match_min,
+                "stage": f"Replaying 3D Broadcast • {match_min}'/90'...",
+                "score": curr_score, "completed": False
+            })
+
+    # Full-Time Studio Recap Card at end of match
+    if traj:
+        ft_card = draw_studio_stats_card(
+            w=1280, h=720, title="FULL TIME",
+            home_team=home_team, away_team=away_team,
+            score=(curr_score[0], curr_score[1]),
+            h_poss=traj.manifest.possession[0], a_poss=traj.manifest.possession[1],
+            h_shots=traj.manifest.shots[0], a_shots=traj.manifest.shots[1],
+            h_sot=traj.manifest.shots_on_target[0], a_sot=traj.manifest.shots_on_target[1],
+            h_xg=traj.manifest.xg[0], a_xg=traj.manifest.xg[1],
+            home_bgr=home_bgr, away_bgr=away_bgr,
+            events=traj.manifest.events,
+            motm_player=traj.manifest.events[0].get("player") if traj.manifest.events else None
+        )
+        for _ in range(60):
+            writer.append_data(ft_card)
+
     env.close()
     writer.close()
+
+    if progress_file:
+        write_progress_atomic(progress_file, {
+            "status": "completed", "progress": 100, "step": total_steps,
+            "total_steps": total_steps, "match_minute": 90,
+            "stage": "3D Match Replay Complete!",
+            "video_url": f"/recordings/{os.path.basename(output_mp4)}",
+            "score": curr_score, "completed": True
+        })
 
     result = {
         "match_id": str(match_id),
@@ -271,14 +360,14 @@ def main():
     dump_file = payload.get("dump_file")
     trajectory_file = payload.get("trajectory_file")
 
-    if states_file and os.path.exists(states_file):
-        render_from_grf_states(payload)
-    elif dump_file and os.path.exists(dump_file):
+    if dump_file and os.path.exists(dump_file):
         render_from_dump(payload)
+    elif states_file and os.path.exists(states_file):
+        render_from_grf_states(payload)
     elif trajectory_file and os.path.exists(trajectory_file):
         render_from_trajectory_npz(payload)
     else:
-        raise ValueError("No valid input file provided (states_file, dump_file, or trajectory_file).")
+        raise ValueError("No valid input file provided (dump_file, states_file, or trajectory_file).")
 
 
 if __name__ == "__main__":

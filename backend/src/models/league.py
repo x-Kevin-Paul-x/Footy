@@ -251,6 +251,8 @@ class League:
             self.update_standings(home_team, away_team, result)
             result['home_team_id'] = home_team.team_id
             result['away_team_id'] = away_team.team_id
+            result['match_id'] = result.get('match_id') or prepared.match_id
+            result['seed_val'] = result.get('seed_val') or prepared.seed_val
             return result
         except ValueError as e:
             # Log forfeit due to insufficient players
@@ -324,6 +326,9 @@ class League:
                     logging.getLogger(__name__).error(f"Batch GRF execution error under strict GRF mode: {e}")
                     raise RuntimeError(f"Batch GRF execution failed under strict GRF mode: {e}") from e
                 logging.getLogger(__name__).warning(f"Batch GRF execution error: {e}. Falling back to sequential heuristic in AUTO mode.")
+
+        if ENGINE_MODE == "GRF":
+            raise RuntimeError("GRF execution required in strict GRF mode, but batch runner was not executed.")
 
         # Fallback to sequential play_match
         return [self.play_match(home, away) for home, away in fixtures_batch]

@@ -34,6 +34,20 @@ def to_wsl_path(win_path: Path) -> str:
     return f"/mnt/{drive}/{rest}"
 
 
+def to_win_path(path_val: Any) -> Optional[Path]:
+    """Convert WSL /mnt/... or Windows path string to Windows Path object."""
+    if not path_val:
+        return None
+    s = str(path_val).replace("\\", "/")
+    if s.startswith("/mnt/"):
+        parts = s.split("/")[2:]
+        if parts:
+            drive = parts[0].upper() + ":"
+            rest = "\\".join(parts[1:])
+            return Path(f"{drive}\\{rest}")
+    return Path(path_val)
+
+
 class GRFNativeRunner:
     """
     Windows-to-WSL2 Bridge for GRF match simulation and broadcast video rendering.
@@ -146,17 +160,30 @@ class GRFNativeRunner:
             "record_dump": bool(record_dump),
             "seed_val": seed_val,
         }
+        is_3d_render = (render_mode == "3d") or (render_video and render_mode != "2d")
+        payload["render_mode"] = "3d" if is_3d_render else "2d"
+        payload["record_3d_video"] = is_3d_render
+        payload["record_dump"] = True
 
-        # 1. Try communicating with persistent daemon if active (fastest)
-        sim_res = self._try_daemon_simulate(payload)
+        # 1. Try communicating with persistent daemon if active (fastest, for headless 2d)
+        sim_res = None
+        if not is_3d_render:
+            sim_res = self._try_daemon_simulate(payload)
+
         if sim_res is None:
-            # 2. Fall back to one-shot worker command
-            cmd = [
-                "wsl", "-u", "root", self.wsl_python,
-                self.sim_worker_wsl, json.dumps(payload)
-            ]
-            logger.info("GRF Simulator: running one-shot simulation for match=%s", m_id)
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            # 2. One-shot worker command (run with xvfb-run for 3D live rendering)
+            if is_3d_render:
+                cmd = [
+                    "wsl", "-u", "root", "xvfb-run", "-a", "-s", "-screen 0 1280x720x24",
+                    self.wsl_python, self.sim_worker_wsl, json.dumps(payload)
+                ]
+            else:
+                cmd = [
+                    "wsl", "-u", "root", self.wsl_python,
+                    self.sim_worker_wsl, json.dumps(payload)
+                ]
+            logger.info("GRF Simulator: running simulation (3d=%s) for match=%s", is_3d_render, m_id)
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
             if "MATCH_SIM_RESULT_JSON:" in res.stdout:
                 json_str = res.stdout.split("MATCH_SIM_RESULT_JSON:")[1].splitlines()[0]
                 sim_res = json.loads(json_str)
@@ -164,7 +191,8 @@ class GRFNativeRunner:
                 logger.error("GRF Simulator error:\nSTDOUT: %s\nSTDERR: %s", res.stdout, res.stderr)
                 raise RuntimeError(f"GRF simulation execution failed: {res.stderr or res.stdout}")
 
-        if render_video:
+        # If 3d live video was generated directly during simulation, it's already in sim_res["video_url"]!
+        if render_video and not sim_res.get("video_url"):
             render_out = self.render_replay(
                 match_id=m_id,
                 home_team=h_name,
@@ -233,15 +261,16 @@ class GRFNativeRunner:
         """
         RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
         m_id = str(match_id)
-        out_win = Path(output_mp4) if output_mp4 else (RECORDINGS_DIR / f"match_{m_id}.mp4")
-        traj_win = Path(trajectory_file) if trajectory_file else (RECORDINGS_DIR / f"trace_{m_id}.npz")
-        dump_win = Path(dump_file) if dump_file else (RECORDINGS_DIR / f"trace_{m_id}.dump")
+        out_win = to_win_path(output_mp4) or (RECORDINGS_DIR / f"match_{m_id}.mp4")
+        traj_win = to_win_path(trajectory_file) or (RECORDINGS_DIR / f"trace_{m_id}.npz")
+        dump_win = to_win_path(dump_file) or (RECORDINGS_DIR / f"trace_{m_id}.dump")
         prog_win = RECORDINGS_DIR / f"progress_{m_id}.json"
 
         # Resolve candidate states file
         states_win = None
-        if states_file and Path(states_file).exists():
-            states_win = Path(states_file)
+        cand_states = to_win_path(states_file)
+        if cand_states and cand_states.exists():
+            states_win = cand_states
         else:
             for ext in [".grfstate", "_states.grfstate", "_states.pkl"]:
                 candidate = Path(str(traj_win).replace(".npz", ext))
@@ -339,13 +368,23 @@ class GRFNativeRunner:
             "away_color": _away_color,
         }
 
+        payload_render_win = RECORDINGS_DIR / f"render_payload_{m_id}_{int(time.time()*1000)%100000}.json"
+        payload_render_win.write_text(json.dumps(payload), encoding="utf-8")
+
         cmd = [
-            "wsl", "-u", "root", "bash", "-c",
-            f'xvfb-run -a -s "-screen 0 1280x720x24" {self.wsl_python} {self.render_worker_wsl} \'{json.dumps(payload)}\''
+            "wsl", "-u", "root", "xvfb-run", "-a", "-s", "-screen 0 1280x720x24",
+            self.wsl_python, self.render_worker_wsl, to_wsl_path(payload_render_win)
         ]
 
         logger.info("GRF Renderer: rendering authentic 3D broadcast via WSL worker for match=%s", m_id)
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        finally:
+            if payload_render_win.exists():
+                try:
+                    payload_render_win.unlink()
+                except OSError:
+                    pass
 
         if "MATCH_RENDER_RESULT_JSON:" in res.stdout:
             json_str = res.stdout.split("MATCH_RENDER_RESULT_JSON:")[1].splitlines()[0]
@@ -404,3 +443,13 @@ class GRFNativeRunner:
             seed_val=seed_val,
             render_video=render_video,
         )
+
+    def simulate_batch(
+        self,
+        fixtures: List[Dict[str, Any]],
+        max_steps: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """Simulate a batch of fixtures concurrently via GRFBatchRunner."""
+        from logic.grf_batch_runner import GRFBatchRunner
+        runner = GRFBatchRunner()
+        return runner.run_matchday(fixtures=fixtures, max_steps=max_steps)

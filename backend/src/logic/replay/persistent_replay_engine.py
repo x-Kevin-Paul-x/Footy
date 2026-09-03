@@ -234,8 +234,7 @@ class PersistentReplayEngine:
                 elif b_own == 1:
                     right_poss += 1
 
-                sim_sec = step * SIM_STEP_SECONDS
-                match_min = max(1, min(90, int(sim_sec / 60) + 1))
+                match_min = max(1, min(90, int((step / max(1, total_steps)) * 90) + 1))
                 is_second_half = step >= half_time_step
 
                 if step in goal_events_by_step:

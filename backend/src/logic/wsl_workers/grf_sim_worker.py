@@ -154,7 +154,13 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
     home_anchors = home_tactics.get_formation_anchors(is_right_team=False)[1:]
     away_anchors = away_tactics.get_formation_anchors(is_right_team=True)[1:]
 
-    # Dumps directory for native GRF trace recording (only if debug/record_dump requested)
+    # Render mode & live 3D recording setup (Option 1 vs Option 2)
+    render_mode = str(payload.get("render_mode", os.getenv("FOOTY_DEFAULT_RENDER_MODE", "3d"))).lower()
+    record_3d_video = (render_mode == "3d") or bool(payload.get("record_3d_video", False))
+    if record_3d_video:
+        record_dump = True
+
+    # Dumps directory for native GRF trace recording
     match_dump_dir = f"/tmp/dumps/tmp_{match_id}_{int(time.time()*1000)%100000}"
     if record_dump:
         os.makedirs(match_dump_dir, exist_ok=True)
@@ -167,6 +173,12 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
         other_opts['tracesdir'] = match_dump_dir
         other_opts['dump_full_episodes'] = True
 
+    if record_3d_video:
+        other_opts['write_video'] = True
+        other_opts['display_game_stats'] = False
+        other_opts['render_resolution_x'] = 1280
+        other_opts['render_resolution_y'] = 720
+
     env = football_env.create_environment(
         env_name="11_vs_11_kaggle",
         stacked=False,
@@ -174,7 +186,8 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
         rewards='scoring',
         write_goal_dumps=False,
         write_full_episode_dumps=record_dump,
-        render=False,
+        render=record_3d_video,
+        write_video=record_3d_video,
         number_of_left_players_agent_controls=10,
         number_of_right_players_agent_controls=10,
         other_config_options=other_opts
@@ -408,8 +421,8 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
                 if ball_player >= 0:
                     last_away_touch = ball_player
 
-            sim_time_sec = step * SIM_STEP_SECONDS
-            match_min = max(1, min(90, int(sim_time_sec / 60) + 1))
+            total_match_steps = max_steps if max_steps else 1200
+            match_min = max(1, min(90, int((step / max(1, total_match_steps)) * 90) + 1))
 
             # 8. Rigorous Pass State Machine
             if ball_owned == 0 and ball_player >= 1 and (ball_player - 1) < len(left_act):
@@ -530,15 +543,6 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
         if state_writer is not None:
             state_writer.close()
 
-    # Locate generated native dump and move to target destination if debug/record_dump was requested
-    import glob, shutil
-    if record_dump:
-        dump_files = sorted(glob.glob(f"{match_dump_dir}/episode_done_*.dump"))
-        if dump_files and trace_dump_path:
-            os.makedirs(os.path.dirname(trace_dump_path), exist_ok=True)
-            shutil.move(dump_files[-1], trace_dump_path)
-        shutil.rmtree(match_dump_dir, ignore_errors=True)
-
     # Invariant guarantees
     final_score = [int(curr_score[0]), int(curr_score[1])]
     shots_h = max(shots_h, final_score[0])
@@ -629,6 +633,37 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     result_json = manifest.to_dict()
     result_json["trajectory_hash"] = trajectory.compute_trajectory_hash()
+    result_json["dump_file"] = trace_dump_path if record_dump else None
+    result_json["states_file"] = resolved_states_path if state_writer else None
+
+    import glob, shutil
+    if record_3d_video:
+        avi_files = sorted(glob.glob(f"{match_dump_dir}/episode_done_*.avi"))
+        if avi_files:
+            raw_avi = avi_files[-1]
+            out_mp4 = f"/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/backend/reports/recordings/match_{match_id}.mp4"
+            try:
+                from logic.grf_renderer import transcode_live_avi_to_broadcast_mp4
+                transcode_live_avi_to_broadcast_mp4(
+                    raw_avi_path=raw_avi,
+                    output_mp4_path=out_mp4,
+                    manifest=manifest,
+                    home_color=home_color,
+                    away_color=away_color
+                )
+                result_json["video_url"] = f"/recordings/match_{match_id}.mp4"
+                result_json["render_mode_used"] = "3d"
+            except Exception as e:
+                print(f"Error transcoding live 3d video in grf_sim_worker: {e}", file=sys.stderr)
+
+    if record_dump:
+        dump_files = sorted(glob.glob(f"{match_dump_dir}/episode_done_*.dump"))
+        if dump_files and trace_dump_path:
+            os.makedirs(os.path.dirname(trace_dump_path), exist_ok=True)
+            shutil.move(dump_files[-1], trace_dump_path)
+
+    shutil.rmtree(match_dump_dir, ignore_errors=True)
+
     return result_json
 
 

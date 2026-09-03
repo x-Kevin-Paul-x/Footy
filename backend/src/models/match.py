@@ -111,8 +111,10 @@ class PreparedMatch:
         return {
             "match_id": self.match_id,
             "seed_val": self.seed_val,
-            "home_team": self.home_team,
-            "away_team": self.away_team,
+            "home_team": h_name,
+            "away_team": a_name,
+            "home_team_obj": self.home_team,
+            "away_team_obj": self.away_team,
             "home_team_name": h_name,
             "away_team_name": a_name,
             "home_formation": self.home_formation,
@@ -918,6 +920,7 @@ class Match:
 
                 from datetime import datetime
                 summary = {
+                    "match_id": match_id or getattr(self, "match_id", None) or f"match_{self.home_team.team_id}_{self.away_team.team_id}",
                     "date": datetime.now().isoformat(),
                     "home_team_id": self.home_team.team_id,
                     "away_team_id": self.away_team.team_id,
@@ -1024,6 +1027,7 @@ class Match:
         from datetime import datetime
         # Enhanced match summary
         summary = {
+            "match_id": match_id or getattr(self, "match_id", None) or f"match_{self.home_team.team_id}_{self.away_team.team_id}",
             "date": datetime.now().isoformat(),
             "home_team_id": self.home_team.team_id,
             "away_team_id": self.away_team.team_id,

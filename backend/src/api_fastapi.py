@@ -229,7 +229,8 @@ from schemas import (
     SaveStateResponse,
     WebSocketEventFrame,
     MatchSimulationRequest,
-    MatchSimulationResponse
+    MatchSimulationResponse,
+    SimulationSettings
 )
 import shutil
 from database.session import DB_FILE
@@ -596,7 +597,7 @@ def build_live_season_report_from_db(year: int) -> dict:
         return {}
 
 
-@app.get("/get-season-report/{year:int}")
+@app.get("/get-season-report/{year}")
 async def get_season_report(year: int):
     """
     Return the season report JSON but augment it with DB-backed transfer history if available.
@@ -1233,6 +1234,37 @@ async def get_team_history(team_name):
     except Exception as e:
         logger.exception("Error getting team history for %s", team_name)
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+SIMULATION_SETTINGS_FILE = BASE_DIR.parent / "reports" / "simulation_settings.json"
+
+
+@app.get("/api/v1/settings/simulation", response_model=SimulationSettings)
+async def get_simulation_settings():
+    """Retrieve default simulation render mode settings (Option 1 vs Option 2)."""
+    if SIMULATION_SETTINGS_FILE.exists():
+        try:
+            with open(SIMULATION_SETTINGS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return SimulationSettings(**data)
+        except Exception:
+            pass
+    return SimulationSettings(default_render_mode=os.getenv("FOOTY_DEFAULT_RENDER_MODE", "3d"))
+
+
+@app.post("/api/v1/settings/simulation", response_model=SimulationSettings)
+async def update_simulation_settings(settings: SimulationSettings):
+    """Update default simulation render mode settings (Option 1 vs Option 2)."""
+    try:
+        os.makedirs(SIMULATION_SETTINGS_FILE.parent, exist_ok=True)
+        with open(SIMULATION_SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(settings.model_dump(), f, indent=2)
+        os.environ["FOOTY_DEFAULT_RENDER_MODE"] = settings.default_render_mode
+        return settings
+    except Exception as e:
+        logger.exception("Failed to save simulation settings")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @app.get("/financial-summary")

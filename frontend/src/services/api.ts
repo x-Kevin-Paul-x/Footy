@@ -528,6 +528,7 @@ export interface GrfMatchSimulationRequest {
   away_formation?: string;
   generate_video?: boolean;
   max_steps?: number;
+  render_mode?: "3d" | "2d";
 }
 
 export interface GrfMatchSimulationResponse {
@@ -580,5 +581,21 @@ export const getMatchRenderStatus = async (matchId: string): Promise<MatchRender
   const response = await apiClient.get<MatchRenderStatusResponse>(`/api/v1/match/${matchId}/render-status`);
   return response.data;
 };
+
+export interface SimulationSettings {
+  default_render_mode: "3d" | "2d";
+  max_steps?: number;
+}
+
+export const getSimulationSettings = async (): Promise<SimulationSettings> => {
+  const response = await apiClient.get<SimulationSettings>('/api/v1/settings/simulation');
+  return response.data;
+};
+
+export const updateSimulationSettings = async (settings: SimulationSettings): Promise<SimulationSettings> => {
+  const response = await apiClient.post<SimulationSettings>('/api/v1/settings/simulation', settings);
+  return response.data;
+};
+
 
 

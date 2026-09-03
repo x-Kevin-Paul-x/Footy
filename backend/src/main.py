@@ -556,6 +556,9 @@ def simulate_season_with_transfers(premier_league, transfer_market):
     january_start = total_matches // 2
     matches_per_week = max(1, len(premier_league.teams) // 2)
     chunk_size = matches_per_week * 2  # 2 matchdays = 20 matches concurrently
+    max_matches_limit = int(os.environ.get("FOOTY_MAX_MATCHES", "0"))
+    if max_matches_limit > 0:
+        january_start = min(january_start, max_matches_limit)
 
     logger.info(f"\nPlaying first half of season ({january_start} matches)...")
     for start_idx in range(0, january_start, chunk_size):
@@ -605,6 +608,11 @@ def simulate_season_with_transfers(premier_league, transfer_market):
 
             # Instantly sync updated league standings, team records, and player stats after every matchday
             sync_simulation_state_to_db(premier_league, transfer_market)
+            if max_matches_limit > 0 and matches_played >= max_matches_limit:
+                logger.info(f"Reached FOOTY_MAX_MATCHES limit of {max_matches_limit}. Stopping matchdays early.")
+                break
+        if max_matches_limit > 0 and matches_played >= max_matches_limit:
+            break
 
     # January transfer window (days 183-214)
     logger.info("\n=== JANUARY TRANSFER WINDOW OPEN ===")
@@ -628,66 +636,74 @@ def simulate_season_with_transfers(premier_league, transfer_market):
     sync_simulation_state_to_db(premier_league, transfer_market)
 
     # Play remaining matches
-    logger.info(f"\nPlaying second half of season...")
-    for start_idx in range(january_start, total_matches, chunk_size):
-        end_idx = min(start_idx + chunk_size, total_matches)
-        matchday_batches = []
-        for m_start in range(start_idx, end_idx, matches_per_week):
-            m_end = min(m_start + matches_per_week, end_idx)
-            matchday_batches.append(premier_league.schedule[m_start:m_end])
+    if max_matches_limit > 0 and matches_played >= max_matches_limit:
+        logger.info(f"Skipping second half of season due to FOOTY_MAX_MATCHES={max_matches_limit}.")
+    else:
+        logger.info(f"\nPlaying second half of season...")
+        for start_idx in range(january_start, total_matches, chunk_size):
+            end_idx = min(start_idx + chunk_size, total_matches)
+            matchday_batches = []
+            for m_start in range(start_idx, end_idx, matches_per_week):
+                m_end = min(m_start + matches_per_week, end_idx)
+                matchday_batches.append(premier_league.schedule[m_start:m_end])
 
-        all_batch_results = premier_league.play_matchdays_concurrent(matchday_batches, max_workers=2)
+            all_batch_results = premier_league.play_matchdays_concurrent(matchday_batches, max_workers=2)
 
-        for md_offset, (batch, batch_results) in enumerate(zip(matchday_batches, all_batch_results)):
-            curr_start = start_idx + md_offset * matches_per_week
-            matchday = curr_start // matches_per_week
-            season_start = datetime(premier_league.season_year, 8, 1)
-            scheduled_date = season_start + timedelta(days=7 * matchday)
+            for md_offset, (batch, batch_results) in enumerate(zip(matchday_batches, all_batch_results)):
+                curr_start = start_idx + md_offset * matches_per_week
+                matchday = curr_start // matches_per_week
+                season_start = datetime(premier_league.season_year, 8, 1)
+                scheduled_date = season_start + timedelta(days=7 * matchday)
 
-            for idx_in_batch, match_result in enumerate(batch_results):
-                match_global_idx = curr_start + idx_in_batch
-                if match_result is not None:
-                    match_id = match_result.get("match_id")
-                    if not match_id:
-                        raise RuntimeError(
-                            f"Simulation result missing match_id for fixture index {match_global_idx}"
-                        )
-                    match_result['date'] = scheduled_date.isoformat()
-                    recorded_match_ids.add(str(match_id))
-                save_match_to_db(match_result, premier_league.season_year, match_global_idx + 1)
-                matches_played += 1
+                for idx_in_batch, match_result in enumerate(batch_results):
+                    match_global_idx = curr_start + idx_in_batch
+                    if match_result is not None:
+                        match_id = match_result.get("match_id")
+                        if not match_id:
+                            raise RuntimeError(
+                                f"Simulation result missing match_id for fixture index {match_global_idx}"
+                            )
+                        match_result['date'] = scheduled_date.isoformat()
+                        recorded_match_ids.add(str(match_id))
+                    save_match_to_db(match_result, premier_league.season_year, match_global_idx + 1)
+                    matches_played += 1
 
-                home_team, away_team = batch[idx_in_batch]
-                if match_result:
-                    attendance_factor = 1.0 if match_result['score'][0] >= match_result['score'][1] else 0.9
-                    home_team.calculate_matchday_revenue(attendance_factor)
+                    home_team, away_team = batch[idx_in_batch]
+                    if match_result:
+                        attendance_factor = 1.0 if match_result['score'][0] >= match_result['score'][1] else 0.9
+                        home_team.calculate_matchday_revenue(attendance_factor)
 
-            for team in premier_league.teams:
-                team.process_weekly_finances()
-                if matches_played % 10 == 0:
-                    if team.manager:
-                        team.manager.scout_for_talent(premier_league.teams, transfer_market)
+                for team in premier_league.teams:
+                    team.process_weekly_finances()
+                    if matches_played % 10 == 0:
+                        if team.manager:
+                            team.manager.scout_for_talent(premier_league.teams, transfer_market)
 
-            # Instantly sync updated league standings, team records, and player stats after every matchday
-            sync_simulation_state_to_db(premier_league, transfer_market)
+                # Instantly sync updated league standings, team records, and player stats after every matchday
+                sync_simulation_state_to_db(premier_league, transfer_market)
+                if max_matches_limit > 0 and matches_played >= max_matches_limit:
+                    break
+            if max_matches_limit > 0 and matches_played >= max_matches_limit:
+                break
 
-    # Assert season fixture completeness and exact match ID uniqueness
-    expected_match_ids = {
-        f"match_{premier_league.season_year}_{h.team_id}_{a.team_id}"
-        for h, a in premier_league.schedule
-    }
-    if matches_played != total_matches:
-        raise RuntimeError(
-            f"Season simulation incomplete for {premier_league.season_year}: "
-            f"played {matches_played}/{total_matches} expected fixtures."
-        )
-    if recorded_match_ids != expected_match_ids:
-        missing = expected_match_ids - recorded_match_ids
-        unexpected = recorded_match_ids - expected_match_ids
-        raise RuntimeError(
-            f"Season fixture integrity failure for {premier_league.season_year}: "
-            f"missing={sorted(missing)}, unexpected={sorted(unexpected)}"
-        )
+    # Assert season fixture completeness and exact match ID uniqueness (for full seasons)
+    if max_matches_limit == 0:
+        expected_match_ids = {
+            f"match_{premier_league.season_year}_{h.team_id}_{a.team_id}"
+            for h, a in premier_league.schedule
+        }
+        if matches_played != total_matches:
+            raise RuntimeError(
+                f"Season simulation incomplete for {premier_league.season_year}: "
+                f"played {matches_played}/{total_matches} expected fixtures."
+            )
+        if recorded_match_ids != expected_match_ids:
+            missing = expected_match_ids - recorded_match_ids
+            unexpected = recorded_match_ids - expected_match_ids
+            raise RuntimeError(
+                f"Season fixture integrity failure for {premier_league.season_year}: "
+                f"missing={sorted(missing)}, unexpected={sorted(unexpected)}"
+            )
 
     # Process contract expiries at end of season
     expired_contracts = transfer_market.process_contract_expiries(premier_league.teams)

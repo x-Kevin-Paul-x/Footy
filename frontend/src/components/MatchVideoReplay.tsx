@@ -12,6 +12,8 @@ import {
   alpha,
   LinearProgress,
   CircularProgress,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PauseIcon from "@mui/icons-material/Pause";
@@ -31,7 +33,7 @@ interface MatchVideoReplayProps {
   awayTeam: string;
   score?: [number, number];
   events?: Array<{ minute: number; type: string; player?: string; team?: string; details?: string }>;
-  onGenerateReplay?: () => void;
+  onGenerateReplay?: (mode: "3d" | "2d") => void;
   isGenerating?: boolean;
 }
 
@@ -65,6 +67,7 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
 
   // Active Video URL & Live Rendering State
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(videoUrl || null);
+  const [renderMode, setRenderMode] = useState<"3d" | "2d">("3d");
   const [isActivelyRendering, setIsActivelyRendering] = useState<boolean>(isGenerating);
   const [renderProgress, setRenderProgress] = useState<number>(0);
   const [renderStage, setRenderStage] = useState<string>("Initializing TiKick MARL Policy...");
@@ -452,15 +455,66 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
             <Typography variant="h6" sx={{ fontWeight: 800, mb: 1 }}>
               No 3D Replay Rendered Yet
             </Typography>
-            <Typography variant="body2" sx={{ color: "text.secondary", maxWidth: 480, mx: "auto", mb: 3 }}>
+            <Typography variant="body2" sx={{ color: "text.secondary", maxWidth: 480, mx: "auto", mb: 2.5 }}>
               Generate a physics-accurate 720p HD broadcast replay powered by the Google Research Football 3D engine and TiKick 11v11 AI.
             </Typography>
+
+            {/* Engine Render Mode Settings Option */}
+            <Box sx={{ mb: 3, display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
+              <Typography variant="caption" sx={{ fontWeight: 800, textTransform: "uppercase", color: "text.secondary", letterSpacing: 0.5 }}>
+                Render Engine Selection
+              </Typography>
+              <ToggleButtonGroup
+                value={renderMode}
+                exclusive
+                onChange={(_, val) => val && setRenderMode(val)}
+                size="small"
+                sx={{
+                  bgcolor: alpha(theme.palette.background.paper, 0.8),
+                  borderRadius: 2.5,
+                  p: 0.5,
+                  border: `1px solid ${alpha(theme.palette.divider, 0.5)}`,
+                }}
+              >
+                <ToggleButton
+                  value="3d"
+                  sx={{
+                    fontWeight: 800,
+                    px: 2.5,
+                    py: 0.8,
+                    borderRadius: 2,
+                    "&.Mui-selected": {
+                      bgcolor: alpha(theme.palette.primary.main, 0.15),
+                      color: theme.palette.primary.main,
+                    },
+                  }}
+                >
+                  🎥 3D Broadcast Engine (Must)
+                </ToggleButton>
+                <ToggleButton
+                  value="2d"
+                  sx={{
+                    fontWeight: 700,
+                    px: 2.5,
+                    py: 0.8,
+                    borderRadius: 2,
+                    "&.Mui-selected": {
+                      bgcolor: alpha(theme.palette.primary.main, 0.15),
+                      color: theme.palette.primary.main,
+                    },
+                  }}
+                >
+                  ⚽ 2D Tactical Radar
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+
             {onGenerateReplay && (
               <Button
                 variant="contained"
                 size="large"
                 startIcon={<VideocamIcon />}
-                onClick={onGenerateReplay}
+                onClick={() => onGenerateReplay(renderMode)}
                 sx={{
                   borderRadius: 3,
                   fontWeight: 800,
@@ -469,7 +523,7 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
                   boxShadow: "0 8px 20px rgba(99,102,241,0.25)",
                 }}
               >
-                Generate 3D Broadcast Replay
+                {renderMode === "3d" ? "Generate 3D Broadcast Replay" : "Generate 2D Tactical Replay"}
               </Button>
             )}
           </Box>

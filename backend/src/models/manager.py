@@ -2,7 +2,7 @@ import random
 import numpy as np
 import names
 from collections import defaultdict
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Any, Optional
 from logic.manager_profile import ManagerProfile
 from logic.manager_brain import ManagerBrain, StateEncoder
 from database.manager_db import create_manager, get_manager, update_manager, delete_manager
