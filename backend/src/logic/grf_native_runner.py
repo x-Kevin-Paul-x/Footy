@@ -102,12 +102,16 @@ class GRFNativeRunner:
         render_mode: str = "auto",
         home_tactics: Optional[Any] = None,
         away_tactics: Optional[Any] = None,
+        run_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Execute pure 11v11 MARL match simulation (Phase A).
-        Fast, zero-rendering. Records .npz trajectory and optionally .grfstate / .dump.
+        Execute pure 11v11 MARL match simulation (Phase A) with run-scoped isolation.
         """
-        RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+        from database.db_setup import get_current_simulation_run
+        eff_run_id = run_id or get_current_simulation_run()
+        run_dir = RECORDINGS_DIR / eff_run_id if eff_run_id else RECORDINGS_DIR
+        run_dir.mkdir(parents=True, exist_ok=True)
+
         h_name = getattr(home_team, "name", str(home_team))
         a_name = getattr(away_team, "name", str(away_team))
         m_id = str(match_id or f"match_{int(time.time()*1000)%100000}")
@@ -116,9 +120,10 @@ class GRFNativeRunner:
         _home_color = home_color or team_color_from_name(h_name)
         _away_color = away_color or team_color_from_name(a_name)
 
-        trace_npz_win = RECORDINGS_DIR / f"trace_{m_id}.npz"
-        trace_dump_win = RECORDINGS_DIR / f"trace_{m_id}.dump"
-        trace_grfstate_win = RECORDINGS_DIR / f"trace_{m_id}.grfstate"
+        trace_npz_win = run_dir / f"trace_{m_id}.npz"
+        trace_dump_win = run_dir / f"trace_{m_id}.dump"
+        output_mp4_win = run_dir / f"match_{m_id}.mp4"
+        trace_grfstate_win = run_dir / f"trace_{m_id}.grfstate"
 
         # Build tactics and player profiles from Footy domain objects
         from logic.footy_grf_adapter import FootyGRFAdapter
@@ -132,6 +137,7 @@ class GRFNativeRunner:
 
         payload = {
             "match_id": m_id,
+            "run_id": eff_run_id,
             "home_team": h_name,
             "away_team": a_name,
             "home_formation": home_formation or h_tac.formation,
@@ -154,6 +160,7 @@ class GRFNativeRunner:
             "ckpt_path": to_wsl_path(self.local_ckpt),
             "tikick_dir": to_wsl_path(self.local_tikick),
             "trace_npz": to_wsl_path(trace_npz_win),
+            "output_mp4": to_wsl_path(output_mp4_win),
             "trace_dump": to_wsl_path(trace_dump_win) if record_dump else None,
             "states_file": to_wsl_path(trace_grfstate_win) if should_record_states else None,
             "record_grf_states": should_record_states,
@@ -163,6 +170,7 @@ class GRFNativeRunner:
         is_3d_render = (render_mode == "3d") or (render_video and render_mode != "2d")
         payload["render_mode"] = "3d" if is_3d_render else "2d"
         payload["record_3d_video"] = is_3d_render
+        payload["record_dump"] = True
         payload["record_dump"] = True
 
         # 1. Try communicating with persistent daemon if active (fastest, for headless 2d)

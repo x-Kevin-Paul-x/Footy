@@ -597,5 +597,20 @@ export const updateSimulationSettings = async (settings: SimulationSettings): Pr
   return response.data;
 };
 
+export interface CurrentSimulationRun {
+  run_id: string;
+  season_year: number;
+  created_at: string | null;
+  status: string;
+  render_mode: "3d" | "2d";
+  total_matches: number;
+  matches_played: number;
+}
+
+export const getCurrentSimulationRun = async (): Promise<CurrentSimulationRun> => {
+  const response = await apiClient.get<CurrentSimulationRun>('/api/v1/simulation/current-run');
+  return response.data;
+};
+
 
 

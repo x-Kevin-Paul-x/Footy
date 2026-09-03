@@ -152,11 +152,27 @@ class PlayerStat(Base):
     
     player = relationship("Player", back_populates="stats")
 
+class SimulationRun(Base):
+    __tablename__ = 'SimulationRun'
+    __table_args__ = (Index('ix_simrun_season_status', 'season_year', 'status'),)
+
+    run_id = Column(String, primary_key=True)
+    season_year = Column(Integer, nullable=False)
+    created_at = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="running")
+    render_mode = Column(String, nullable=False, default="3d")
+    total_matches = Column(Integer, nullable=False, default=380)
+    matches_played = Column(Integer, nullable=False, default=0)
+    metadata_json = Column(String, nullable=True)
+
+    matches = relationship("Match", back_populates="simulation_run")
+
 class Match(Base):
     __tablename__ = 'Match'
     __table_args__ = (Index('ix_match_season_year', 'season_year'),)
     
     match_id = Column(Integer, primary_key=True, autoincrement=True)
+    simulation_run_id = Column(String, ForeignKey('SimulationRun.run_id'), nullable=True, index=True)
     match_number = Column(Integer, nullable=False)
     date = Column(String, nullable=False)
     season_year = Column(Integer, nullable=False)
@@ -185,6 +201,9 @@ class Match(Base):
     home_injuries = Column(Integer, nullable=False, default=0)
     away_injuries = Column(Integer, nullable=False, default=0)
     trace_file = Column(String, nullable=True)
+    video_url = Column(String, nullable=True)
+
+    simulation_run = relationship("SimulationRun", back_populates="matches")
 
 class SeasonReport(Base):
     __tablename__ = 'SeasonReport'

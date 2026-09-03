@@ -173,6 +173,9 @@ const MatchDetail: React.FC = () => {
       try {
         const data = await getMatchDetails(Number(matchId));
         setMatch(data);
+        if (data && data.video_url) {
+          setVideoUrl(data.video_url);
+        }
 
         try {
           const vid = await getMatchVideo(String(matchId));

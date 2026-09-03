@@ -333,11 +333,14 @@ class League:
         # Fallback to sequential play_match
         return [self.play_match(home, away) for home, away in fixtures_batch]
 
-    def play_matchdays_concurrent(self, matchdays_batches, max_workers=2):
+    def play_matchdays_concurrent(self, matchdays_batches, max_workers=2, run_id=None, render_mode=None):
         """
         Play multiple matchdays sequentially in strict chronological order,
         parallelizing only independent fixtures belonging to the SAME matchday.
         """
+        eff_run_id = run_id or getattr(self, "simulation_run_id", None)
+        eff_render_mode = render_mode or getattr(self, "render_mode", None)
+
         from config import ENGINE_MODE
         if ENGINE_MODE in ["GRF", "AUTO"]:
             try:
@@ -359,7 +362,11 @@ class League:
                         prepared_matches = [self.prepare_match(home_team, away_team) for home_team, away_team in fixtures_batch]
                         fixtures_payload = [p.to_fixture_dict() for p in prepared_matches]
 
-                        batch_results = runner.run_matchday(fixtures_payload)
+                        batch_results = runner.run_matchday(
+                            fixtures_payload,
+                            run_id=eff_run_id,
+                            render_mode=eff_render_mode
+                        )
                         results = []
                         for idx, res in enumerate(batch_results):
                             home_team, away_team = fixtures_batch[idx]

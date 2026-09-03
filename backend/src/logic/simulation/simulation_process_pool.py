@@ -108,7 +108,7 @@ def _dynamic_queue_worker_runner(
 
             match_id_str = str(fix.get("match_id", ""))
             if in_flight_dict is not None:
-                in_flight_dict[w_id] = match_id_str
+                in_flight_dict[w_id] = {"match_id": match_id_str, "start_time": time.monotonic()}
 
             t_match_start = time.perf_counter()
             try:
@@ -309,20 +309,40 @@ class SimulationProcessPool:
                         pass
 
         try:
+            watchdog_timeout = 180.0 if replay_mode == ReplayMode.FULL_STATE else 90.0
+
             while len(results_by_id) < num_fixtures:
+                t_now = time.monotonic()
+
                 # Synchronize in-flight worker states with fixture_states
                 for w_idx in range(len(processes)):
-                    curr_inflight = in_flight_dict.get(w_idx)
+                    raw_inflight = in_flight_dict.get(w_idx)
+                    curr_inflight = raw_inflight.get("match_id") if isinstance(raw_inflight, dict) else raw_inflight
                     if curr_inflight and curr_inflight in fixture_states and fixture_states[curr_inflight] != "SUCCESS":
                         fixture_states[curr_inflight] = f"RUNNING({w_idx})"
 
                 try:
                     msg = result_queue.get(timeout=0.5)
                 except Exception:
-                    # Monitor worker process health & recover in-flight jobs on abrupt death
+                    # 1. Per-Fixture Watchdog: Monitor running workers for execution hangs
                     for idx, p in enumerate(processes):
-                        if not p.is_alive() and p.exitcode != 0:
-                            lost_m_id = in_flight_dict.get(idx)
+                        raw_inflight = in_flight_dict.get(idx)
+                        if raw_inflight and isinstance(raw_inflight, dict):
+                            stuck_m_id = raw_inflight.get("match_id")
+                            start_t = raw_inflight.get("start_time", t_now)
+                            elapsed = t_now - start_t
+                            if elapsed > watchdog_timeout and p.is_alive():
+                                print(f"[SUPERVISOR] WATCHDOG: Fixture {stuck_m_id} on worker {idx} (PID {p.pid}) hung for {elapsed:.1f}s (>{watchdog_timeout}s). Terminating stuck worker...")
+                                try:
+                                    p.kill()
+                                    p.join(timeout=1.0)
+                                except Exception:
+                                    pass
+
+                        # 2. Monitor worker process health & recover in-flight jobs on crash or watchdog kill
+                        if not p.is_alive():
+                            raw_inflight = in_flight_dict.get(idx)
+                            lost_m_id = raw_inflight.get("match_id") if isinstance(raw_inflight, dict) else raw_inflight
 
                             lost_ids = []
                             if lost_m_id and lost_m_id in fixtures_by_id and lost_m_id not in results_by_id:
@@ -331,7 +351,7 @@ class SimulationProcessPool:
                             for m_to_retry in lost_ids:
                                 if retry_counts[m_to_retry] < max_retries:
                                     retry_counts[m_to_retry] += 1
-                                    print(f"[SUPERVISOR] Detected abrupt worker death (PID {p.pid}, code {p.exitcode}) on match {m_to_retry}. Auto-retrying (Attempt {retry_counts[m_to_retry]}/{max_retries})...")
+                                    print(f"[SUPERVISOR] Recovering match {m_to_retry} (PID {p.pid}). Auto-retrying (Attempt {retry_counts[m_to_retry]}/{max_retries})...")
                                     fixture_states[m_to_retry] = "RETRY_PENDING"
                                     fix = fixtures_by_id[m_to_retry]
                                     clean_partial_artifacts(fix)

@@ -641,7 +641,16 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
         avi_files = sorted(glob.glob(f"{match_dump_dir}/episode_done_*.avi"))
         if avi_files:
             raw_avi = avi_files[-1]
-            out_mp4 = f"/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/backend/reports/recordings/match_{match_id}.mp4"
+            custom_mp4 = payload.get("output_mp4")
+            run_id = payload.get("run_id")
+            if custom_mp4:
+                out_mp4 = custom_mp4
+            elif run_id:
+                out_mp4 = f"/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/backend/reports/recordings/{run_id}/match_{match_id}.mp4"
+            else:
+                out_mp4 = f"/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/backend/reports/recordings/match_{match_id}.mp4"
+
+            os.makedirs(os.path.dirname(out_mp4) or '.', exist_ok=True)
             try:
                 from logic.grf_renderer import transcode_live_avi_to_broadcast_mp4
                 transcode_live_avi_to_broadcast_mp4(
@@ -651,7 +660,8 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
                     home_color=home_color,
                     away_color=away_color
                 )
-                result_json["video_url"] = f"/recordings/match_{match_id}.mp4"
+                rel_path = out_mp4.split("backend/reports/recordings/")[-1].lstrip("/")
+                result_json["video_url"] = f"/recordings/{rel_path}"
                 result_json["render_mode_used"] = "3d"
             except Exception as e:
                 print(f"Error transcoding live 3d video in grf_sim_worker: {e}", file=sys.stderr)

@@ -5,9 +5,15 @@ from database.models import Match, MatchShots, MatchEvent, Team, Manager, Player
 
 logger = logging.getLogger("footy.database.match")
 
-def save_match_to_db(match_data: Dict[str, Any], season_year: int, match_number: int) -> Optional[int]:
+def save_match_to_db(
+    match_data: Dict[str, Any],
+    season_year: int,
+    match_number: int,
+    simulation_run_id: Optional[str] = None,
+    video_url: Optional[str] = None
+) -> Optional[int]:
     """
-    Save a completed match to the database using SQLAlchemy.
+    Save a completed match to the database using SQLAlchemy with run-scoped identity.
     """
     def get_team_id(val):
         if hasattr(val, "team_id"):
@@ -53,9 +59,14 @@ def save_match_to_db(match_data: Dict[str, Any], season_year: int, match_number:
                 Match.match_number == match_number
             ).first()
 
+            effective_run_id = simulation_run_id or match_data.get("simulation_run_id")
+            effective_video_url = video_url or match_data.get("video_url")
+
             if not match_obj:
                 match_obj = Match(
                     match_number=match_number,
+                    simulation_run_id=effective_run_id,
+                    video_url=effective_video_url,
                     date=date,
                     season_year=season_year,
                     home_team_id=home_team_id,
@@ -81,6 +92,10 @@ def save_match_to_db(match_data: Dict[str, Any], season_year: int, match_number:
                 db.add(match_obj)
                 db.flush()
             else:
+                if effective_run_id:
+                    match_obj.simulation_run_id = effective_run_id
+                if effective_video_url:
+                    match_obj.video_url = effective_video_url
                 match_obj.date = date
                 match_obj.home_team_id = home_team_id
                 match_obj.away_team_id = away_team_id
@@ -462,31 +477,48 @@ def get_match_details(match_id: Any) -> Optional[Dict[str, Any]]:
             if not match_details["away_bench"]:
                 match_details["away_bench"] = format_player_list(a_bench, "BENCH")
 
-        # Check for replay video file
+        # Check for replay video file with run-scoped priority
         from config import RECORDINGS_DIR
-        candidates = [
-            f"match_{match_id}.mp4",
-            f"match_match_{match_id}.mp4",
-        ]
-        sy = match_details.get("season_year")
-        hid = match_details.get("home_team_id")
-        aid = match_details.get("away_team_id")
-        if sy and hid and aid:
-            candidates.extend([
-                f"match_{sy}_{hid}_{aid}.mp4",
-                f"match_match_{sy}_{hid}_{aid}.mp4"
-            ])
-        tf = match_obj.trace_file if match_obj else None
-        if tf and str(tf).endswith(".mp4"):
-            candidates.insert(0, os.path.basename(str(tf)))
+        run_id = getattr(m, "simulation_run_id", None)
+        stored_url = getattr(m, "video_url", None)
 
+        match_details["simulation_run_id"] = run_id
         resolved_video = None
-        for c in candidates:
-            if (RECORDINGS_DIR / c).exists():
-                resolved_video = f"/recordings/{c}"
-                break
-        match_details["video_url"] = resolved_video
 
+        if stored_url:
+            clean_rel = stored_url.replace("/recordings/", "").lstrip("/")
+            if (RECORDINGS_DIR / clean_rel).exists():
+                resolved_video = f"/recordings/{clean_rel}"
+
+        if not resolved_video and run_id:
+            run_match_video = RECORDINGS_DIR / run_id / f"match_{match_id}.mp4"
+            if run_match_video.exists():
+                resolved_video = f"/recordings/{run_id}/match_{match_id}.mp4"
+
+        if not resolved_video:
+            # Fallback legacy candidates
+            candidates = [
+                f"match_{match_id}.mp4",
+                f"match_match_{match_id}.mp4",
+            ]
+            sy = match_details.get("season_year")
+            hid = match_details.get("home_team_id")
+            aid = match_details.get("away_team_id")
+            if sy and hid and aid:
+                candidates.extend([
+                    f"match_{sy}_{hid}_{aid}.mp4",
+                    f"match_match_{sy}_{hid}_{aid}.mp4"
+                ])
+            tf = getattr(m, "trace_file", None)
+            if tf and str(tf).endswith(".mp4"):
+                candidates.insert(0, os.path.basename(str(tf)))
+
+            for c in candidates:
+                if (RECORDINGS_DIR / c).exists():
+                    resolved_video = f"/recordings/{c}"
+                    break
+
+        match_details["video_url"] = resolved_video
         return match_details
     except Exception as e:
         logger.error(f"Database error fetching match details: {e}")

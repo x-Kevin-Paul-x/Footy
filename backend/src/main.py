@@ -525,9 +525,9 @@ def save_live_season_report(premier_league, transfer_market):
     except Exception as e:
         logger.warning(f"Live season report DB save notice: {e}")
 
-def simulate_season_with_transfers(premier_league, transfer_market):
-    """Simulate a season with active transfer market"""
-    logger.info(f"\nSeason {premier_league.season_year} - Starting with Transfer Windows")
+def simulate_season_with_transfers(premier_league, transfer_market, run_id=None, render_mode=None):
+    """Simulate a season with active transfer market and run-scoped tracking"""
+    logger.info(f"\nSeason {premier_league.season_year} - Starting with Transfer Windows (run_id={run_id})")
     
     # Summer transfer window (days 1-61)
     logger.info("\n=== SUMMER TRANSFER WINDOW OPEN ===")
@@ -571,7 +571,9 @@ def simulate_season_with_transfers(premier_league, transfer_market):
             m_end = min(m_start + matches_per_week, end_idx)
             matchday_batches.append(premier_league.schedule[m_start:m_end])
 
-        all_batch_results = premier_league.play_matchdays_concurrent(matchday_batches, max_workers=2)
+        all_batch_results = premier_league.play_matchdays_concurrent(
+            matchday_batches, max_workers=2, run_id=run_id, render_mode=render_mode
+        )
 
         for md_offset, (batch, batch_results) in enumerate(zip(matchday_batches, all_batch_results)):
             curr_start = start_idx + md_offset * matches_per_week
@@ -589,7 +591,13 @@ def simulate_season_with_transfers(premier_league, transfer_market):
                         )
                     match_result['date'] = scheduled_date.isoformat()
                     recorded_match_ids.add(str(match_id))
-                save_match_to_db(match_result, premier_league.season_year, match_global_idx + 1)
+                save_match_to_db(
+                    match_result,
+                    premier_league.season_year,
+                    match_global_idx + 1,
+                    simulation_run_id=run_id,
+                    video_url=match_result.get("video_url") if match_result else None
+                )
                 matches_played += 1
 
                 home_team, away_team = batch[idx_in_batch]
@@ -650,7 +658,9 @@ def simulate_season_with_transfers(premier_league, transfer_market):
                 m_end = min(m_start + matches_per_week, end_idx)
                 matchday_batches.append(premier_league.schedule[m_start:m_end])
 
-            all_batch_results = premier_league.play_matchdays_concurrent(matchday_batches, max_workers=2)
+            all_batch_results = premier_league.play_matchdays_concurrent(
+                matchday_batches, max_workers=2, run_id=run_id, render_mode=render_mode
+            )
 
             for md_offset, (batch, batch_results) in enumerate(zip(matchday_batches, all_batch_results)):
                 curr_start = start_idx + md_offset * matches_per_week
@@ -668,7 +678,13 @@ def simulate_season_with_transfers(premier_league, transfer_market):
                             )
                         match_result['date'] = scheduled_date.isoformat()
                         recorded_match_ids.add(str(match_id))
-                    save_match_to_db(match_result, premier_league.season_year, match_global_idx + 1)
+                    save_match_to_db(
+                        match_result,
+                        premier_league.season_year,
+                        match_global_idx + 1,
+                        simulation_run_id=run_id,
+                        video_url=match_result.get("video_url") if match_result else None
+                    )
                     matches_played += 1
 
                     home_team, away_team = batch[idx_in_batch]
@@ -717,10 +733,17 @@ def simulate_season_with_transfers(premier_league, transfer_market):
     
     return premier_league.get_final_table()
 
-def main():
-    """Enhanced main function with comprehensive simulation"""
-    # Initialize database with fresh start
-    initialize_database()
+def main(run_id: str = None, render_mode: str = None):
+    """Enhanced main function with run-scoped simulation"""
+    from database.db_setup import init_simulation_run, clean_old_simulation_data, create_tables
+    from database.session import get_db_session
+    from database.models import SimulationRun
+
+    eff_render_mode = str(render_mode or os.getenv("FOOTY_DEFAULT_RENDER_MODE", "3d")).lower()
+    if not run_id:
+        clean_old_simulation_data()
+        create_tables()
+        run_id = init_simulation_run(season_year=2026, render_mode=eff_render_mode, total_matches=380)
 
     ensure_report_directories()
 
@@ -728,25 +751,41 @@ def main():
     
     # Create league and transfer market
     premier_league = create_premier_league()
+    premier_league.simulation_run_id = run_id
+    premier_league.render_mode = eff_render_mode
     transfer_market = TransferMarket()
     
-    logger.info(f"\nInitial Financial Overview:")
+    logger.info(f"\nInitial Financial Overview (run_id={run_id}):")
     print_financial_summary(premier_league.teams)
     
     for season in range(num_seasons):
         logger.info(f"\n{'='*60}")
-        logger.info(f"SEASON {premier_league.season_year}")
+        logger.info(f"SEASON {premier_league.season_year} (Run: {run_id})")
         logger.info(f"{'='*60}")
         
         # Simulate season with transfer activity
         transfer_market.season_year = premier_league.season_year
         transfer_market._init_transfer_log()
-        final_table = simulate_season_with_transfers(premier_league, transfer_market)
+        final_table = simulate_season_with_transfers(
+            premier_league, transfer_market, run_id=run_id, render_mode=eff_render_mode
+        )
         
         # Generate comprehensive season report
         full_season_report = premier_league.generate_season_report()
         
         # Print results
+        print_league_table(full_season_report['table'])
+
+    # Mark simulation run as completed
+    try:
+        with get_db_session() as db:
+            run_obj = db.query(SimulationRun).filter(SimulationRun.run_id == run_id).first()
+            if run_obj:
+                run_obj.status = "completed"
+                run_obj.matches_played = len(premier_league.schedule)
+                db.commit()
+    except Exception as e:
+        logger.warning(f"Notice on finalizing SimulationRun record: {e}")
         print_league_table(full_season_report['table'])
         
         # Enhanced reporting

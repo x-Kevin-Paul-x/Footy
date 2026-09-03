@@ -88,14 +88,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Resilient Video Streaming endpoint with full Range support and disconnect safety
+# Resilient Video Streaming endpoint with run-scoped path and Range support
 @app.get("/recordings/{filename:path}")
 async def stream_recording(filename: str, request: Request):
-    clean_name = os.path.basename(filename)
-    file_path = RECORDINGS_DIR / clean_name
+    # Safely resolve path preventing directory traversal
+    clean_rel = os.path.normpath(filename).replace("\\", "/").lstrip("/")
+    if ".." in clean_rel:
+        raise HTTPException(status_code=400, detail="Invalid path traversal")
+
+    file_path = RECORDINGS_DIR / clean_rel
+    # Fallback to top-level basename if nested path doesn't exist
+    if not file_path.exists():
+        file_path = RECORDINGS_DIR / os.path.basename(filename)
 
     if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Recording not found")
+        raise HTTPException(status_code=404, detail=f"Recording not found: {clean_rel}")
+
+    clean_name = file_path.name
 
     try:
         stat_result = file_path.stat()
@@ -256,23 +265,75 @@ async def run_simulation_task():
     simulation_started = True
     try:
         async with simulation_lock:
-            logger.info("Starting background simulation task")
-            from database.db_setup import reset_database, clean_old_simulation_data
-            clean_old_simulation_data()
-            reset_database()
+            logger.info("Starting background simulation task with run isolation")
+            from database.db_setup import init_simulation_run, clean_old_simulation_data
+            settings_path = REPORTS_DIR / "simulation_settings.json"
+            render_mode = "3d"
+            if settings_path.exists():
+                try:
+                    with open(settings_path, "r", encoding="utf-8") as sf:
+                        s_data = json.load(sf)
+                        render_mode = s_data.get("default_render_mode", "3d")
+                except Exception:
+                    pass
+
+            run_id = init_simulation_run(season_year=2026, render_mode=render_mode, total_matches=380)
+            clean_old_simulation_data(preserve_run_id=run_id)
             ensure_report_directories()
 
-            await manager.broadcast_event("SIMULATION_START", message="Simulation starting...")
+            await manager.broadcast_event(
+                "SIMULATION_START",
+                message=f"Simulation run {run_id} starting ({render_mode.upper()} mode)...",
+                data={"run_id": run_id, "render_mode": render_mode}
+            )
 
             loop = asyncio.get_running_loop()
             try:
-                await loop.run_in_executor(None, footy_main.main)
-                await manager.broadcast_event("SIMULATION_COMPLETE", message="Simulation completed successfully!")
+                await loop.run_in_executor(None, footy_main.main, run_id, render_mode)
+                await manager.broadcast_event(
+                    "SIMULATION_COMPLETE",
+                    message="Simulation completed successfully!",
+                    data={"run_id": run_id}
+                )
             except Exception as e:
                 logger.error(f"Simulation failed with error {e}")
                 await manager.broadcast_event("SIMULATION_ERROR", message=f"Simulation failed: {e}")
     finally:
         _set_simulation_running(False)
+
+
+@app.get("/api/v1/simulation/current-run")
+async def get_current_run():
+    """Fetch metadata for the active or most recent simulation run."""
+    from database.db_setup import get_current_simulation_run
+    from database.session import get_db_session
+    from database.models import SimulationRun
+
+    run_id = get_current_simulation_run()
+    try:
+        with get_db_session() as db:
+            run_obj = db.query(SimulationRun).filter(SimulationRun.run_id == run_id).first()
+            if run_obj:
+                return {
+                    "run_id": run_obj.run_id,
+                    "season_year": run_obj.season_year,
+                    "created_at": run_obj.created_at,
+                    "status": run_obj.status,
+                    "render_mode": run_obj.render_mode,
+                    "total_matches": run_obj.total_matches,
+                    "matches_played": run_obj.matches_played
+                }
+    except Exception as e:
+        logger.warning(f"Failed to fetch current run: {e}")
+    return {
+        "run_id": run_id,
+        "season_year": 2026,
+        "created_at": None,
+        "status": "ready",
+        "render_mode": "3d",
+        "total_matches": 380,
+        "matches_played": 0
+    }
 
 
 @app.websocket("/ws")
@@ -1102,7 +1163,9 @@ async def simulate_grf_match(req: MatchSimulationRequest):
 
         # Execute authentic GRF simulation (Phase A - pure physics, fast)
         native_runner = GRFNativeRunner()
-        rec_states = (should_render_video and req.render_mode != "2d") if req.record_grf_states is None else bool(req.record_grf_states)
+        from database.db_setup import get_current_simulation_run
+        effective_run_id = (existing_match.get("simulation_run_id") if existing_match else None) or get_current_simulation_run()
+
         grf_out = await asyncio.to_thread(
             native_runner.simulate,
             home_team=h_team,
@@ -1120,6 +1183,7 @@ async def simulate_grf_match(req: MatchSimulationRequest):
             record_grf_states=False,
             record_dump=req.record_dump,
             render_mode=req.render_mode or "3d",
+            run_id=effective_run_id,
         )
 
         h_score    = int(grf_out.get("score", [0, 0])[0])
@@ -1130,29 +1194,20 @@ async def simulate_grf_match(req: MatchSimulationRequest):
         real_xg    = grf_out.get("xg", [round(h_score * 0.45, 2), round(a_score * 0.45, 2)])
         video_url  = grf_out.get("video_url")
 
-        # If 3D video was rendered, ensure integer match ID files and DB are linked
-        if video_url:
+        # Canonical video persistence in DB
+        if video_url and req.match_id:
             try:
-                import shutil
-                v_filename = os.path.basename(video_url)
-                src_v = RECORDINGS_DIR / v_filename
-                if src_v.exists() and req.match_id and str(req.match_id) != match_id_str:
-                    alias_v = RECORDINGS_DIR / f"match_{req.match_id}.mp4"
-                    if not alias_v.exists():
-                        shutil.copy2(src_v, alias_v)
-
-                # Persist video link to DB match record
-                if req.match_id:
-                    with get_db_session() as db:
-                        m_row = db.query(Match).filter(
-                            (Match.match_id == int(req.match_id) if str(req.match_id).isdigit() else False) |
-                            (Match.match_number == int(req.match_id) if str(req.match_id).isdigit() else False)
-                        ).first()
-                        if m_row:
-                            m_row.trace_file = video_url
-                            db.commit()
+                with get_db_session() as db:
+                    m_row = db.query(Match).filter(
+                        (Match.match_id == int(req.match_id) if str(req.match_id).isdigit() else False) |
+                        (Match.match_number == int(req.match_id) if str(req.match_id).isdigit() else False)
+                    ).first()
+                    if m_row:
+                        m_row.video_url = video_url
+                        m_row.simulation_run_id = effective_run_id
+                        db.commit()
             except Exception as e:
-                logger.warning("Failed to link match video alias in DB: %s", e)
+                logger.warning("Failed to link match video in DB: %s", e)
 
         # Fallback background rendering if video was requested but not generated during live sim
         elif should_render_video:

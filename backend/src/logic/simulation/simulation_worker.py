@@ -669,7 +669,16 @@ class SimulationWorker:
             avi_files = sorted(glob.glob(f"{self.match_dump_dir}/episode_done_*.avi"))
             if avi_files:
                 raw_avi = avi_files[-1]
-                target_mp4 = f"/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/backend/reports/recordings/match_{self.match_id}.mp4"
+                custom_mp4 = self.fixture.get("output_mp4")
+                run_id = self.fixture.get("run_id")
+                if custom_mp4:
+                    target_mp4 = custom_mp4
+                elif run_id:
+                    target_mp4 = f"/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/backend/reports/recordings/{run_id}/match_{self.match_id}.mp4"
+                else:
+                    target_mp4 = f"/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/backend/reports/recordings/match_{self.match_id}.mp4"
+
+                os.makedirs(os.path.dirname(target_mp4) or '.', exist_ok=True)
                 try:
                     from logic.grf_renderer import transcode_live_avi_to_broadcast_mp4
                     transcode_live_avi_to_broadcast_mp4(
@@ -679,7 +688,8 @@ class SimulationWorker:
                         home_color=self.home_color,
                         away_color=self.away_color
                     )
-                    result_dict["video_url"] = f"/recordings/match_{self.match_id}.mp4"
+                    rel_path = target_mp4.split("backend/reports/recordings/")[-1].lstrip("/")
+                    result_dict["video_url"] = f"/recordings/{rel_path}"
                     result_dict["render_mode_used"] = "3d"
                 except Exception as e:
                     print(f"Error transcoding live 3D video in worker: {e}", file=sys.stderr)
