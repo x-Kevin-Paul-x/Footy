@@ -8,10 +8,10 @@ Footy runs 11v11 matches inside Google Research Football, manages entire multi-t
 
 Built with **FastAPI, React 19, SQLAlchemy, Google Research Football, TiKick, FFmpeg, and PyTorch**.
 
+[![CI](https://github.com/x-Kevin-Paul-x/Footy/actions/workflows/ci.yml/badge.svg)](https://github.com/x-Kevin-Paul-x/Footy/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/badge/Tests-95%20passed%2C%209%20skipped-2ea44f?logo=pytest&logoColor=white)](backend/tests)
 [![Replay Frames](https://img.shields.io/badge/Replay%20Frames-1%2C634%20Validated-8A2BE2)](assets/readme/showcase-match.mp4)
-[![API Surface](https://img.shields.io/badge/API-63%20Routes-009688?logo=fastapi&logoColor=white)](#engineering-snapshot)
-[![ORM Models](https://img.shields.io/badge/ORM-41%20Models-E23535)](#engineering-snapshot)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Database](https://img.shields.io/badge/SQLite-WAL%20OK-003B57?logo=sqlite&logoColor=white)](#tests-and-verification)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![React 19](https://img.shields.io/badge/React-19.1-61DAFB?logo=react&logoColor=black)](https://react.dev/)
@@ -22,9 +22,9 @@ Built with **FastAPI, React 19, SQLAlchemy, Google Research Football, TiKick, FF
 
 ![Arsenal attacks Chelsea in the generated GRF match](assets/readme/match-highlight.gif)
 
-**11v11 Multi-Agent Physics** · **100% Deterministic Sync** · **5,000+ Steps/sec** · **14 Interactive Surfaces**
+**11v11 Multi-Agent Physics** · **SHA-256 Verified Determinism** · **~10× Real-Time Sim** · **14 Interactive Surfaces**
 
-[Why Footy](#why-footy) · [Engineering Snapshot](#engineering-snapshot) · [Performance](#simulation-performance) · [Showcase Match](#a-real-generated-match) · [The Platform](#the-platform) · [How It Works](#how-it-works) · [Footy vs GRF](#footy-vs-google-research-football) · [Quick Start](#quick-start)
+[Why Footy](#why-footy) · [One Match Flow](#one-match-through-footy) · [Engineering Snapshot](#engineering-snapshot) · [Performance](#simulation-performance) · [Showcase Match](#a-real-generated-match) · [The Platform](#the-platform) · [How It Works](#how-it-works) · [Footy vs GRF](#footy-vs-google-research-football) · [Quick Start](#quick-start)
 
 </div>
 
@@ -35,6 +35,42 @@ Built with **FastAPI, React 19, SQLAlchemy, Google Research Football, TiKick, FF
 Most football simulators focus either on high-level management logic (calculating match outcomes through probability tables) or on match physics (evaluating isolated reinforcement learning scenarios without persistent consequences).
 
 **Footy explores what happens when both live in the same unified system:** managers make tactical selections and squad rotations, those decisions become simulation parameters, Google Research Football resolves the match via multi-agent reinforcement learning policies, and the resulting physical state is preserved for forensic analysis, 2D tactical breakdowns, and broadcast-style 3D replays.
+
+---
+
+## One Match Through Footy
+
+```text
+Manager Decisions (Arsenal vs Chelsea)
+      │  Squad selection, tactical roles, and 4-3-3 shape
+      ▼
+SimulationSpec
+      │  Seeded RNG, duration (1,200 steps), and render mode
+      ▼
+22-Agent TiKick MARL Policy
+      │  Multi-agent decentralized execution with tactical mirroring
+      ▼
+Google Research Football
+      │  Real 11v11 physics, collisions, ball trajectories, and fouls
+      ▼
+CanonicalMatchResult (Authoritative Contract)
+      ├── Final Score: Arsenal 1–0 Chelsea
+      ├── Match Stats: 63% possession · 1–0 shots · 0.30 xG
+      └── Event Stream: Goal (Arsenal Player 8, 73')
+      │
+      ├───────────────────────────────┐
+      ▼                               ▼
+SQLite Persistence            Trajectory Archive (.npz)
+(WAL-mode relational tables)   (Versioned frame state)
+      │                               │
+      ▼                               ▼
+FastAPI & WebSocket Layer      Replay Renderer & FFmpeg
+(Live updates & REST endpoints)(Frame decode validation & atomic swap)
+      │                               │
+      ▼                               ▼
+React 19 Analytics & Tables    Broadcast-Style 3D Replay (.mp4)
+(Dynamic form & player stats)  (Overlays, clock, scorebug & radar)
+```
 
 ---
 
@@ -55,9 +91,20 @@ Most football simulators focus either on high-level management logic (calculatin
 
 ## Simulation Performance
 
-Footy incorporates a dedicated benchmark harness (`backend/benchmarks/`) measuring environment throughput, multi-process fixture scaling, latency distributions, and deterministic execution invariance.
+Footy incorporates a dedicated benchmark harness (`backend/benchmarks/`) measuring environment throughput, worker scaling, latency distributions, and deterministic execution invariance across both real physics simulation and high-concurrency worker orchestration.
 
-The following data was reproduced on an AMD64 host (32 logical cores, CPU policy inference):
+### Real 11v11 GRF Physics Stepping
+A full 90-minute football match corresponds to 1,200 to 3,000 environment steps (100 ms per step). Headless GRF simulation with neural policy inference achieves:
+
+| Concurrent Workers | Workload | Steps/sec | Real-Time Multiplier |
+| :---: | :---: | :---: | :---: |
+| **1** | Single Match (Headless) | **78.1 steps/s** | **7.81×** real-time |
+| **4** | Matchday Pool (4 fixtures) | **92.4 steps/s** | **9.24×** real-time |
+| **8** | Matchday Pool (8 fixtures) | **101.8 steps/s** | **10.18×** real-time |
+| **16** | Multiprocess Fixture Pool | **106.9 steps/s** | **10.69×** real-time |
+
+### Orchestration & Fixture Dispatch Benchmark (Synthetic Concurrency Harness)
+To evaluate the multiprocess worker pool, inter-process communication (IPC), and serialization overhead independently from C++ physics computation, Footy includes an isolated synthetic stress-harness:
 
 | Workers | Batch Fixtures | Step Target | Replay Mode | Latency (p50) | Throughput | Determinism Check |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -278,10 +325,26 @@ flowchart TB
 
 ## Quick Start
 
-### ⚡ 60-Second Setup
+### 🐳 Zero-Friction Setup (Docker Compose)
+
+The fastest way to launch Footy with both backend and frontend pre-configured:
+
+```bash
+git clone https://github.com/x-Kevin-Paul-x/Footy.git
+cd Footy
+docker compose up --build
+```
+
+* **Frontend:** `http://localhost` (Port 80)
+* **API Gateway:** `http://localhost:5001`
+* **Interactive OpenAPI Docs:** `http://localhost:5001/docs`
+
+---
+
+### ⚡ Local Development Setup
 
 ```powershell
-# 1. Clone repository & create virtual environment
+# 1. Clone repository & create backend virtual environment
 git clone https://github.com/x-Kevin-Paul-x/Footy.git
 cd Footy
 python -m venv .venv
@@ -289,26 +352,16 @@ python -m venv .venv
 pip install -r requirements.txt
 
 # 2. Launch full stack concurrently (FastAPI on :5001 + React on :5173)
-cd frontend
 npm install
 npm run dev
 ```
 
-* **Frontend:** `http://localhost:5173`
-* **API Gateway:** `http://localhost:5001`
-* **Interactive OpenAPI Docs:** `http://localhost:5001/docs`
-
-### 🐳 Docker Services
-
-```powershell
-docker compose up --build
-```
-*Compose serves the frontend on port 80 and the API on port 5001.*
+> *The root `npm run dev` script uses `concurrently` to boot the FastAPI backend (`uvicorn`) and the React Vite client simultaneously in a single terminal.*
 
 <details>
-<summary><strong>🛠️ Manual Backend & Frontend Setup</strong></summary>
+<summary><strong>🛠️ Granular Backend & Frontend Manual Launch</strong></summary>
 
-#### Backend
+#### Backend Only
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
@@ -319,7 +372,7 @@ Copy-Item .env.example .env
 python backend/src/dev_server.py
 ```
 
-#### Frontend
+#### Frontend Only
 ```powershell
 cd frontend
 npm install
@@ -359,6 +412,7 @@ All tests verified on the configured Windows/WSL host on **6 September 2026**:
 
 ```text
 Footy/
+├── .github/workflows/          continuous integration (CI) pipelines
 ├── backend/
 │   ├── alembic/                 database schema migrations
 │   ├── benchmarks/              performance measurement harness and results
@@ -427,6 +481,6 @@ Footy is under active engineering development. Known limitations are openly docu
 
 <div align="center">
 
-Built with ⚽ by **[Kevin Paul](https://github.com/x-Kevin-Paul-x)**
+Built with ⚽ by **[Kevin Paul](https://github.com/x-Kevin-Paul-x)** · Licensed under the **[MIT License](LICENSE)**
 
 </div>
