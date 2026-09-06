@@ -10,7 +10,7 @@ RUN npm ci
 COPY frontend/ .
 
 # Build the application
-ENV VITE_API_BASE_URL=http://localhost:5001
+ENV VITE_API_BASE_URL=
 RUN npm run build
 
 # Production server

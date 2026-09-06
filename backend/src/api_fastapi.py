@@ -23,7 +23,7 @@ from urllib.parse import unquote
 
 # DB query functions (these currently use raw sqlite)
 from database.session import get_db_session
-from database.models import Match, Team, Player, Manager as DBManager
+from database.models import Match, Team, Player, Manager as DBManager, TransferHistory
 from database.team_db import get_all_teams
 from database.player_db import get_all_players
 from database.match_db import get_matches_for_season, get_match_details
@@ -87,6 +87,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def find_match_video_and_url(match_id: Any) -> tuple[Optional[Path], Optional[str]]:
+    """
+    Locate match video file and return (Path, relative_url).
+    Checks direct RECORDINGS_DIR and any run-scoped subdirectories.
+    """
+    mid_str = str(match_id)
+    raw_num = mid_str.split("match_", 1)[1] if mid_str.startswith("match_") else mid_str
+    candidates = [f"match_{mid_str}.mp4", f"match_{raw_num}.mp4", f"{mid_str}.mp4", f"{raw_num}.mp4"]
+
+    seen = set()
+    unique_candidates = [c for c in candidates if not (c in seen or seen.add(c))]
+
+    for c in unique_candidates:
+        cand_p = RECORDINGS_DIR / c
+        if cand_p.is_file():
+            return cand_p, f"/recordings/{c}"
+
+    if RECORDINGS_DIR.is_dir():
+        for sub in RECORDINGS_DIR.iterdir():
+            if sub.is_dir():
+                for c in unique_candidates:
+                    cand_p = sub / c
+                    if cand_p.is_file():
+                        return cand_p, f"/recordings/{sub.name}/{c}"
+
+    return None, None
 
 # Resilient Video Streaming endpoint with run-scoped path and Range support
 @app.get("/recordings/{filename:path}")
@@ -239,6 +267,8 @@ from schemas import (
     WebSocketEventFrame,
     MatchSimulationRequest,
     MatchSimulationResponse,
+    MatchRenderRequest,
+    MatchRenderResponse,
     SimulationSettings
 )
 import shutil
@@ -347,18 +377,21 @@ async def websocket_endpoint(websocket: WebSocket):
     finally:
         manager.disconnect(websocket)
 
-@app.post("/run-simulation", response_model=SimulationStatusResponse)
+@app.post("/api/v1/run-simulation", response_model=SimulationStatusResponse)
+@app.post("/run-simulation", response_model=SimulationStatusResponse, deprecated=True)
 async def trigger_simulation(background_tasks: BackgroundTasks):
     if simulation_lock.locked() or simulation_started:
         return SimulationStatusResponse(status="busy", message="Simulation is already running")
     background_tasks.add_task(run_simulation_task)
     return SimulationStatusResponse(status="success", message="Simulation started in the background")
 
-@app.get("/health")
+@app.get("/api/v1/health")
+@app.get("/health", deprecated=True)
 async def health_check():
     return {"status": "ok", "service": "Footy API"}
 
-@app.get("/saves", response_model=List[SaveStateItem])
+@app.get("/api/v1/saves", response_model=List[SaveStateItem])
+@app.get("/saves", response_model=List[SaveStateItem], deprecated=True)
 async def list_saves():
     try:
         saves = []
@@ -382,7 +415,8 @@ async def list_saves():
         logger.error(f"Error listing save states: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list saves: {e}")
 
-@app.post("/saves", response_model=SaveStateResponse)
+@app.post("/api/v1/saves", response_model=SaveStateResponse)
+@app.post("/saves", response_model=SaveStateResponse, deprecated=True)
 async def create_save():
     try:
         from database.session import init_db
@@ -397,7 +431,8 @@ async def create_save():
         logger.error(f"Error creating save state: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create save state: {e}")
 
-@app.post("/load/{save_id}", response_model=SaveStateResponse)
+@app.post("/api/v1/load/{save_id}", response_model=SaveStateResponse)
+@app.post("/load/{save_id}", response_model=SaveStateResponse, deprecated=True)
 async def load_save(save_id: str):
     try:
         clean_save_id = os.path.basename(save_id.strip())
@@ -416,7 +451,8 @@ async def load_save(save_id: str):
         logger.error(f"Error loading save state: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to load save state: {e}")
 
-@app.get("/teams", response_model=List[TeamRead])
+@app.get("/api/v1/teams", response_model=List[TeamRead])
+@app.get("/teams", response_model=List[TeamRead], deprecated=True)
 async def get_teams():
     try:
         teams = get_all_teams()
@@ -435,7 +471,8 @@ async def get_teams():
         logger.error(f"Error fetching teams: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/players", response_model=List[PlayerRead])
+@app.get("/api/v1/players", response_model=List[PlayerRead])
+@app.get("/players", response_model=List[PlayerRead], deprecated=True)
 async def get_players():
     try:
         players = get_all_players()
@@ -458,7 +495,8 @@ async def get_players():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/season-reports", response_model=List[SeasonReportSummary])
+@app.get("/api/v1/season-reports", response_model=List[SeasonReportSummary])
+@app.get("/season-reports", response_model=List[SeasonReportSummary], deprecated=True)
 async def get_season_reports():
     try:
         reports = get_all_season_reports()
@@ -475,7 +513,8 @@ async def get_season_reports():
         logger.error(f"Error fetching season reports: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/season-reports/{season_year}")
+@app.get("/api/v1/season-reports/{season_year}")
+@app.get("/season-reports/{season_year}", deprecated=True)
 async def get_season_report_detail(season_year: int):
     try:
         report_data = get_season_report_by_year(season_year)
@@ -486,7 +525,8 @@ async def get_season_report_detail(season_year: int):
         logger.error(f"Error fetching season report details: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/transfer-reports", response_model=List[TransferReportSummary])
+@app.get("/api/v1/transfer-reports", response_model=List[TransferReportSummary])
+@app.get("/transfer-reports", response_model=List[TransferReportSummary], deprecated=True)
 async def get_transfer_reports():
     try:
         reports = get_all_transfer_reports()
@@ -502,7 +542,8 @@ async def get_transfer_reports():
         logger.error(f"Error fetching transfer reports: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/transfer-reports/{season_year}")
+@app.get("/api/v1/transfer-reports/{season_year}")
+@app.get("/transfer-reports/{season_year}", deprecated=True)
 async def get_transfer_report_detail(season_year: int):
     try:
         report_data = get_transfer_report_by_year(season_year)
@@ -513,7 +554,9 @@ async def get_transfer_report_detail(season_year: int):
         logger.error(f"Error fetching transfer report details: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get('/get-seasons')
+@app.get("/api/v1/seasons")
+@app.get("/api/v1/get-seasons")
+@app.get('/get-seasons', deprecated=True)
 async def get_seasons():
     try:
         seasons_set = set()
@@ -661,7 +704,9 @@ def build_live_season_report_from_db(year: int) -> dict:
         return {}
 
 
-@app.get("/get-season-report/{year}")
+@app.get("/api/v1/season-report/{year}")
+@app.get("/api/v1/get-season-report/{year}")
+@app.get("/get-season-report/{year}", deprecated=True)
 async def get_season_report(year: int):
     """
     Return the season report JSON but augment it with DB-backed transfer history if available.
@@ -811,7 +856,8 @@ def _resolve_ml_report_path(report_name: str) -> Path | None:
 
 
 
-@app.get("/ml-reports")
+@app.get("/api/v1/ml-reports")
+@app.get("/ml-reports", deprecated=True)
 async def get_ml_reports():
     try:
         reports = []
@@ -827,7 +873,8 @@ async def get_ml_reports():
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
-@app.get("/ml-reports/{report_name}")
+@app.get("/api/v1/ml-reports/{report_name}")
+@app.get("/ml-reports/{report_name}", deprecated=True)
 async def get_ml_report(report_name):
     try:
         report_path = _resolve_ml_report_path(report_name)
@@ -846,7 +893,8 @@ async def get_ml_report(report_name):
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
-@app.get("/ml-models")
+@app.get("/api/v1/ml-models")
+@app.get("/ml-models", deprecated=True)
 async def get_ml_models():
     """List all available ML model checkpoints in the system."""
     try:
@@ -961,7 +1009,8 @@ async def run_ml_eval_task(episodes: int, teams: int, season_length: int, fast_m
         ml_eval_started = False
 
 
-@app.post("/run-ml-eval")
+@app.post("/api/v1/run-ml-eval")
+@app.post("/run-ml-eval", deprecated=True)
 async def trigger_ml_evaluation(request: Request):
     """Trigger a benchmark evaluation in the background (non-blocking)."""
     global ml_eval_started
@@ -985,7 +1034,9 @@ async def trigger_ml_evaluation(request: Request):
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
-@app.get("/match/{match_id}")
+@app.get("/api/v1/matches/{match_id}")
+@app.get("/api/v1/match/{match_id}")
+@app.get("/match/{match_id}", deprecated=True)
 async def get_match(match_id):
     """API endpoint to get detailed information for a single match."""
     try:
@@ -1026,14 +1077,11 @@ async def get_engine_status():
 async def get_match_video(match_id: str):
     """Get video replay metadata for a specific match."""
     try:
-        clean_id = str(match_id)
-        v1 = RECORDINGS_DIR / f"{clean_id}.mp4"
-        v2 = RECORDINGS_DIR / f"match_{clean_id}.mp4"
-        v_target = v1 if v1.exists() else (v2 if v2.exists() else None)
+        v_target, video_url = find_match_video_and_url(match_id)
         if v_target:
             return JSONResponse(status_code=200, content={
                 "match_id": match_id,
-                "video_url": f"/recordings/{v_target.name}",
+                "video_url": video_url,
                 "size_bytes": v_target.stat().st_size,
                 "available": True
             })
@@ -1111,6 +1159,132 @@ async def get_match_render_status(match_id: str):
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
+@app.get("/api/v1/match/{match_id}/timeline")
+async def get_match_timeline(match_id: str):
+    """
+    Get canonical presentation timeline mapping for sample-accurate replay seeking.
+    Returns minute-to-PTS and event-to-PTS mappings.
+    """
+    try:
+        from logic.presentation_timeline import PresentationTimeline, build_canonical_timeline
+        clean_id = str(match_id)
+        raw_num = clean_id.split("match_", 1)[1] if clean_id.startswith("match_") else clean_id
+
+        # 1. Check for pre-built timeline JSON companion files
+        timeline_candidates = [
+            RECORDINGS_DIR / f"match_{clean_id}.timeline.json",
+            RECORDINGS_DIR / f"match_{raw_num}.timeline.json",
+            RECORDINGS_DIR / f"{clean_id}.timeline.json",
+            RECORDINGS_DIR / f"{raw_num}.timeline.json",
+        ]
+
+        for cand in timeline_candidates:
+            if cand.is_file():
+                try:
+                    tl = PresentationTimeline.load_from_file(cand)
+                    return JSONResponse(status_code=200, content=tl.to_dict())
+                except Exception:
+                    pass
+
+        # Check subdirectories
+        if RECORDINGS_DIR.is_dir():
+            for sub in RECORDINGS_DIR.iterdir():
+                if sub.is_dir():
+                    for cand_name in [f"match_{clean_id}.timeline.json", f"match_{raw_num}.timeline.json", f"{clean_id}.timeline.json"]:
+                        cand_sub = sub / cand_name
+                        if cand_sub.is_file():
+                            try:
+                                tl = PresentationTimeline.load_from_file(cand_sub)
+                                return JSONResponse(status_code=200, content=tl.to_dict())
+                            except Exception:
+                                pass
+
+        # 2. If not on disk, construct canonical timeline from match details in database
+        match_details = get_match_details(clean_id)
+        if match_details:
+            events = match_details.get("events", [])
+            tl = build_canonical_timeline(
+                match_id=clean_id,
+                total_steps=1200,
+                events=events,
+            )
+            return JSONResponse(status_code=200, content=tl.to_dict())
+
+        return JSONResponse(status_code=404, content={"status": "error", "message": f"Match with ID {match_id} not found."})
+    except Exception as e:
+        logger.exception("Error getting timeline for match %s", match_id)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@app.post("/api/v1/match/{match_id}/render", response_model=MatchRenderResponse)
+@app.post("/api/v1/match/{match_id}/render-replay", response_model=MatchRenderResponse)
+async def render_match_replay(match_id: str, req: Optional[MatchRenderRequest] = None):
+    """
+    On-demand render of replay broadcast video from recorded trace without resimulation (P1.4).
+    """
+    try:
+        from logic.grf_native_runner import GRFNativeRunner
+        clean_id = str(match_id)
+        req_mode = req.render_mode if req else "auto"
+        force = req.force if req else False
+
+        # If already exists and not forcing, return immediately
+        v_target, video_url = find_match_video_and_url(clean_id)
+        if v_target and not force:
+            return MatchRenderResponse(
+                match_id=clean_id,
+                status="ready",
+                video_url=video_url,
+                render_mode_used="existing",
+                message="Replay video is already rendered and ready."
+            )
+
+        match_details = get_match_details(clean_id)
+        if not match_details:
+            raise HTTPException(status_code=404, detail=f"Match with ID {match_id} not found.")
+
+        home_team = match_details.get("home_team_name", "Home Team")
+        away_team = match_details.get("away_team_name", "Away Team")
+
+        # Find trace file
+        raw_num = clean_id.split("match_", 1)[1] if clean_id.startswith("match_") else clean_id
+        traj_candidates = [
+            RECORDINGS_DIR / f"trace_{clean_id}.npz",
+            RECORDINGS_DIR / f"trace_{raw_num}.npz",
+            RECORDINGS_DIR / f"match_{clean_id}.npz",
+        ]
+        traj_file = None
+        for cand in traj_candidates:
+            if cand.is_file():
+                traj_file = str(cand)
+                break
+
+        runner = GRFNativeRunner()
+        result = await asyncio.to_thread(
+            runner.render_replay,
+            match_id=clean_id,
+            home_team=home_team,
+            away_team=away_team,
+            trajectory_file=traj_file,
+            mode=req_mode,
+        )
+
+        v_url = result.get("video_url")
+        status_str = "completed" if v_url else "failed"
+        return MatchRenderResponse(
+            match_id=clean_id,
+            status=status_str,
+            video_url=v_url,
+            render_mode_used=result.get("mode_used", req_mode),
+            message=result.get("message", "Render completed successfully.")
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error rendering match replay for %s", match_id)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
 @app.post("/api/v1/match/simulate-grf", response_model=MatchSimulationResponse)
 async def simulate_grf_match(req: MatchSimulationRequest):
     """
@@ -1160,6 +1334,26 @@ async def simulate_grf_match(req: MatchSimulationRequest):
 
         steps = min(max(req.max_steps, 100), 5000) if req.max_steps else 1200
         should_render_video = bool(req.generate_video)
+
+        # Fast path: If match already has an existing recorded video, preserve it
+        v_cand, v_url_cand = find_match_video_and_url(match_id_str)
+        if existing_match and (existing_match.get("video_url") or v_url_cand) and existing_match.get("home_goals") is not None:
+            resolved_url = existing_match.get("video_url") or v_url_cand
+            h_score = int(existing_match.get("home_goals", 0))
+            a_score = int(existing_match.get("away_goals", 0))
+            return MatchSimulationResponse(
+                match_id=match_id_str,
+                home_team=h_team,
+                away_team=a_team,
+                home_score=h_score,
+                away_score=a_score,
+                video_url=resolved_url,
+                timeline=existing_match.get("events", []),
+                possession={"home": float(existing_match.get("home_possession", 50.0)), "away": float(existing_match.get("away_possession", 50.0))},
+                shots={"home": len(existing_match.get("home_shots", [])), "away": len(existing_match.get("away_shots", []))},
+                xg={"home": round(h_score * 0.45, 2), "away": round(a_score * 0.45, 2)},
+                render_mode_used="existing",
+            )
 
         # Execute authentic GRF simulation (Phase A - pure physics, fast)
         native_runner = GRFNativeRunner()
@@ -1272,7 +1466,8 @@ async def simulate_grf_match(req: MatchSimulationRequest):
         logger.exception("Error simulating GRF match")
         raise HTTPException(status_code=500, detail=f"Match simulation failed: {e}")
 
-@app.get("/team-history/{team_name}")
+@app.get("/api/v1/team-history/{team_name}")
+@app.get("/team-history/{team_name}", deprecated=True)
 async def get_team_history(team_name):
     """Get historical league positions and stats for a team across all seasons."""
     try:
@@ -1348,7 +1543,8 @@ async def update_simulation_settings(settings: SimulationSettings):
 
 
 
-@app.get("/financial-summary")
+@app.get("/api/v1/financial-summary")
+@app.get("/financial-summary", deprecated=True)
 async def get_financial_summary():
     """Get league-wide financial summary directly from SQLite database."""
     try:
@@ -1402,7 +1598,8 @@ async def get_financial_summary():
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
-@app.get("/matches/{season_year}")
+@app.get("/api/v1/seasons/{season_year}/matches")
+@app.get("/matches/{season_year}", deprecated=True)
 async def get_matches_by_season(season_year: int):
     """API endpoint to get all matches for a given season from DB."""
     try:
@@ -1415,7 +1612,8 @@ async def get_matches_by_season(season_year: int):
         logger.exception("Error getting matches for season %s", season_year)
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
-@app.get("/youth-prospects")
+@app.get("/api/v1/youth-prospects")
+@app.get("/youth-prospects", deprecated=True)
 async def get_youth_prospects():
     """Get top youth prospects directly from SQLite Player table."""
     try:
@@ -1445,7 +1643,8 @@ async def get_youth_prospects():
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
-@app.get("/transfer-activity")
+@app.get("/api/v1/transfer-activity")
+@app.get("/transfer-activity", deprecated=True)
 async def get_transfer_activity():
     """Get recent transfer activity directly from TransferHistory table."""
     try:
@@ -1477,7 +1676,8 @@ async def get_transfer_activity():
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
-@app.get("/all-seasons-overview")
+@app.get("/api/v1/all-seasons-overview")
+@app.get("/all-seasons-overview", deprecated=True)
 async def get_all_seasons_overview():
     """Get aggregated overview data across all seasons directly from DB."""
     try:

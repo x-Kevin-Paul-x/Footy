@@ -9,6 +9,7 @@ Direct rawvideo FFmpeg pipes for ultra-low latency video rendering:
 import os
 import sys
 import subprocess
+import threading
 from abc import ABC, abstractmethod
 from typing import Optional
 import numpy as np
@@ -25,6 +26,8 @@ class ReplayEncoder(ABC):
         self.fps: int = 10
         self.output_mp4: str = ""
         self.frames_written: int = 0
+        self._stderr_chunks: list[bytes] = []
+        self._stderr_thread: Optional[threading.Thread] = None
 
     @abstractmethod
     def _build_ffmpeg_cmd(self) -> list:
@@ -36,6 +39,7 @@ class ReplayEncoder(ABC):
         self.fps = fps
         self.output_mp4 = output_mp4
         self.frames_written = 0
+        self._stderr_chunks = []
 
         os.makedirs(os.path.dirname(output_mp4) or ".", exist_ok=True)
         cmd = self._build_ffmpeg_cmd()
@@ -46,6 +50,20 @@ class ReplayEncoder(ABC):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE
         )
+
+        # FFmpeg can emit enough diagnostics to fill an OS pipe while raw frames
+        # are still being written.  Drain it continuously so the encoder cannot
+        # deadlock behind a full stderr buffer.
+        proc = self.proc
+
+        def _drain_stderr() -> None:
+            if proc.stderr is None:
+                return
+            for chunk in iter(lambda: proc.stderr.read(8192), b""):
+                self._stderr_chunks.append(chunk)
+
+        self._stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+        self._stderr_thread.start()
 
     def write_frame(self, frame_rgb: np.ndarray):
         """Writes an RGB24 numpy array (H, W, 3) directly to FFmpeg stdin."""
@@ -61,24 +79,55 @@ class ReplayEncoder(ABC):
 
     def close(self):
         """Flushes stdin, waits for ffmpeg to finalize container, and checks returncode."""
-        if self.proc is not None:
+        proc = self.proc
+        if proc is None:
+            return
+
+        try:
+            if proc.stdin and not proc.stdin.closed:
+                proc.stdin.close()
+            # communicate() attempts to flush stdin when the handle remains set.
+            proc.stdin = None
             try:
-                if self.proc.stdin and not self.proc.stdin.closed:
-                    self.proc.stdin.close()
-            except Exception:
-                pass
-            try:
-                _, stderr = self.proc.communicate(timeout=5)
-            except Exception:
-                try:
-                    self.proc.kill()
-                    _, stderr = self.proc.communicate(timeout=2)
-                except Exception:
-                    stderr = b""
-            if self.proc.returncode not in (0, None):
-                err_text = stderr.decode('utf-8', errors='replace') if stderr else "Process terminated"
-                raise RuntimeError(f"FFmpeg encoder exited with error code {self.proc.returncode}:\n{err_text}")
+                proc.wait(timeout=30)
+            except subprocess.TimeoutExpired as exc:
+                self.abort()
+                raise RuntimeError("FFmpeg did not finalize within 30 seconds") from exc
+
+            if self._stderr_thread is not None:
+                self._stderr_thread.join(timeout=2)
+            if proc.returncode != 0:
+                stderr = b"".join(self._stderr_chunks)
+                err_text = stderr[-16000:].decode("utf-8", errors="replace")
+                raise RuntimeError(
+                    f"FFmpeg encoder exited with error code {proc.returncode}:\n{err_text}"
+                )
+        finally:
             self.proc = None
+            self._stderr_thread = None
+
+    def abort(self) -> None:
+        """Stop an incomplete encode without waiting indefinitely for finalization."""
+        proc = self.proc
+        if proc is None:
+            return
+        try:
+            if proc.stdin and not proc.stdin.closed:
+                proc.stdin.close()
+        except OSError:
+            pass
+        proc.stdin = None
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=3)
+        if self._stderr_thread is not None:
+            self._stderr_thread.join(timeout=1)
+        self.proc = None
+        self._stderr_thread = None
 
 
 class FFmpegSoftwareEncoder(ReplayEncoder):

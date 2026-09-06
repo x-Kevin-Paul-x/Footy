@@ -96,16 +96,19 @@ def apply_tactical_action_bias(
     is_team_in_possession: bool = False
 ) -> List[int]:
     """
-    Modulates policy actions with managerial tactical preferences (offensive/defensive bias,
-    pressing intensity, and formation anchor gravity for off-ball shape retention).
+    Modulates canonical policy actions with managerial tactical preferences.
+
+    Inputs for both teams must already be transformed so that attacking means
+    positive X. ``team_side`` is retained for call compatibility but does not
+    alter canonical action direction.
     """
     modified_actions = list(actions_raw)
     off_bias = float(getattr(tactics, "offensive_bias", 50.0)) / 100.0
     def_bias = float(getattr(tactics, "defensive_bias", 50.0)) / 100.0
     press_int = float(getattr(tactics, "pressing_intensity", 50.0)) / 100.0
 
-    forward_acts = [4, 5, 6] if team_side == "left" else [1, 2, 8]
-    backward_acts = [1, 2, 8] if team_side == "left" else [4, 5, 6]
+    forward_acts = [4, 5, 6]
+    backward_acts = [1, 2, 8]
 
     for idx, act in enumerate(actions_raw):
         if idx >= len(player_positions) or idx >= len(formation_anchors):
@@ -138,6 +141,12 @@ def apply_tactical_action_bias(
             # Overriding overly conservative retreats when attacking
             if np.random.rand() < (off_bias - 0.50) * 0.40:
                 modified_actions[idx] = forward_acts[1]  # forward move
+
+        if not is_team_in_possession and def_bias > 0.70 and act in forward_acts:
+            # A defensive team that has moved ahead of its assigned block is
+            # more likely to recover toward its own goal.
+            if pos[0] > anchor[0] and np.random.rand() < (def_bias - 0.50) * 0.40:
+                modified_actions[idx] = backward_acts[0]
 
     return modified_actions
 

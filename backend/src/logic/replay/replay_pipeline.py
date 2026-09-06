@@ -17,7 +17,10 @@ from typing import Dict, List, Any, Optional, Tuple
 import numpy as np
 import cv2
 
-import gfootball.env as football_env
+try:
+    import gfootball.env as football_env
+except ImportError:
+    football_env = None
 
 from logic.grf_trajectory import MatchTrajectory, MatchManifest
 from logic.grf_state_archive import GRFStateArchiveReader, ReplayIntegrityError
@@ -50,13 +53,13 @@ class InstrumentedFrameQueue:
         self.depth_samples: List[int] = []
         self._lock = threading.Lock()
 
-    def put(self, item: Any, block: bool = True):
+    def put(self, item: Any, block: bool = True, timeout: Optional[float] = None):
         t0 = time.perf_counter()
         if self._q.full():
             with self._lock:
                 self.producer_block_count += 1
 
-        self._q.put(item, block=block)
+        self._q.put(item, block=block, timeout=timeout)
         t_blocked = time.perf_counter() - t0
 
         with self._lock:
@@ -185,6 +188,9 @@ class ReplayPipeline:
 
         t_setup_start = time.perf_counter()
 
+        if football_env is None:
+            raise RuntimeError("gfootball is not installed or available in this environment.")
+
         # Instantiate persistent C++ GRF environment at native 720p resolution
         env = football_env.create_environment(
             env_name="11_vs_11_kaggle",
@@ -205,6 +211,8 @@ class ReplayPipeline:
         frame_queue = InstrumentedFrameQueue(maxsize=self.queue_size)
 
         encoder_exception = None
+        cancel_event = threading.Event()
+        encoder_closed = False
         t_encoder_write_acc = 0.0
 
         def _encoder_consumer():
@@ -212,18 +220,34 @@ class ReplayPipeline:
             try:
                 while True:
                     frame = frame_queue.get()
-                    if frame is None:
+                    try:
+                        if frame is None:
+                            break
+                        t_w0 = time.perf_counter()
+                        encoder.write_frame(frame)
+                        t_encoder_write_acc += (time.perf_counter() - t_w0)
+                    finally:
                         frame_queue.task_done()
-                        break
-                    t_w0 = time.perf_counter()
-                    encoder.write_frame(frame)
-                    t_encoder_write_acc += (time.perf_counter() - t_w0)
-                    frame_queue.task_done()
             except Exception as ex:
                 encoder_exception = ex
+                cancel_event.set()
 
         consumer_thread = threading.Thread(target=_encoder_consumer, daemon=True)
         consumer_thread.start()
+
+        def _enqueue(frame: Any) -> None:
+            """Queue a frame without allowing a dead encoder to strand the producer."""
+            while not cancel_event.is_set():
+                if encoder_exception is not None:
+                    raise RuntimeError(f"Encoder thread failed: {encoder_exception}")
+                if not consumer_thread.is_alive():
+                    raise RuntimeError("Encoder thread stopped before replay production completed")
+                try:
+                    frame_queue.put(frame, timeout=0.25)
+                    return
+                except queue.Full:
+                    continue
+            raise RuntimeError(f"Replay encoding cancelled: {encoder_exception or 'unknown encoder failure'}")
 
         t_startup_time = time.perf_counter() - t_setup_start
 
@@ -247,17 +271,20 @@ class ReplayPipeline:
             intro_card_rgb = cv2.cvtColor(intro_card_bgr, cv2.COLOR_BGR2RGB)
             intro_frames = max(10, int(3.0 * broadcast_fps))
             for _ in range(intro_frames):
-                frame_queue.put(intro_card_rgb)
+                _enqueue(intro_card_rgb)
 
             goal_events_by_step = {}
+            shot_events_by_step = {}
             if traj:
                 for ev in traj.manifest.events:
+                    step_idx = ev.get("step")
+                    if step_idx is None:
+                        step_idx = int((float(ev.get("minute", 0)) / 90.0) * (total_steps - 1))
+                    step_idx = max(0, min(total_steps - 1, int(step_idx)))
                     if ev.get("type") == "goal":
-                        step_idx = ev.get("step")
-                        if step_idx is None:
-                            g_min = ev.get("minute", 0)
-                            step_idx = int((g_min / 90.0) * total_steps)
                         goal_events_by_step.setdefault(step_idx, []).append(ev)
+                    elif ev.get("type") == "shot":
+                        shot_events_by_step.setdefault(step_idx, []).append(ev)
 
             goal_banner = None
             goal_banner_cd = 0
@@ -306,8 +333,14 @@ class ReplayPipeline:
                 elif b_own == 1:
                     right_poss += 1
 
-                match_min = max(1, min(90, int((step / max(1, total_steps)) * 90) + 1))
+                match_min = max(1, min(90, int((step / max(1, total_steps - 1)) * 90)))
                 is_second_half = step >= half_time_step
+
+                for shot_event in shot_events_by_step.get(step, []):
+                    if shot_event.get("team") == "home":
+                        shots_h += 1
+                    elif shot_event.get("team") == "away":
+                        shots_a += 1
 
                 if step in goal_events_by_step:
                     for g_ev in goal_events_by_step[step]:
@@ -340,7 +373,7 @@ class ReplayPipeline:
 
                 # Push to asynchronous bounded queue
                 t0 = time.perf_counter()
-                frame_queue.put(composite_rgb)
+                _enqueue(composite_rgb)
                 t_queue_push_acc += (time.perf_counter() - t0)
 
                 # Half-Time Card
@@ -359,7 +392,7 @@ class ReplayPipeline:
                     )
                     ht_card_rgb = cv2.cvtColor(ht_card_bgr, cv2.COLOR_BGR2RGB)
                     for _ in range(int(3.0 * broadcast_fps)):
-                        frame_queue.put(ht_card_rgb)
+                        _enqueue(ht_card_rgb)
 
             # 3. Full-Time Card (4 seconds)
             tot_poss = max(1, left_poss + right_poss)
@@ -375,18 +408,34 @@ class ReplayPipeline:
             )
             ft_card_rgb = cv2.cvtColor(ft_card_bgr, cv2.COLOR_BGR2RGB)
             for _ in range(int(4.0 * broadcast_fps)):
-                frame_queue.put(ft_card_rgb)
+                _enqueue(ft_card_rgb)
 
             # Signal sentinel to encoder thread
             t_flush_start = time.perf_counter()
-            frame_queue.put(None)
-            consumer_thread.join()
+            _enqueue(None)
+            consumer_thread.join(timeout=30)
+            if consumer_thread.is_alive():
+                raise RuntimeError("Encoder thread did not finish within 30 seconds")
+            if encoder_exception is not None:
+                raise RuntimeError(f"Encoder thread failed: {encoder_exception}")
             encoder.close()
+            encoder_closed = True
             t_ffmpeg_flush_time = time.perf_counter() - t_flush_start
 
         finally:
-            archive.close()
-            env.close()
+            cancel_event.set()
+            if consumer_thread.is_alive():
+                try:
+                    frame_queue.put(None, block=False)
+                except queue.Full:
+                    pass
+                consumer_thread.join(timeout=2)
+            if not encoder_closed:
+                encoder.abort()
+            try:
+                archive.close()
+            finally:
+                env.close()
 
         t_shutdown_time = time.perf_counter() - (t_pipeline_start + (time.perf_counter() - t_pipeline_start))
         total_time = time.perf_counter() - t_pipeline_start
@@ -428,3 +477,6 @@ class ReplayPipeline:
             "effective_fps": round(eff_fps, 1),
             "render_profile": render_profile
         }
+
+    # Backward compatibility alias
+    render_match = render_match_video

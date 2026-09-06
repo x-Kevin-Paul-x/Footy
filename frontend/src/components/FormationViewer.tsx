@@ -341,8 +341,8 @@ const FormationViewer: React.FC<FormationViewerProps> = ({
 
             {/* Players Mapping */}
             {players.map((p, idx) => {
-              const xPos = Math.max(0.08, Math.min(p.x, 0.92)) * pitchWidth;
-              const yPos = Math.max(0.08, Math.min(p.y, 0.92)) * pitchHeight;
+              const xPos = Math.max(0.08, Math.min(p.x, 0.92)) * 100;
+              const yPos = Math.max(0.08, Math.min(p.y, 0.92)) * 100;
               const posColor = PositionBadgeColor(p.position);
               const jerseyMainColor = p.position.startsWith("GK") ? "#f59e0b" : teamColor;
               const rStyle = getRatingColor(p.rating);
@@ -379,8 +379,9 @@ const FormationViewer: React.FC<FormationViewerProps> = ({
                   <Box
                     sx={{
                       position: "absolute",
-                      left: `${xPos - 22}px`,
-                      top: `${yPos - 22}px`,
+                      left: `${xPos}%`,
+                      top: `${yPos}%`,
+                      transform: "translate(-50%, -50%)",
                       cursor: "pointer",
                       transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
                       zIndex: 5,

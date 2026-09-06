@@ -1,134 +1,126 @@
-# 06. Setup & Execution Guide
+# 06. Setup and Execution
 
-This guide provides instructions to set up the development environment, configure Google Research Football (GRF) and TiKick in WSL2, run the FastAPI backend, launch the React frontend, and execute simulation tests.
-
----
+Last verified: **6 September 2026**
 
 ## Prerequisites
 
-* **Windows 11 / Linux (Ubuntu 22.04 LTS / 24.04 LTS)**
-* **Python**: 3.10 or higher
-* **Node.js**: 18.0 or higher (with `npm`)
-* **NVIDIA GPU with CUDA Support** *(Recommended for batched TiKick inference)*
-* **WSL2** *(For Windows host running GRF C++ engine)*
+- Python 3.10 or newer
+- Node.js 18 or newer and npm
+- FFmpeg for encoded replay output
+- On Windows, WSL2 with the configured GRF environment for real GRF tests and 3D rendering
+- NVIDIA/CUDA is optional and should be selected only after representative benchmarks
 
----
+## Host setup
 
-## 1. Environment Setup
-
-### Step A: Configure Environment Variables
-```bash
-# Windows PowerShell
-Copy-Item .env.example .env
-Copy-Item frontend\.env.example frontend\.env
-
-# Linux / macOS
-cp .env.example .env
-cp frontend/.env.example frontend/.env
-```
-
-### Step B: Host Python Virtual Environment
 ```powershell
-# Create and activate virtual environment
+git clone https://github.com/x-Kevin-Paul-x/Footy.git
+cd Footy
+
+Copy-Item .env.example .env
+
 python -m venv .venv
-
-# Windows PowerShell:
 .venv\Scripts\Activate.ps1
-# Linux / macOS:
-# source .venv/bin/activate
-
-# Install core backend dependencies
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
 
-# Optional: Install ML & PyTorch dependencies
-pip install -r requirements-ml.txt
-```
-
-### Step C: WSL2 GRF Environment Setup *(Windows)*
-```bash
-# Inside WSL2 Ubuntu:
-sudo apt-get update && sudo apt-get install -y \
-    git cmake build-essential libgl1-mesa-dev libsdl2-dev \
-    libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev \
-    libboost-all-dev libdirectfb-dev libst-dev mesa-utils \
-    xvfb libosmesa6-dev python3-pip python3-venv ffmpeg
-
-# Create dedicated WSL virtual environment
-python3 -m venv /root/venv_baller
-source /root/venv_baller/bin/activate
-pip install gfootball torch numpy opencv-python imageio imageio-ffmpeg
-```
-
----
-
-## 2. Running the Application
-
-### Option 1: FastAPI Backend Server
-```powershell
-# Run backend development server (Port 5001)
-python backend/src/dev_server.py
-```
-* **Interactive API Docs**: `http://localhost:5001/docs` (Swagger UI)
-* **Health Check**: `http://localhost:5001/health`
-
-### Option 2: React Frontend Development Server
-```powershell
 cd frontend
 npm install
-npm run dev
 ```
-* **Web Dashboard**: `http://localhost:5173`
 
----
+There is no checked-in `frontend/.env.example`. If an explicit development API URL is needed, create `frontend/.env` with:
 
-## 3. Database Migrations (Alembic)
+```ini
+VITE_API_BASE_URL=http://localhost:5001
+```
+
+The frontend client currently defaults to the same localhost URL in development.
+
+## Backend and frontend
+
+From the repository root:
 
 ```powershell
-# Run pending database migrations
-alembic -c backend/alembic.ini upgrade head
-
-# Generate a new migration after modifying database/models.py
-alembic -c backend/alembic.ini revision --autogenerate -m "add_trace_file_column"
+python backend/src/dev_server.py
 ```
 
----
+- API documentation: `http://localhost:5001/docs`
+- Health: `http://localhost:5001/api/v1/health`
 
-## 4. Running Simulations & Benchmarks
-
-### A. Run 10-Match Matchday Simulation
-```powershell
-$env:PYTHONPATH="backend/src"; python backend/src/main.py
-```
-
-### B. Run Deterministic Replay Parity Test
-```powershell
-$env:PYTHONPATH="backend/src"; python scratch/test_10_matches_and_3_replays.py
-```
-
-### C. Run PyTorch DQN Manager Benchmarking
-```powershell
-$env:PYTHONPATH="backend/src"; python backend/src/ml/evaluation.py
-```
-
----
-
-## 5. Automated Test Suite
+From `frontend/`:
 
 ```powershell
-# Run all backend unit and integration tests
-$env:PYTHONPATH="backend/src"; pytest backend/tests/ -v
-
-# Run GRF-specific engine and trajectory tests
-$env:PYTHONPATH="backend/src"; pytest backend/tests/test_grf_engine.py -v
+npm run dev:frontend
 ```
 
----
+- UI: `http://localhost:5173`
 
-## 6. Antigravity Workspace Diagnostics
+`npm run dev` starts both processes and assumes a valid Windows `.venv` at the repository root.
 
-You can invoke specialized workspace skills directly to audit subsystems:
-* `grf-deterministic-engine`: Diagnostic checks for `.npz` trajectory logging and replay parity.
-* `grf-environment-diagnostics`: WSL2 health check, OpenGL/EGL headless driver verification.
-* `match-engine-balancer`: Opta statistical calibration ($xG$, goal distributions, foul frequency).
-* `rl-manager-trainer`: PyTorch DQN training loop and reward diagnostics.
+## Main environment variables
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `FOOTY_API_PORT` | `5001` | API port. |
+| `FOOTY_API_DEBUG` | `false` | Debug mode. |
+| `FOOTY_NUM_SEASONS` | `1` in code | CLI season count; the current `.env.example` sets 10. |
+| `FOOTY_SIMULATION_TIMEOUT_SECONDS` | `1800` | External simulation timeout. |
+| `FOOTY_DATA_DIR` | `backend/data` | Isolated DB root override, useful for tests. |
+| `FOOTY_GRF_MAX_STEPS` | `1200` | Default GRF match steps. |
+| `FOOTY_PARALLEL_WORKERS` | `10` | Requested match worker count. Benchmark before tuning. |
+| `FOOTY_WSL_PYTHON` | `/root/venv_baller/bin/python3` | WSL interpreter. |
+| `FOOTY_DEFAULT_RENDER_MODE` | `3d` | Default rendering mode. |
+| `FOOTY_SYNC_VIDEO_RENDER` | `0` | Enable synchronous 3D video in batch payloads. |
+| `FOOTY_RUN_RETENTION` | `0` | Runs to retain; zero keeps all historical run directories. |
+| `FOOTY_TEMP_MAX_AGE_SECONDS` | `86400` | Age before stale temporary cleanup. |
+| `FOOTY_MAX_MATCHES` | `0` | Optional shortened-run fixture cap. |
+
+## Database warning
+
+The current live database is at Alembic revision `879f4c01467a` and passed integrity and foreign-key checks. The Alembic chain cannot bootstrap an empty database: `alembic upgrade head` fails at `c7c6ac0ab9c1` because legacy tables do not exist.
+
+Current fresh startup uses SQLAlchemy table creation and compatibility DDL. Do not test migrations against the live save. Before any migration work:
+
+1. Create an application-level SQLite backup.
+2. Copy representative legacy data into an isolated `FOOTY_DATA_DIR`.
+3. Run upgrade and integrity checks there.
+4. Repair the empty baseline before documenting Alembic as the sole installation path.
+
+## Tests
+
+With a working virtual environment:
+
+```powershell
+$env:PYTHONPATH="$PWD\backend\src"
+$env:FOOTY_DATA_DIR="$PWD\.test-data"
+pytest backend/tests -q --basetemp .pytest-tmp
+
+cd frontend
+npm test -- --runInBand
+npm run build
+```
+
+Reproduced results on this host:
+
+```text
+Backend with host WSL access: 95 passed, 9 skipped in 210.69s
+Frontend Jest:                2 suites, 6 tests passed
+TypeScript/Vite build:        passed
+```
+
+If a restricted shell blocks WSL, GRF integration tests can fail with `E_ACCESSDENIED` before the engine starts. Confirm with `wsl --status` and rerun in a normal host terminal.
+
+## Benchmark
+
+```powershell
+python backend/benchmarks/run_benchmark.py --smoke
+```
+
+Smoke mode is a synthetic harness check. Full mode currently executes fixtures sequentially and ignores worker count for execution. Neither mode is a valid worker-scaling baseline yet.
+
+## Docker
+
+```powershell
+docker compose up --build
+```
+
+The compose file exposes the frontend on port 80 and backend on 5001, with data/report volumes. GRF/WSL/GPU compatibility is host-specific and is not certified by the compose file alone.

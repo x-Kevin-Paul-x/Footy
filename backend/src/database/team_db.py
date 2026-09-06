@@ -4,62 +4,68 @@ from database.models import Team
 def create_team(name, budget, weekly_budget, transfer_budget, wage_budget, manager_id=None, db_file=None):
     """Inserts a new team into the database (SQLAlchemy)."""
     db = SessionLocal()
-    team = Team(
-        name=name,
-        budget=budget,
-        weekly_budget=weekly_budget,
-        transfer_budget=transfer_budget,
-        wage_budget=wage_budget,
-        manager_id=manager_id
-    )
-    db.add(team)
-    db.commit()
-    db.refresh(team)
-    team_id = team.team_id
-    db.close()
-    return team_id
+    try:
+        team = Team(
+            name=name,
+            budget=budget,
+            weekly_budget=weekly_budget,
+            transfer_budget=transfer_budget,
+            wage_budget=wage_budget,
+            manager_id=manager_id
+        )
+        db.add(team)
+        db.commit()
+        db.refresh(team)
+        return team.team_id
+    finally:
+        db.close()
 
 def get_team(team_id, db_file=None):
     """Retrieves a team by its ID."""
     db = SessionLocal()
-    team = db.query(Team).filter(Team.team_id == team_id).first()
-    if team:
-        result = (team.team_id, team.name, team.budget, team.weekly_budget, team.transfer_budget, team.wage_budget, team.manager_id)
-    else:
-        result = None
-    db.close()
-    return result
+    try:
+        team = db.query(Team).filter(Team.team_id == team_id).first()
+        if team:
+            return (team.team_id, team.name, team.budget, team.weekly_budget, team.transfer_budget, team.wage_budget, team.manager_id)
+        return None
+    finally:
+        db.close()
 
 def get_all_teams(db_file=None):
     """Retrieves all teams."""
     db = SessionLocal()
-    teams = db.query(Team).all()
-    results = [(t.team_id, t.name, t.budget, t.weekly_budget, t.transfer_budget, t.wage_budget, t.manager_id) for t in teams]
-    db.close()
-    return results
+    try:
+        teams = db.query(Team).all()
+        return [(t.team_id, t.name, t.budget, t.weekly_budget, t.transfer_budget, t.wage_budget, t.manager_id) for t in teams]
+    finally:
+        db.close()
 
 def update_team(team_id, name=None, budget=None, weekly_budget=None, transfer_budget=None, wage_budget=None, manager_id=None, db_file=None):
     """Updates a team's information."""
     db = SessionLocal()
-    team = db.query(Team).filter(Team.team_id == team_id).first()
-    if team:
-        if name is not None: team.name = name
-        if budget is not None: team.budget = budget
-        if weekly_budget is not None: team.weekly_budget = weekly_budget
-        if transfer_budget is not None: team.transfer_budget = transfer_budget
-        if wage_budget is not None: team.wage_budget = wage_budget
-        if manager_id is not None: team.manager_id = manager_id
-        db.commit()
-    db.close()
+    try:
+        team = db.query(Team).filter(Team.team_id == team_id).first()
+        if team:
+            if name is not None: team.name = name
+            if budget is not None: team.budget = budget
+            if weekly_budget is not None: team.weekly_budget = weekly_budget
+            if transfer_budget is not None: team.transfer_budget = transfer_budget
+            if wage_budget is not None: team.wage_budget = wage_budget
+            if manager_id is not None: team.manager_id = manager_id
+            db.commit()
+    finally:
+        db.close()
 
 def delete_team(team_id, db_file=None):
     """Deletes a team by its ID."""
     db = SessionLocal()
-    team = db.query(Team).filter(Team.team_id == team_id).first()
-    if team:
-        db.delete(team)
-        db.commit()
-    db.close()
+    try:
+        team = db.query(Team).filter(Team.team_id == team_id).first()
+        if team:
+            db.delete(team)
+            db.commit()
+    finally:
+        db.close()
     
 def test_team_db(db_file="test_football_sim.db"):
     """Tests for team database functions."""

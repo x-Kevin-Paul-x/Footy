@@ -303,12 +303,19 @@ def render_from_dump(payload: Dict[str, Any]):
     except Exception:
         pass
 
+    out_norm = str(output_mp4).replace("\\", "/")
+    if "recordings/" in out_norm:
+        rel_path = out_norm.split("recordings/")[-1].lstrip("/")
+    else:
+        rel_path = os.path.basename(output_mp4)
+    v_url = f"/recordings/{rel_path}"
+
     if progress_file:
         write_progress_atomic(progress_file, {
             "status": "completed", "progress": 100, "step": total_steps,
             "total_steps": total_steps, "match_minute": 90,
             "stage": "3D Match Replay Complete!",
-            "video_url": f"/recordings/{os.path.basename(output_mp4)}",
+            "video_url": v_url,
             "score": curr_score, "completed": True
         })
 
@@ -321,7 +328,7 @@ def render_from_dump(payload: Dict[str, Any]):
         "away_team": away_team,
         "score": curr_score,
         "events": events,
-        "video_url": f"/recordings/{os.path.basename(output_mp4)}",
+        "video_url": v_url,
     }
     print("MATCH_RENDER_RESULT_JSON:" + json.dumps(result))
 
@@ -339,7 +346,13 @@ def render_from_grf_states(payload: Dict[str, Any]):
     output_mp4 = res["output_mp4"]
     progress_file = payload.get("progress_file")
 
-    video_url = f"/recordings/{os.path.basename(output_mp4)}"
+    out_norm = str(output_mp4).replace("\\", "/")
+    if "recordings/" in out_norm:
+        rel_path = out_norm.split("recordings/")[-1].lstrip("/")
+    else:
+        rel_path = os.path.basename(output_mp4)
+    video_url = f"/recordings/{rel_path}"
+
     if progress_file:
         write_progress_atomic(progress_file, {
             "status": "completed", "progress": 100, "step": res["total_frames"],

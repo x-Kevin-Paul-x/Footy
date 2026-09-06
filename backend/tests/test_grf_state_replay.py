@@ -136,8 +136,9 @@ def test_wsl_grf_state_replay_synchronization():
         record_grf_states=True,
     )
 
-    state_path = Path(f"backend/reports/recordings/trace_{match_id}.grfstate")
-    npz_path = Path(f"backend/reports/recordings/trace_{match_id}.npz")
+    from config import RECORDINGS_DIR
+    state_path = RECORDINGS_DIR / f"trace_{match_id}.grfstate"
+    npz_path = RECORDINGS_DIR / f"trace_{match_id}.npz"
 
     assert npz_path.exists(), "Trajectory .npz file must exist"
     assert state_path.exists(), "State archive .grfstate file must exist"

@@ -35,6 +35,7 @@ import {
   getEngineStatus,
   getSimulationSettings,
   updateSimulationSettings
+  ,getCurrentSimulationRun
 } from "../services/api";
 import {
   XAxis,
@@ -99,6 +100,7 @@ const Dashboard: React.FC = () => {
   useSimulationSocket();
 
   const [selectedDashboardSeason, setSelectedDashboardSeason] = React.useState<number | null>(null);
+  const [activeRunId, setActiveRunId] = React.useState<string | null>(null);
 
   useEffect(() => {
     fetchAvailableSeasons();
@@ -146,15 +148,29 @@ const Dashboard: React.FC = () => {
 
   const runSimMutation = useMutation({
     mutationFn: runSimulation,
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (result.run_id) setActiveRunId(result.run_id);
+    }
+  });
+
+  const { data: activeRun } = useQuery({
+    queryKey: ['simulationRun', activeRunId],
+    queryFn: getCurrentSimulationRun,
+    enabled: Boolean(activeRunId),
+    refetchInterval: (query) => query.state.data?.status === 'running' ? 1500 : false,
+  });
+
+  useEffect(() => {
+    if (activeRunId && activeRun && !['running', 'cancelling'].includes(activeRun.status)) {
       queryClient.invalidateQueries({ queryKey: ['financialSummary'] });
       queryClient.invalidateQueries({ queryKey: ['transferActivity'] });
       queryClient.invalidateQueries({ queryKey: ['allSeasonsOverview'] });
       queryClient.invalidateQueries({ queryKey: ['seasonReport'] });
       queryClient.invalidateQueries({ queryKey: ['matchesBySeason'] });
       fetchAvailableSeasons();
+      setActiveRunId(null);
     }
-  });
+  }, [activeRun, activeRunId, fetchAvailableSeasons, queryClient]);
 
   if (seasonsErr) {
     return (
@@ -319,8 +335,8 @@ const Dashboard: React.FC = () => {
           <Button
             variant="contained"
             onClick={() => runSimMutation.mutate()}
-            disabled={runSimMutation.isPending}
-            startIcon={runSimMutation.isPending ? <CircularProgress size={18} color="inherit" /> : <AddIcon />}
+            disabled={runSimMutation.isPending || activeRun?.status === 'running'}
+            startIcon={(runSimMutation.isPending || activeRun?.status === 'running') ? <CircularProgress size={18} color="inherit" /> : <AddIcon />}
             className="finnova-tactile-btn"
           >
             Run Season Simulation

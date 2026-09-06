@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Table, Boolean, Index
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Table, Boolean, Index, UniqueConstraint
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -159,17 +159,28 @@ class SimulationRun(Base):
     run_id = Column(String, primary_key=True)
     season_year = Column(Integer, nullable=False)
     created_at = Column(String, nullable=False)
+    started_at = Column(String, nullable=True)
+    finished_at = Column(String, nullable=True)
+    heartbeat_at = Column(String, nullable=True)
     status = Column(String, nullable=False, default="running")
     render_mode = Column(String, nullable=False, default="3d")
     total_matches = Column(Integer, nullable=False, default=380)
     matches_played = Column(Integer, nullable=False, default=0)
+    cancel_requested = Column(Boolean, nullable=False, default=False)
+    error_message = Column(String, nullable=True)
     metadata_json = Column(String, nullable=True)
 
     matches = relationship("Match", back_populates="simulation_run")
 
 class Match(Base):
     __tablename__ = 'Match'
-    __table_args__ = (Index('ix_match_season_year', 'season_year'),)
+    __table_args__ = (
+        Index('ix_match_season_year', 'season_year'),
+        UniqueConstraint(
+            'simulation_run_id', 'season_year', 'match_number',
+            name='uq_match_run_season_number',
+        ),
+    )
     
     match_id = Column(Integer, primary_key=True, autoincrement=True)
     simulation_run_id = Column(String, ForeignKey('SimulationRun.run_id'), nullable=True, index=True)
@@ -232,7 +243,7 @@ class MatchShots(Base):
 class MatchEvent(Base):
     __tablename__ = 'MatchEvent'
     event_id = Column(Integer, primary_key=True, autoincrement=True)
-    match_id = Column(Integer, ForeignKey('Match.match_id'), nullable=False)
+    match_id = Column(Integer, ForeignKey('Match.match_id'), nullable=False, index=True)
     minute = Column(Integer, nullable=False)
     type = Column(String, nullable=False)
     player = Column(String)
@@ -250,6 +261,7 @@ class TransferListing(Base):
 
 class TransferHistory(Base):
     __tablename__ = 'TransferHistory'
+    __table_args__ = (Index('ix_transfer_season_year', 'season_year'),)
     transfer_id = Column(Integer, primary_key=True, autoincrement=True)
     player_id = Column(Integer, ForeignKey('Player.player_id'), nullable=False)
     from_team_id = Column(Integer, ForeignKey('Team.team_id'), nullable=False)

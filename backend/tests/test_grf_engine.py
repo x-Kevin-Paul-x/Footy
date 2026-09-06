@@ -285,7 +285,8 @@ def test_simulation_determinism_level_2():
         seed_val=fixed_seed,
     )
 
-    npz_path = Path(f"backend/reports/recordings/trace_test_det_fidelity.npz")
+    from config import RECORDINGS_DIR
+    npz_path = RECORDINGS_DIR / "trace_test_det_fidelity.npz"
     assert npz_path.exists(), "Trajectory .npz file must be persisted"
 
     traj = MatchTrajectory.load_from_npz(npz_path)

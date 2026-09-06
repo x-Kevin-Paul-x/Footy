@@ -81,8 +81,9 @@ def test_grf_end_to_end_archive_trajectory_simulation_chain():
         record_grf_states=True,
     )
 
-    state_win = Path(f"backend/reports/recordings/trace_{match_id}.grfstate")
-    traj_win = Path(f"backend/reports/recordings/trace_{match_id}.npz")
+    from config import RECORDINGS_DIR
+    state_win = RECORDINGS_DIR / f"trace_{match_id}.grfstate"
+    traj_win = RECORDINGS_DIR / f"trace_{match_id}.npz"
 
     assert state_win.exists(), f"State archive must exist: {state_win}"
     assert traj_win.exists(), f"Trajectory npz must exist: {traj_win}"

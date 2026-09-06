@@ -158,28 +158,28 @@ export interface Player {
 
 
 export const getTeams = async (): Promise<Team[]> => {
-  const response = await apiClient.get<any>('/teams');
+  const response = await apiClient.get<any>('/api/v1/teams');
   return Array.isArray(response.data) ? response.data : (response.data?.teams ?? []);
 };
 
 export const getPlayers = async (): Promise<Player[]> => {
-  const response = await apiClient.get<any>('/players');
+  const response = await apiClient.get<any>('/api/v1/players');
   return Array.isArray(response.data) ? response.data : (response.data?.players ?? []);
 };
 
 export const runSimulation = async () => {
-  const response = await apiClient.post('/run-simulation');
+  const response = await apiClient.post('/api/v1/run-simulation');
   return response.data; // { status: string, message: string, details?: string }
 };
 
 export const getAvailableSeasons = async (): Promise<number[]> => {
-  const response = await apiClient.get<{ seasons: number[] }>('/get-seasons');
+  const response = await apiClient.get<{ seasons: number[] }>('/api/v1/seasons');
   return response.data.seasons;
 };
 
 export const getSeasonReportData = async (year: number): Promise<SeasonReport | null> => {
   try {
-    const response = await apiClient.get<SeasonReport>(`/get-season-report/${year}`);
+    const response = await apiClient.get<SeasonReport>(`/api/v1/season-report/${year}`);
     return response.data;
   } catch (_error) {
     return null;
@@ -187,12 +187,12 @@ export const getSeasonReportData = async (year: number): Promise<SeasonReport | 
 };
 
 export const getMatchesBySeason = async (seasonYear: number): Promise<any[]> => {
-  const response = await apiClient.get(`/matches/${seasonYear}`);
+  const response = await apiClient.get(`/api/v1/seasons/${seasonYear}/matches`);
   return response.data.matches;
 };
 
-export const getMatchDetails = async (matchId: number): Promise<any> => {
-  const response = await apiClient.get(`/match/${matchId}`);
+export const getMatchDetails = async (matchId: number | string): Promise<any> => {
+  const response = await apiClient.get(`/api/v1/match/${matchId}`);
   return response.data;
 };
 
@@ -278,7 +278,7 @@ export interface TeamHistoryResponse {
 }
 
 export const getTeamHistory = async (teamName: string): Promise<TeamHistoryResponse> => {
-  const response = await apiClient.get<TeamHistoryResponse>(`/team-history/${encodeURIComponent(teamName)}`);
+  const response = await apiClient.get<TeamHistoryResponse>(`/api/v1/team-history/${encodeURIComponent(teamName)}`);
   return response.data;
 };
 
@@ -297,7 +297,7 @@ export interface FinancialSummaryResponse {
 }
 
 export const getFinancialSummary = async (): Promise<FinancialSummaryResponse> => {
-  const response = await apiClient.get<FinancialSummaryResponse>('/financial-summary');
+  const response = await apiClient.get<FinancialSummaryResponse>('/api/v1/financial-summary');
   return response.data;
 };
 
@@ -316,7 +316,7 @@ export interface YouthProspectsResponse {
 }
 
 export const getYouthProspects = async (): Promise<YouthProspectsResponse> => {
-  const response = await apiClient.get<YouthProspectsResponse>('/youth-prospects');
+  const response = await apiClient.get<YouthProspectsResponse>('/api/v1/youth-prospects');
   return response.data;
 };
 
@@ -333,7 +333,7 @@ export interface TransferActivityResponse {
 }
 
 export const getTransferActivity = async (): Promise<TransferActivityResponse> => {
-  const response = await apiClient.get<TransferActivityResponse>('/transfer-activity');
+  const response = await apiClient.get<TransferActivityResponse>('/api/v1/transfer-activity');
   return response.data;
 };
 
@@ -375,7 +375,7 @@ export interface AllSeasonsOverviewResponse {
 }
 
 export const getAllSeasonsOverview = async (): Promise<AllSeasonsOverviewResponse> => {
-  const response = await apiClient.get<AllSeasonsOverviewResponse>('/all-seasons-overview');
+  const response = await apiClient.get<AllSeasonsOverviewResponse>('/api/v1/all-seasons-overview');
   return response.data;
 };
 
@@ -468,17 +468,17 @@ export interface MlModelItem {
 }
 
 export const getMlReports = async (): Promise<MlReportListItem[]> => {
-  const response = await apiClient.get<MlReportsResponse>('/ml-reports');
+  const response = await apiClient.get<MlReportsResponse>('/api/v1/ml-reports');
   return response.data.reports;
 };
 
 export const getMlReport = async (reportName: string): Promise<MlReport> => {
-  const response = await apiClient.get<MlReport>(`/ml-reports/${encodeURIComponent(reportName)}`);
+  const response = await apiClient.get<MlReport>(`/api/v1/ml-reports/${encodeURIComponent(reportName)}`);
   return response.data;
 };
 
 export const getMlModels = async (): Promise<MlModelItem[]> => {
-  const response = await apiClient.get<{ models: MlModelItem[] }>('/ml-models');
+  const response = await apiClient.get<{ models: MlModelItem[] }>('/api/v1/ml-models');
   return response.data.models;
 };
 
@@ -489,17 +489,17 @@ export const runMlEvaluation = async (params: {
   season_length?: number;
   fast_mode?: boolean;
 }): Promise<MlReport> => {
-  const response = await apiClient.post<{ status: string; report: MlReport }>('/run-ml-eval', params);
+  const response = await apiClient.post<{ status: string; report: MlReport }>('/api/v1/run-ml-eval', params);
   return response.data.report;
 };
 
 export const createSaveState = async (): Promise<{ status: string; save_id: string; message: string }> => {
-  const response = await apiClient.post<{ status: string; save_id: string; message: string }>('/saves');
+  const response = await apiClient.post<{ status: string; save_id: string; message: string }>('/api/v1/saves');
   return response.data;
 };
 
 export const listSaveStates = async (): Promise<Array<{ save_id: string; timestamp: string; size_bytes: number }>> => {
-  const response = await apiClient.get('/saves');
+  const response = await apiClient.get('/api/v1/saves');
   return response.data;
 };
 
@@ -585,6 +585,7 @@ export const getMatchRenderStatus = async (matchId: string): Promise<MatchRender
 export interface SimulationSettings {
   default_render_mode: "3d" | "2d";
   max_steps?: number;
+  active_model?: string;
 }
 
 export const getSimulationSettings = async (): Promise<SimulationSettings> => {
@@ -605,6 +606,8 @@ export interface CurrentSimulationRun {
   render_mode: "3d" | "2d";
   total_matches: number;
   matches_played: number;
+  cancel_requested?: boolean;
+  error_message?: string | null;
 }
 
 export const getCurrentSimulationRun = async (): Promise<CurrentSimulationRun> => {
@@ -612,5 +615,51 @@ export const getCurrentSimulationRun = async (): Promise<CurrentSimulationRun> =
   return response.data;
 };
 
+export interface TimelineSegment {
+  segment_type: string;
+  source_step_start: number;
+  source_step_end: number;
+  pts_start_seconds: number;
+  pts_end_seconds: number;
+  match_minute_start: number;
+  match_minute_end: number;
+  event_ids: string[];
+}
 
+export interface PresentationTimeline {
+  match_id: string;
+  fps: number;
+  total_frames: number;
+  total_duration_seconds: number;
+  segments: TimelineSegment[];
+  events_pts_map: Record<string, number>;
+  minute_to_pts: Record<string, number>;
+  timeline_version: string;
+}
+
+export const getMatchTimeline = async (matchId: string | number): Promise<PresentationTimeline | null> => {
+  try {
+    const response = await apiClient.get<PresentationTimeline>(`/api/v1/match/${matchId}/timeline`);
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) return null;
+    throw error;
+  }
+};
+
+export interface MatchRenderResponse {
+  match_id: string;
+  status: string;
+  video_url: string | null;
+  render_mode_used?: string | null;
+  message?: string | null;
+}
+
+export const renderMatchReplay = async (
+  matchId: string | number,
+  options?: { render_mode?: '3d' | '2d' | 'auto'; force?: boolean }
+): Promise<MatchRenderResponse> => {
+  const response = await apiClient.post<MatchRenderResponse>(`/api/v1/match/${matchId}/render`, options || {});
+  return response.data;
+};
 

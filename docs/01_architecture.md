@@ -1,161 +1,77 @@
 # 01. System Architecture
 
-## Overview
-**Footy** is an intelligent full-stack football simulation, analytics, and AI manager platform. It combines a high-fidelity Python match engine, PyTorch Deep Reinforcement Learning (DQN) manager agents, Google Research Football (GRF) 11v11 physics-based match simulation, and a retro-tactile React dashboard.
+Last verified: **6 September 2026**
 
----
+Footy combines a Python football-management domain, Google Research Football (GRF) match execution, SQLite persistence, replay/video generation, a FastAPI application, and a React frontend.
 
-## The Core Architectural Principle
-> [!IMPORTANT]
-> **"The Simulation Produces Truth. Everything Else Consumes That Truth."**
-> 
-> In Footy, simulation physics, match statistics, database records, and video broadcast replays are strictly decoupled. Simulation never performs video rendering, and replay never re-simulates physics. All downstream consumers read from a single, canonical, immutable `MatchTrajectory`.
-
----
-
-## Target System Architecture
+## Component and data flow
 
 ```mermaid
-graph TD
-    subgraph FootyLayer ["Footy Domain Layer"]
-        League[League Engine & Scheduler]
-        ManagerAI[Manager AI & PyTorch DQN Brain]
-        Squads[Squads, Lineups & Player Ratings]
-        Tactics[Team Tactics & Formation Coordinates]
-    end
-
-    subgraph AdapterLayer ["Footy GRF Adapter"]
-        Adapter[FootyGRFAdapter]
-        ProfileMap[Player Attribute -> GRF Modifier Mapper]
-        Perspective[Perspective-Aware Feature Extractor]
-    end
-
-    subgraph SimLayer ["Phase A: Fast Simulation Core (0 Rendering)"]
-        WorkerPool[Persistent GRF Worker Pool]
-        TiKick[TiKick 11v11 Recurrent MARL Policy]
-        GRFEnv[Headless GRF Environment]
-        BatchInference[Batched GPU/CPU Inference]
-    end
-
-    subgraph Artifact ["Single Source of Truth"]
-        Trajectory[MatchTrajectory (.npz / Binary Keyframes)]
-        Fingerprint[Simulation Fingerprint (SHA256)]
-    end
-
-    subgraph Downstream ["Phase B: Truth Consumers"]
-        StatsEngine[Truth Statistics Engine (Opta Standards)]
-        DB[(SQLite / football_sim.db)]
-        ReplayRenderer[Broadcast Video Renderer (TV Overlays & Multi-Cam)]
-        WebUI[React 18 Dashboard & 2D Tactical Board]
-    end
-
-    League --> Adapter
-    ManagerAI --> Adapter
-    Squads --> Adapter
-    Tactics --> Adapter
-
-    Adapter --> WorkerPool
-    WorkerPool --> TiKick
-    WorkerPool --> GRFEnv
-    TiKick --> BatchInference
-
-    GRFEnv --> Trajectory
-    TiKick --> Trajectory
-    Adapter --> Fingerprint
-
-    Trajectory --> StatsEngine
-    Trajectory --> ReplayRenderer
-    StatsEngine --> DB
-    StatsEngine --> WebUI
-    ReplayRenderer --> WebUI
+flowchart LR
+    UI[React 19 UI] -->|REST| API[FastAPI]
+    UI <-->|WebSocket events| API
+    API --> Reports[Report readers]
+    API --> DB[(SQLite WAL)]
+    API --> Jobs[In-process background tasks]
+    Jobs --> Season[Season orchestrator]
+    Season --> Domain[League, teams, players, managers]
+    Season --> Batch[GRF batch runner]
+    API --> Native[GRF native runner]
+    Batch --> Pool[Multiprocess worker pool]
+    Pool --> Executor[GRFMatchExecutor]
+    Native --> WSL[WSL worker adapter]
+    WSL --> Executor
+    Executor --> GRF[GRF environment]
+    Executor --> Policy[TiKick policy]
+    Executor --> Artifacts[Trajectory / state / dump artifacts]
+    Executor --> Results[Canonical match result]
+    Results --> DB
+    Artifacts --> Renderer[2D or 3D renderer]
+    Renderer --> MP4[Atomic MP4 publication]
+    MP4 --> UI
 ```
 
----
+## Main layers
 
-## Architectural Pillars
+| Layer | Main paths | Responsibility |
+| --- | --- | --- |
+| Domain | `backend/src/models/` | League schedule, teams, players, managers, matches, training, transfers, finance. |
+| Orchestration | `backend/src/main.py` | Builds the world, runs matchdays, persists results, writes reports, rolls seasons forward. |
+| Canonical match engine | `backend/src/logic/simulation/match_executor.py` | Environment lifecycle, seed setup, canonical observations, actions, events, statistics, trajectories, and results. |
+| Execution adapters | `grf_native_runner.py`, `grf_batch_runner.py`, `simulation_process_pool.py`, `wsl_workers/` | Windows/WSL transport, batch construction, multiprocessing, retries, and compatibility. |
+| Replay/rendering | `grf_renderer.py`, `logic/replay/`, `presentation_timeline.py` | 2D trajectory video, live AVI overlay/transcode, persistent 3D state replay, FFmpeg encoding, timeline metadata. |
+| Persistence | `backend/src/database/`, `backend/alembic/` | SQLAlchemy models/repositories, WAL settings, save/restore, schema migration. |
+| HTTP application | `backend/src/api_fastapi.py`, `schemas.py` | REST/WebSocket routes, validation, streaming, simulation and render triggers. |
+| Frontend | `frontend/src/` | Dashboard, reports, details, settings, render controls, polling, charts. |
 
-### 1. Unified Canonical GRF Engine
-* Consolidates all simulation paths into one canonical engine (`FootyGRFSimulator`).
-* Eliminates the split between `match_engine_grf.py` and `grf_native_runner.py`.
-* Ensures that whether a match is triggered from the season batch runner, the API endpoint (`/api/v1/match/simulate-grf`), or CLI benchmarks, the exact same environment parameters, random seeds, and feature extractors are used.
+## Authoritative data
 
-### 2. Two-Phase Decoupled Pipeline (Simulate vs. Render)
-* **Phase A — Pure Simulation (Headless & Fast)**:
-  * Executes GRF physics and TiKick neural inference with `render=False`.
-  * Generates 0 OpenCV frames and 0 video files.
-  * Achieves high throughput ($500–2000+$ matches/hour on GPU batching).
-  * Emits an immutable `MatchTrajectory` containing timestamps, coordinates, ball velocity, player IDs, and physics events.
-* **Phase B — Replay & Broadcast Rendering (On-Demand)**:
-  * Reads the pre-computed `MatchTrajectory`.
-  * Draws pitch graphics, broadcast HUD cards, player names, and tactical radar.
-  * Supports multiple virtual cameras (TV Main, Tactical Overhead, Behind Goal, Player Focus) and instant slow-motion replays without ever invoking the neural policy again.
+`CanonicalMatchResult` is the result contract emitted by `GRFMatchExecutor`. A `MatchTrajectory` contains typed NumPy arrays plus a `MatchManifest`. Optional `.grfstate` archives contain C++ environment states for 3D restoration. Match rows and events persist the result used by reports and the UI.
 
-### 3. Perspective-Aware Canonical Space
-* Normalizes left-team and right-team observations into a **canonical attacking coordinate system**.
-* Ensures the right-team agents receive correct symmetric observations ($X$-axis mirrored, team lists swapped) so both teams make decisions using identical neural state geometry.
+The intended rule is that rendering consumes recorded results and artifacts. Current paths follow that rule for score/event overlays, but renderer frame inserts are not yet represented by one exact timeline profile. See [Current Status](05_current_status.md).
 
-### 4. Player Attribute & Tactical Mapping Layer
-* Converts Footy's Football Manager-style attributes (Pace, Shooting, Passing, Tackling, Stamina, Strength) into calibrated physical and action-selection modifiers.
-* Translates tactical formations (`4-3-3`, `4-2-3-1`, `3-5-2`) into initial pitch spatial coordinates and dynamic defensive anchors.
+## Scheduling and season lifecycle
 
-### 5. Truth-Based Statistics Conservation
-* All match stats (goals, shots, shots on target, possession %, passes, fouls) are derived directly from the physical collision and trajectory events.
-* Eliminates fabricated placeholders (e.g. hardcoded 350 passes or $xG = \text{Goals} \times 0.75$).
+`League.generate_schedule()` creates explicit matchday rounds with the circle method. `main.py` prepares and simulates each round, persists successful results under a `simulation_run_id`, applies weekly domain changes, writes season reports, and advances the season after successful completion.
 
----
+## Concurrency model
 
-## High-Level Component Structure
+- FastAPI season and ML work currently runs in process-local background tasks.
+- Season simulation uses a multiprocessing worker pool for fixtures.
+- Replay pipelines use a bounded producer/consumer queue between rendering and FFmpeg.
+- SQLite uses WAL and still allows one writer at a time.
+- The API lock and background task ownership do not coordinate multiple API processes or survive restart.
 
-| Component | Path | Responsibility |
-| :--- | :--- | :--- |
-| **FastAPI REST API** | `backend/src/api_fastapi.py` | Asynchronous API serving league data, squad rosters, job queues, and video streaming. |
-| **Footy GRF Adapter** | `backend/src/logic/footy_grf_adapter.py` | Maps Footy players, tactics, and formations into GRF simulation configs. |
-| **Canonical GRF Engine** | `backend/src/logic/grf_simulator.py` | Core headless 11v11 simulation loop with perspective normalization. |
-| **Trajectory Store** | `backend/src/logic/trajectory.py` | Serialization, compression, and deserialization of `.npz` match trajectories. |
-| **Broadcast Renderer** | `backend/src/logic/broadcast_renderer.py` | Decoupled video generator with multi-camera director and TV overlays. |
-| **PyTorch DQN Manager** | `backend/src/ml/dqn_agent.py` | Tactical RL agent deciding team formations, training regimens, and substitutions. |
-| **Database & ORM** | `backend/src/database/` | SQLite database managed with SQLAlchemy models and Alembic migrations. |
-| **React Dashboard** | `frontend/src/` | Tactile retro UI, 2D tactic board, FM attribute pentagons, and replay player. |
+## Artifact layout
 
----
+The configured report root contains season reports, transfer logs, match reports, recordings, trajectories, state archives, render progress files, and ML reports. Runners accept a `run_id` and can place recordings in run directories. Compatibility lookup still searches legacy filenames, so callers should use DB-provided artifact URLs rather than construct paths.
 
-## Directory Organization
+## Known architecture gaps
 
-```
-Footy/
-├── .agents/skills/               # Antigravity Expert Skills
-│   ├── grf-deterministic-engine/ # Replay parity & trajectory logging
-│   ├── grf-environment-diagnostics/ # WSL2, headless EGL & PyTorch health
-│   ├── match-engine-balancer/    # Opta statistical calibration
-│   ├── rl-manager-trainer/       # PyTorch DQN manager trainer
-│   ├── multi-season-stability-tester/ # Multi-season economy & squad stress tests
-│   ├── fullstack-feature-scaffold/ # Fullstack recipe (DB -> FastAPI -> React)
-│   └── alembic-sqlite-guardian/  # Safe SQLite migrations
-├── backend/
-│   ├── alembic/                  # Alembic migration scripts
-│   ├── checkpoints/              # Model weights (TiKick actor.pt, DQN dqn_best.pt)
-│   ├── data/                     # Database files (football_sim.db)
-│   ├── reports/                  # Trajectories (.npz), JSON reports, MP4 videos
-│   │   ├── recordings/
-│   │   ├── season_reports/
-│   │   └── transfer_logs/
-│   ├── src/
-│   │   ├── api_fastapi.py        # REST API endpoints & WebSocket feeds
-│   │   ├── config.py             # System paths, constants & GPU configs
-│   │   ├── database/             # SQLAlchemy models & repository helpers
-│   │   ├── logic/                # Simulation core, adapter, trajectory & renderer
-│   │   ├── main.py               # Multi-season orchestrator CLI
-│   │   ├── ml/                   # Manager DQN policy, reward & state encoder
-│   │   ├── models/               # Domain models (Player, Team, League, Manager)
-│   │   └── schemas.py            # Pydantic v2 schemas
-│   └── tests/                    # Pytest verification test suite
-├── frontend/
-│   ├── src/
-│   │   ├── components/           # FormationViewer, Pitch, MatchVideoReplay
-│   │   ├── pages/                # Dashboard, Squad, Tactics, Replays, Benchmarks
-│   │   ├── services/             # Axios API client & WebSocket connections
-│   │   └── store/                # Zustand state management
-│   ├── package.json
-│   └── vite.config.ts
-└── docs/                         # System Documentation & Developer Guides
-```
+1. Simulation/render work is not a durable queue with leases.
+2. The worker pool has a dequeue-before-ownership crash window.
+3. Match/artifact lookup is not uniformly run-scoped across all compatibility routes.
+4. `api_fastapi.py` mixes routing, persistence, filesystem access, report construction, and orchestration.
+5. Alembic cannot bootstrap an empty database.
+6. Timeline metadata is not exact for every renderer.
+7. Full-state archive deserialization is safe only for trusted local artifacts.

@@ -80,7 +80,7 @@ def test_worker_crash_resilience():
     ]
 
     try:
-        pool.run_batch(fixtures, ckpt_path="/tmp/nonexistent_actor.pt", tikick_dir=TIKICK_DIR, max_steps=50)
+        pool.run_batch(fixtures, ckpt_path=str(RESILIENCE_DIR / "nonexistent_actor.pt"), tikick_dir=TIKICK_DIR, max_steps=50)
         assert False, "Should have raised RuntimeError from worker crash"
     except RuntimeError as ex:
         print(f"\n[+] 2. Successfully caught worker failure cleanly: {ex}")
@@ -90,7 +90,7 @@ def test_worker_crash_resilience():
 def _dying_worker_target():
     # Simulate abrupt OS crash
     time.sleep(0.1)
-    os.kill(os.getpid(), signal.SIGKILL)
+    os.kill(os.getpid(), getattr(signal, "SIGKILL", signal.SIGTERM))
 
 
 def test_worker_timeout_or_termination():
@@ -119,7 +119,7 @@ def test_worker_timeout_or_termination():
 def test_encoder_pipe_resilience():
     """4. Validates that closed/broken FFmpeg pipe is detected without hanging."""
     encoder = create_encoder("software")
-    encoder.start(width=64, height=64, fps=10, output_mp4="/tmp/test_pipe_resilience.mp4")
+    encoder.start(width=64, height=64, fps=10, output_mp4=str(RESILIENCE_DIR / "test_pipe_resilience.mp4"))
 
     if encoder.proc:
         encoder.proc.kill()
@@ -165,7 +165,7 @@ def test_queue_consumer_death_resilience():
 
 def test_renderer_error_isolation():
     """6. Validates that a rendering fault does not corrupt original state archives."""
-    test_state = "/tmp/test_render_iso.grfstate"
+    test_state = str(RESILIENCE_DIR / "test_render_iso.grfstate")
     writer = GRFStateArchiveWriter(test_state, match_id="render_iso_m01", chunk_size=5)
     for i in range(10):
         writer.append(f"state_{i}".encode("utf-8") * 20)
@@ -184,8 +184,8 @@ def test_renderer_error_isolation():
         pipeline.render_match({
             "match_id": "render_iso_m01",
             "states_file": test_state,
-            "trajectory_file": "/tmp/nonexistent.npz",
-            "output_mp4": "/tmp/test_render_iso.mp4"
+            "trajectory_file": str(RESILIENCE_DIR / "nonexistent.npz"),
+            "output_mp4": str(RESILIENCE_DIR / "test_render_iso.mp4")
         })
     except Exception as ex:
         caught = True
@@ -203,7 +203,7 @@ def test_renderer_error_isolation():
 
 def test_disk_full_cleanup_resilience():
     """7. Validates that disk ENOSPC or write permission errors clean up temporary files."""
-    test_path = "/tmp/test_enospc.grfstate"
+    test_path = str(RESILIENCE_DIR / "test_enospc.grfstate")
     caught = False
     try:
         with patch("builtins.open", side_effect=OSError(28, "No space left on device")):

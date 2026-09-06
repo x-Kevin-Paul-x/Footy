@@ -22,8 +22,21 @@ from logic.simulation.simulation_process_pool import SimulationProcessPool
 from logic.simulation.policy_backend import CPUSinglePolicy
 from logic.grf_trajectory import MatchTrajectory
 
+import tempfile
+import pytest
+try:
+    import gfootball.env as football_env
+except ImportError:
+    football_env = None
+
+pytestmark = pytest.mark.skipif(
+    football_env is None,
+    reason="Google Research Football (gfootball) is not installed on this host. Run inside WSL/Linux."
+)
+
 CKPT_PATH = os.getenv("FOOTY_CHECKPOINT", str(REPO_ROOT / "checkpoints" / "tikick" / "actor.pt"))
 TIKICK_DIR = os.getenv("FOOTY_TIKICK_DIR", str(REPO_ROOT / "third_party" / "tikick"))
+EQUIV_DIR = Path(tempfile.gettempdir()) / "equiv_traces"
 
 
 def create_test_fixtures(count: int = 4, max_steps: int = 200):
@@ -39,8 +52,8 @@ def create_test_fixtures(count: int = 4, max_steps: int = 200):
             "home_formation": "4-3-3",
             "away_formation": "4-2-3-1",
             "seed_val": 42 + i,
-            "trace_npz": f"/tmp/equiv_traces/{m_id}.npz",
-            "states_file": f"/tmp/equiv_traces/{m_id}.grfstate",
+            "trace_npz": str(EQUIV_DIR / f"{m_id}.npz"),
+            "states_file": str(EQUIV_DIR / f"{m_id}.grfstate"),
         })
     return fixtures
 
@@ -63,7 +76,7 @@ def run_sequential_baseline(fixtures, max_steps=200):
 
 
 def test_simulation_pool_equivalence():
-    os.makedirs("/tmp/equiv_traces", exist_ok=True)
+    EQUIV_DIR.mkdir(parents=True, exist_ok=True)
     MAX_STEPS = 200
     fixtures = create_test_fixtures(count=4, max_steps=MAX_STEPS)
 

@@ -122,7 +122,8 @@ class GRFNativeRunner:
 
         trace_npz_win = run_dir / f"trace_{m_id}.npz"
         trace_dump_win = run_dir / f"trace_{m_id}.dump"
-        output_mp4_win = run_dir / f"match_{m_id}.mp4"
+        requested_video_mode = "2d" if str(render_mode).lower() == "2d" else "3d"
+        output_mp4_win = run_dir / f"match_{m_id}_{requested_video_mode}.mp4"
         trace_grfstate_win = run_dir / f"trace_{m_id}.grfstate"
 
         # Build tactics and player profiles from Footy domain objects
@@ -166,12 +167,12 @@ class GRFNativeRunner:
             "record_grf_states": should_record_states,
             "record_dump": bool(record_dump),
             "seed_val": seed_val,
+            "request_id": f"{eff_run_id}:{m_id}:{seed_val}:{requested_video_mode}",
         }
-        is_3d_render = (render_mode == "3d") or (render_video and render_mode != "2d")
+        is_3d_render = bool(render_video and render_mode != "2d")
         payload["render_mode"] = "3d" if is_3d_render else "2d"
         payload["record_3d_video"] = is_3d_render
-        payload["record_dump"] = True
-        payload["record_dump"] = True
+        payload["record_dump"] = bool(record_dump or is_3d_render)
 
         # 1. Try communicating with persistent daemon if active (fastest, for headless 2d)
         sim_res = None
@@ -179,19 +180,27 @@ class GRFNativeRunner:
             sim_res = self._try_daemon_simulate(payload)
 
         if sim_res is None:
+            payload_file = run_dir / f"sim_payload_{m_id}_{os.getpid()}_{time.time_ns()}.json"
+            payload_file.write_text(json.dumps(payload), encoding="utf-8")
             # 2. One-shot worker command (run with xvfb-run for 3D live rendering)
             if is_3d_render:
                 cmd = [
                     "wsl", "-u", "root", "xvfb-run", "-a", "-s", "-screen 0 1280x720x24",
-                    self.wsl_python, self.sim_worker_wsl, json.dumps(payload)
+                    self.wsl_python, self.sim_worker_wsl, to_wsl_path(payload_file)
                 ]
             else:
                 cmd = [
                     "wsl", "-u", "root", self.wsl_python,
-                    self.sim_worker_wsl, json.dumps(payload)
+                    self.sim_worker_wsl, to_wsl_path(payload_file)
                 ]
             logger.info("GRF Simulator: running simulation (3d=%s) for match=%s", is_3d_render, m_id)
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=360)
+            try:
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=360)
+            finally:
+                try:
+                    payload_file.unlink()
+                except FileNotFoundError:
+                    pass
             if "MATCH_SIM_RESULT_JSON:" in res.stdout:
                 json_str = res.stdout.split("MATCH_SIM_RESULT_JSON:")[1].splitlines()[0]
                 sim_res = json.loads(json_str)
@@ -199,23 +208,53 @@ class GRFNativeRunner:
                 logger.error("GRF Simulator error:\nSTDOUT: %s\nSTDERR: %s", res.stdout, res.stderr)
                 raise RuntimeError(f"GRF simulation execution failed: {res.stderr or res.stdout}")
 
-        # If 3d live video was generated directly during simulation, it's already in sim_res["video_url"]!
-        if render_video and not sim_res.get("video_url"):
+        # If render_video was not requested, clear any default video_url in manifest
+        if not render_video:
+            sim_res["video_url"] = None
+        elif not sim_res.get("video_url"):
+            # If 3d live video was generated directly during simulation, it's already in sim_res["video_url"]!
             render_out = self.render_replay(
                 match_id=m_id,
                 home_team=h_name,
                 away_team=a_name,
                 trajectory_file=str(trace_npz_win),
+                dump_file=str(trace_dump_win) if trace_dump_win.exists() else None,
+                states_file=str(trace_grfstate_win) if trace_grfstate_win.exists() else None,
                 home_players=home_players,
                 away_players=away_players,
                 home_formation=home_formation,
                 away_formation=away_formation,
                 home_color=_home_color,
                 away_color=_away_color,
+                output_mp4=str(output_mp4_win),
                 mode=render_mode,
             )
-            sim_res["video_url"] = render_out.get("video_url", f"/recordings/match_{m_id}.mp4")
+            sim_res["video_url"] = render_out.get(
+                "video_url", f"/recordings/match_{m_id}_{requested_video_mode}.mp4"
+            )
             sim_res["render_mode_used"] = render_out.get("render_mode_used", render_mode)
+
+        # Mirror generated artifacts to root RECORDINGS_DIR for backward compatibility
+        if run_dir != RECORDINGS_DIR:
+            import shutil
+            root_npz = RECORDINGS_DIR / f"trace_{m_id}.npz"
+            root_grfstate = RECORDINGS_DIR / f"trace_{m_id}.grfstate"
+            root_mp4 = RECORDINGS_DIR / output_mp4_win.name
+            if trace_npz_win.exists():
+                try:
+                    shutil.copy2(trace_npz_win, root_npz)
+                except Exception:
+                    pass
+            if trace_grfstate_win.exists():
+                try:
+                    shutil.copy2(trace_grfstate_win, root_grfstate)
+                except Exception:
+                    pass
+            if output_mp4_win.exists() and not root_mp4.exists():
+                try:
+                    shutil.copy2(output_mp4_win, root_mp4)
+                except Exception:
+                    pass
 
         return sim_res
 
@@ -269,7 +308,8 @@ class GRFNativeRunner:
         """
         RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
         m_id = str(match_id)
-        out_win = to_win_path(output_mp4) or (RECORDINGS_DIR / f"match_{m_id}.mp4")
+        mode_suffix = "2d" if mode == "2d" else "3d"
+        out_win = to_win_path(output_mp4) or (RECORDINGS_DIR / f"match_{m_id}_{mode_suffix}.mp4")
         traj_win = to_win_path(trajectory_file) or (RECORDINGS_DIR / f"trace_{m_id}.npz")
         dump_win = to_win_path(dump_file) or (RECORDINGS_DIR / f"trace_{m_id}.dump")
         prog_win = RECORDINGS_DIR / f"progress_{m_id}.json"
@@ -285,6 +325,54 @@ class GRFNativeRunner:
                 if candidate.exists():
                     states_win = candidate
                     break
+
+        # Check if 3D broadcast video already exists from live simulation
+        existing_3d_video = None
+        if mode in ("3d", "auto") and out_win.name.endswith("_3d.mp4") and out_win.exists() and out_win.stat().st_size > 0:
+            existing_3d_video = out_win
+        elif (RECORDINGS_DIR / f"match_{m_id}_3d.mp4").exists() and (RECORDINGS_DIR / f"match_{m_id}_3d.mp4").stat().st_size > 0:
+            existing_3d_video = RECORDINGS_DIR / f"match_{m_id}_3d.mp4"
+        else:
+            for run_dir in RECORDINGS_DIR.glob("run_*"):
+                cand = run_dir / f"match_{m_id}_3d.mp4"
+                if cand.exists() and cand.stat().st_size > 0:
+                    existing_3d_video = cand
+                    break
+
+        if mode in ("3d", "auto") and existing_3d_video is not None:
+            logger.info("GRF Renderer: serving existing 3D broadcast video from simulation for match=%s: %s", m_id, existing_3d_video)
+            from logic.grf_trajectory import MatchTrajectory
+            traj = MatchTrajectory.load_from_npz(traj_win) if traj_win.exists() else None
+            try:
+                rel_path = existing_3d_video.relative_to(RECORDINGS_DIR).as_posix()
+            except Exception:
+                rel_path = existing_3d_video.name
+            video_url = f"/recordings/{rel_path}"
+
+            try:
+                with open(prog_win, "w", encoding="utf-8") as pf:
+                    json.dump({
+                        "status": "completed", "progress": 100, "step": traj.total_steps if traj else 1200,
+                        "total_steps": traj.total_steps if traj else 1200, "match_minute": 90,
+                        "stage": "3D Replay Available",
+                        "video_url": video_url, "score": list(traj.manifest.score) if traj else [0, 0], "completed": True
+                    }, pf)
+            except Exception:
+                pass
+
+            return {
+                "match_id": str(m_id),
+                "requested_render_mode": mode,
+                "render_mode_used": "3d",
+                "render_source": "live_simulation_3d",
+                "home_team": traj.manifest.home_team if traj else home_team,
+                "away_team": traj.manifest.away_team if traj else away_team,
+                "score": list(traj.manifest.score) if traj else [0, 0],
+                "possession": list(traj.manifest.possession) if traj else [50.0, 50.0],
+                "shots": list(traj.manifest.shots) if traj else [0, 0],
+                "events": traj.manifest.events if traj else [],
+                "video_url": video_url,
+            }
 
         # 2D Tactical Replay Mode
         if mode == "2d":

@@ -13,6 +13,7 @@ from pathlib import Path
 
 from logic.grf_native_runner import GRFNativeRunner
 from logic.grf_trajectory import MatchTrajectory
+from config import RECORDINGS_DIR
 
 
 def test_batch_equivalence_and_rnn_isolation():
@@ -32,7 +33,7 @@ def test_batch_equivalence_and_rnn_isolation():
         "away_formation": "4-2-3-1",
         "seed_val": seed_a,
         "created_at": "2026-01-01T00:00:00Z",
-        "trace_npz": "backend/reports/recordings/trace_test_eq_match_A.npz"
+        "trace_npz": str(RECORDINGS_DIR / "trace_test_eq_match_A.npz")
     }
     fixture_b = {
         "match_id": "test_eq_match_B",
@@ -42,7 +43,7 @@ def test_batch_equivalence_and_rnn_isolation():
         "away_formation": "4-2-3-1",
         "seed_val": seed_b,
         "created_at": "2026-01-01T00:00:00Z",
-        "trace_npz": "backend/reports/recordings/trace_test_eq_match_B.npz"
+        "trace_npz": str(RECORDINGS_DIR / "trace_test_eq_match_B.npz")
     }
 
     # 1. Run Match A in single mode (1-match batch)
@@ -81,7 +82,7 @@ def test_batch_early_termination_isolation():
         "seed_val": seed_b,
         "max_steps": 120,
         "created_at": "2026-01-01T00:00:00Z",
-        "trace_npz": "backend/reports/recordings/trace_test_b_target.npz"
+        "trace_npz": str(RECORDINGS_DIR / "trace_test_b_target.npz")
     }
 
     # Match B simulated alone for 120 steps
@@ -95,7 +96,7 @@ def test_batch_early_termination_isolation():
         "seed_val": 111111,
         "max_steps": 30,
         "created_at": "2026-01-01T00:00:00Z",
-        "trace_npz": "backend/reports/recordings/trace_test_a_short.npz"
+        "trace_npz": str(RECORDINGS_DIR / "trace_test_a_short.npz")
     }
 
     batch_results = runner.simulate_batch(fixtures=[fixture_a_short, fixture_b], max_steps=120)

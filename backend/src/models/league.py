@@ -24,6 +24,7 @@ class League:
         self.historical_standings = []
         self.season_year = datetime.now().year
         self.schedule = []  # Store the match schedule
+        self.schedule_rounds = []  # Chronological matchdays; one fixture per team per round
         
         # Database attributes
         self.league_id = None
@@ -70,21 +71,51 @@ class League:
         return league
 
     def generate_schedule(self):
-        """Create a proper double round-robin schedule"""
-        fixtures = []
-        teams = self.teams
-        n = len(teams)
-        
-        # Create home/away matches for each unique pair
-        for i in range(n):
-            for j in range(n):
-                if i != j:
-                    fixtures.append((teams[i], teams[j]))
-        
-        # Randomize match order to create realistic schedule
-        random.shuffle(fixtures)
-        self.schedule = fixtures
-        self.matches = fixtures  # Keep both for compatibility
+        """Create chronological double round-robin matchdays.
+
+        ``schedule_rounds`` is the authoritative calendar. ``schedule`` remains a
+        flattened compatibility view for reports and older callers.  The circle
+        method guarantees that a club appears at most once per round.
+        """
+        teams = list(self.teams)
+        if len(teams) < 2:
+            self.schedule_rounds = []
+            self.schedule = []
+            self.matches = []
+            return
+
+        bye = None
+        if len(teams) % 2:
+            teams.append(bye)
+
+        rotation = teams[:]
+        first_half = []
+        rounds_count = len(rotation) - 1
+        matches_per_round = len(rotation) // 2
+
+        for round_index in range(rounds_count):
+            matchday = []
+            for pair_index in range(matches_per_round):
+                left = rotation[pair_index]
+                right = rotation[-(pair_index + 1)]
+                if left is bye or right is bye:
+                    continue
+
+                # Alternate the fixed team's venue and invert the other pairs to
+                # avoid long home/away streaks while retaining deterministic order.
+                if pair_index == 0:
+                    home, away = (left, right) if round_index % 2 == 0 else (right, left)
+                else:
+                    home, away = (right, left) if (round_index + pair_index) % 2 == 0 else (left, right)
+                matchday.append((home, away))
+
+            first_half.append(matchday)
+            rotation = [rotation[0], rotation[-1], *rotation[1:-1]]
+
+        second_half = [[(away, home) for home, away in matchday] for matchday in first_half]
+        self.schedule_rounds = first_half + second_half
+        self.schedule = [fixture for matchday in self.schedule_rounds for fixture in matchday]
+        self.matches = self.schedule  # Backward-compatible flattened view
 
     def derive_match_seed(self, home_team, away_team) -> int:
         """Canonical seed derivation function guaranteeing identical seeds across execution backends."""
@@ -631,13 +662,18 @@ class League:
 
         return best_players_data
 
-    def increment_season(self):
-        """Advance to new season and age all players."""
+    def increment_season(self, process_contracts=True):
+        """Advance to a new season and age all players.
+
+        ``process_contracts`` is false when the owning TransferMarket already
+        processed renewals and expiries at the end of the completed season.
+        """
         self.season_year += 1
 
         # Process contract renewals and expiries FIRST (before aging causes retirement)
         # This prevents players from being removed before contracts can be renewed
-        self._process_all_contracts()
+        if process_contracts:
+            self._process_all_contracts()
 
         # Age all players and retire old ones
         retirement_age = 36

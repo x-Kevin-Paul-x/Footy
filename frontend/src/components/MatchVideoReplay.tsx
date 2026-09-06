@@ -24,7 +24,7 @@ import SpeedIcon from "@mui/icons-material/Speed";
 import MemoryIcon from "@mui/icons-material/Memory";
 import HourglassTopIcon from "@mui/icons-material/HourglassTop";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
-import { getMatchRenderStatus } from "../services/api";
+import { getMatchRenderStatus, getMatchTimeline, type PresentationTimeline } from "../services/api";
 
 interface MatchVideoReplayProps {
   videoUrl?: string | null;
@@ -42,7 +42,9 @@ const resolveVideoUrl = (url?: string | null): string => {
   if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("blob:")) {
     return url;
   }
-  const base = process.env.VITE_API_BASE_URL?.trim() || "http://localhost:5001";
+  const base = window.localStorage.getItem("footy_api_url")?.trim()
+    || import.meta.env.VITE_API_BASE_URL?.trim()
+    || (import.meta.env.DEV ? "http://localhost:5001" : window.location.origin);
   const cleanBase = base.replace(/\/+$/, "");
   const cleanPath = url.replace(/^\/+/, "");
   return `${cleanBase}/${cleanPath}`;
@@ -74,14 +76,28 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
   const [matchMinute, setMatchMinute] = useState<number>(0);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [liveScore, setLiveScore] = useState<[number, number]>(score);
+  const [timeline, setTimeline] = useState<PresentationTimeline | null>(null);
+
+  // Load canonical presentation timeline for sample-accurate seeking (P3.1)
+  useEffect(() => {
+    let active = true;
+    getMatchTimeline(String(matchId)).then((data) => {
+      if (active && data) {
+        setTimeline(data);
+      }
+    }).catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [matchId, activeVideoUrl]);
 
   // Synchronize when videoUrl prop changes
   useEffect(() => {
-    if (videoUrl) {
-      setActiveVideoUrl(videoUrl);
-      setIsActivelyRendering(false);
-    }
-  }, [videoUrl]);
+    setActiveVideoUrl(videoUrl || null);
+    setIsActivelyRendering(false);
+    setRenderProgress(0);
+    setElapsedSeconds(0);
+  }, [videoUrl, matchId]);
 
   // Synchronize when isGenerating prop changes
   useEffect(() => {
@@ -93,13 +109,14 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
 
   // Status Polling and Mount Check
   useEffect(() => {
-    let timerInterval: any = null;
-    let pollInterval: any = null;
+    let timerInterval: ReturnType<typeof setInterval> | null = null;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    let disposed = false;
 
     const checkStatus = async () => {
       try {
         const statusData = await getMatchRenderStatus(String(matchId));
-        if (statusData) {
+        if (!disposed && statusData) {
           if (statusData.completed && statusData.video_url) {
             setActiveVideoUrl(statusData.video_url);
             setIsActivelyRendering(false);
@@ -132,10 +149,10 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
         setElapsedSeconds((prev) => prev + 1);
       }, 1000);
 
-      pollInterval = setInterval(async () => {
+      const poll = async () => {
         try {
           const statusData = await getMatchRenderStatus(String(matchId));
-          if (statusData) {
+          if (!disposed && statusData) {
             if (statusData.completed && statusData.video_url) {
               setActiveVideoUrl(statusData.video_url);
               setIsActivelyRendering(false);
@@ -152,12 +169,17 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
         } catch {
           // Ignore transient poll error
         }
-      }, 800);
+        if (!disposed && (isGenerating || isActivelyRendering)) {
+          pollTimer = setTimeout(poll, 1500);
+        }
+      };
+      pollTimer = setTimeout(poll, 500);
     }
 
     return () => {
+      disposed = true;
       if (timerInterval) clearInterval(timerInterval);
-      if (pollInterval) clearInterval(pollInterval);
+      if (pollTimer) clearTimeout(pollTimer);
     };
   }, [isGenerating, isActivelyRendering, matchId, activeVideoUrl]);
 
@@ -180,10 +202,35 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
 
   const handleSeekToMinute = (minute: number) => {
     if (!videoRef.current || duration === 0) return;
-    const targetTime = (minute / 90) * duration;
-    videoRef.current.currentTime = Math.max(0, Math.min(duration, targetTime - 2));
+    let targetTime = (minute / 90) * duration;
+    if (timeline?.minute_to_pts && timeline.minute_to_pts[String(minute)] !== undefined) {
+      targetTime = timeline.minute_to_pts[String(minute)];
+    }
+    videoRef.current.currentTime = Math.max(0, Math.min(duration, targetTime - 1.5));
     videoRef.current.play();
     setIsPlaying(true);
+  };
+
+  const handleSeekToEvent = (evt: { minute: number; type: string; player?: string; team?: string; details?: string; step?: number }) => {
+    if (!videoRef.current || duration === 0) return;
+    if (timeline?.events_pts_map) {
+      const keys = [
+        (evt as any).id ? String((evt as any).id) : null,
+        evt.step !== undefined ? String(evt.step) : null,
+        String(evt.minute)
+      ].filter(Boolean) as string[];
+
+      for (const k of keys) {
+        if (timeline.events_pts_map[k] !== undefined) {
+          const pts = timeline.events_pts_map[k];
+          videoRef.current.currentTime = Math.max(0, Math.min(duration, pts - 1.5));
+          videoRef.current.play();
+          setIsPlaying(true);
+          return;
+        }
+      }
+    }
+    handleSeekToMinute(evt.minute);
   };
 
   const isDisplayingHUD = (isGenerating || isActivelyRendering) && !activeVideoUrl;
@@ -217,7 +264,7 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
           <VideocamIcon sx={{ color: theme.palette.primary.main }} />
           <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
-            3D Broadcast Replay • Google Research Football AI
+            {renderMode.toUpperCase()} Broadcast Replay • Google Research Football AI
           </Typography>
           <Chip
             label={`${homeTeam} ${score[0]} - ${score[1]} ${awayTeam} (#${matchId})`}
@@ -321,7 +368,7 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
                       key={idx}
                       icon={<SportsSoccerIcon sx={{ fontSize: 16 }} />}
                       label={`${evt.minute}' ${evt.team === "home" ? homeTeam : awayTeam}: ${evt.player || "Goal"}`}
-                      onClick={() => handleSeekToMinute(evt.minute)}
+                      onClick={() => handleSeekToEvent(evt)}
                       clickable
                       color="primary"
                       variant="outlined"

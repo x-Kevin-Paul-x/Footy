@@ -1,5 +1,5 @@
-from pydantic import BaseModel, ConfigDict
-from typing import List, Dict, Any, Optional
+from pydantic import BaseModel, ConfigDict, Field
+from typing import List, Dict, Any, Optional, Literal
 
 class TeamRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -38,6 +38,7 @@ class TransferReportSummary(BaseModel):
 class SimulationStatusResponse(BaseModel):
     status: str
     message: str
+    run_id: Optional[str] = None
 
 class SaveStateItem(BaseModel):
     save_id: str
@@ -57,16 +58,16 @@ class WebSocketEventFrame(BaseModel):
 
 
 class MatchSimulationRequest(BaseModel):
-    match_id: Optional[str] = None
-    home_team_name: str = "Arsenal"
-    away_team_name: str = "Chelsea"
-    home_formation: str = "4-3-3"
-    away_formation: str = "4-2-3-1"
+    match_id: Optional[str] = Field(default=None, max_length=128, pattern=r"^[A-Za-z0-9_.-]+$")
+    home_team_name: str = Field(default="Arsenal", min_length=1, max_length=100)
+    away_team_name: str = Field(default="Chelsea", min_length=1, max_length=100)
+    home_formation: str = Field(default="4-3-3", max_length=20)
+    away_formation: str = Field(default="4-2-3-1", max_length=20)
     generate_video: bool = False
-    max_steps: int = 1200
+    max_steps: int = Field(default=1200, ge=100, le=5000)
     record_grf_states: Optional[bool] = None
     record_dump: bool = True
-    render_mode: str = "3d"
+    render_mode: Literal["3d", "2d", "auto"] = "3d"
 
 
 class MatchSimulationResponse(BaseModel):
@@ -85,7 +86,20 @@ class MatchSimulationResponse(BaseModel):
 
 
 class SimulationSettings(BaseModel):
-    default_render_mode: str = "3d"  # "3d" (Option 1 - Live Broadcast) or "2d" (Option 2 - Tactical Radar)
-    max_steps: int = 1200
+    default_render_mode: Literal["3d", "2d"] = "3d"
+    max_steps: int = Field(default=1200, ge=100, le=5000)
+    active_model: str = Field(default="dqn_best.pt", pattern=r"^[A-Za-z0-9_.-]+\.pt$")
 
 
+class MatchRenderRequest(BaseModel):
+    match_id: Optional[str] = Field(default=None, max_length=128)
+    render_mode: Literal["3d", "2d", "auto"] = "auto"
+    force: bool = False
+
+
+class MatchRenderResponse(BaseModel):
+    match_id: str
+    status: str
+    video_url: Optional[str] = None
+    render_mode_used: Optional[str] = None
+    message: Optional[str] = None

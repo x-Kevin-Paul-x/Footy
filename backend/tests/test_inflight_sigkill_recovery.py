@@ -25,9 +25,21 @@ from logic.simulation.simulation_process_pool import SimulationProcessPool
 from logic.simulation.simulation_worker import ReplayMode
 from logic.match_manifest import compute_file_sha256
 
+import tempfile
+import pytest
+try:
+    import gfootball.env as football_env
+except ImportError:
+    football_env = None
+
+pytestmark = pytest.mark.skipif(
+    football_env is None,
+    reason="Google Research Football (gfootball) is not installed on this host. Run inside WSL/Linux."
+)
+
 CKPT_PATH = os.getenv("FOOTY_CHECKPOINT", str(REPO_ROOT / "checkpoints" / "tikick" / "actor.pt"))
 TIKICK_DIR = os.getenv("FOOTY_TIKICK_DIR", str(REPO_ROOT / "third_party" / "tikick"))
-TEST_DIR = Path("/tmp/test_inflight_recovery")
+TEST_DIR = Path(tempfile.gettempdir()) / "test_inflight_recovery"
 
 
 def killer_thread_func(parent_pid: int, delay_sec: float = 1.5):
@@ -41,7 +53,7 @@ def killer_thread_func(parent_pid: int, delay_sec: float = 1.5):
         if workers:
             victim = workers[0]
             print(f"\n[WATCHDOG] Sending SIGKILL to in-flight worker PID {victim.pid}...")
-            os.kill(victim.pid, signal.SIGKILL)
+            os.kill(victim.pid, getattr(signal, "SIGKILL", signal.SIGTERM))
             print(f"[WATCHDOG] SIGKILL delivered successfully to PID {victim.pid}.\n")
     except Exception as ex:
         print(f"[WATCHDOG] Failed to deliver SIGKILL: {ex}")

@@ -552,55 +552,80 @@ def simulate_season_with_transfers(premier_league, transfer_market, run_id=None,
     # Generate schedule and play first half of season
     premier_league.generate_schedule()
     
-    # Play matches until January (concurrent multi-process matchdays)
+    # Play matches until January (concurrent fixtures within chronological matchdays)
     matches_played = 0
     total_matches = len(premier_league.schedule)
     recorded_match_ids = set()
-    january_start = total_matches // 2
-    matches_per_week = max(1, len(premier_league.teams) // 2)
-    chunk_size = matches_per_week * 2  # 2 matchdays = 20 matches concurrently
+    schedule_rounds = list(getattr(premier_league, "schedule_rounds", []))
+    if not schedule_rounds:
+        matches_per_week = max(1, len(premier_league.teams) // 2)
+        schedule_rounds = [
+            premier_league.schedule[i:i + matches_per_week]
+            for i in range(0, total_matches, matches_per_week)
+        ]
+    fixture_numbers = {
+        (id(home), id(away)): index + 1
+        for index, (home, away) in enumerate(premier_league.schedule)
+    }
+    january_round = len(schedule_rounds) // 2
     max_matches_limit = int(os.environ.get("FOOTY_MAX_MATCHES", "0"))
     if max_matches_limit > 0:
-        january_start = min(january_start, max_matches_limit)
+        limited_rounds = []
+        remaining = max_matches_limit
+        for round_fixtures in schedule_rounds:
+            if remaining <= 0:
+                break
+            limited_rounds.append(round_fixtures[:remaining])
+            remaining -= len(limited_rounds[-1])
+        schedule_rounds = limited_rounds
+        january_round = len(schedule_rounds) // 2
 
-    logger.info(f"\nPlaying first half of season ({january_start} matches)...")
-    for start_idx in range(0, january_start, chunk_size):
-        end_idx = min(start_idx + chunk_size, january_start)
-        matchday_batches = []
-        for m_start in range(start_idx, end_idx, matches_per_week):
-            m_end = min(m_start + matches_per_week, end_idx)
-            matchday_batches.append(premier_league.schedule[m_start:m_end])
+    def checkpoint_run() -> None:
+        if not run_id:
+            return
+        from database.db_setup import simulation_cancel_requested, update_simulation_run
+        from database.models import Match as DBMatch
+        if simulation_cancel_requested(run_id):
+            raise RuntimeError(f"Simulation run {run_id} was cancelled")
+        with get_db_session() as db:
+            persisted = db.query(DBMatch).filter(DBMatch.simulation_run_id == run_id).count()
+        update_simulation_run(run_id, matches_played=persisted)
+
+    first_half_matches = sum(len(r) for r in schedule_rounds[:january_round])
+    logger.info(f"\nPlaying first half of season ({first_half_matches} matches)...")
+    for round_chunk_start in range(0, january_round, 2):
+        checkpoint_run()
+        matchday_batches = schedule_rounds[round_chunk_start:min(round_chunk_start + 2, january_round)]
 
         all_batch_results = premier_league.play_matchdays_concurrent(
             matchday_batches, max_workers=2, run_id=run_id, render_mode=render_mode
         )
 
         for md_offset, (batch, batch_results) in enumerate(zip(matchday_batches, all_batch_results)):
-            curr_start = start_idx + md_offset * matches_per_week
-            matchday = curr_start // matches_per_week
+            matchday = round_chunk_start + md_offset
             season_start = datetime(premier_league.season_year, 8, 1)
             scheduled_date = season_start + timedelta(days=7 * matchday)
 
             for idx_in_batch, match_result in enumerate(batch_results):
-                match_global_idx = curr_start + idx_in_batch
+                home_team, away_team = batch[idx_in_batch]
+                match_number = fixture_numbers[(id(home_team), id(away_team))]
                 if match_result is not None:
                     match_id = match_result.get("match_id")
                     if not match_id:
                         raise RuntimeError(
-                            f"Simulation result missing match_id for fixture index {match_global_idx}"
+                            f"Simulation result missing match_id for fixture {match_number}"
                         )
                     match_result['date'] = scheduled_date.isoformat()
                     recorded_match_ids.add(str(match_id))
                 save_match_to_db(
                     match_result,
                     premier_league.season_year,
-                    match_global_idx + 1,
+                    match_number,
                     simulation_run_id=run_id,
                     video_url=match_result.get("video_url") if match_result else None
                 )
                 matches_played += 1
 
-                home_team, away_team = batch[idx_in_batch]
                 if match_result:
                     attendance_factor = 1.0 if match_result['score'][0] >= match_result['score'][1] else 0.9
                     home_team.calculate_matchday_revenue(attendance_factor)
@@ -619,6 +644,7 @@ def simulate_season_with_transfers(premier_league, transfer_market, run_id=None,
 
             # Instantly sync updated league standings, team records, and player stats after every matchday
             sync_simulation_state_to_db(premier_league, transfer_market)
+            checkpoint_run()
             if max_matches_limit > 0 and matches_played >= max_matches_limit:
                 logger.info(f"Reached FOOTY_MAX_MATCHES limit of {max_matches_limit}. Stopping matchdays early.")
                 break
@@ -645,49 +671,46 @@ def simulate_season_with_transfers(premier_league, transfer_market, run_id=None,
     logger.info("=== JANUARY TRANSFER WINDOW CLOSED ===")
     print_transfer_summary(transfer_market)
     sync_simulation_state_to_db(premier_league, transfer_market)
+    premier_league.last_matches_played = matches_played
 
     # Play remaining matches
     if max_matches_limit > 0 and matches_played >= max_matches_limit:
         logger.info(f"Skipping second half of season due to FOOTY_MAX_MATCHES={max_matches_limit}.")
     else:
         logger.info(f"\nPlaying second half of season...")
-        for start_idx in range(january_start, total_matches, chunk_size):
-            end_idx = min(start_idx + chunk_size, total_matches)
-            matchday_batches = []
-            for m_start in range(start_idx, end_idx, matches_per_week):
-                m_end = min(m_start + matches_per_week, end_idx)
-                matchday_batches.append(premier_league.schedule[m_start:m_end])
+        for round_chunk_start in range(january_round, len(schedule_rounds), 2):
+            checkpoint_run()
+            matchday_batches = schedule_rounds[round_chunk_start:min(round_chunk_start + 2, len(schedule_rounds))]
 
             all_batch_results = premier_league.play_matchdays_concurrent(
                 matchday_batches, max_workers=2, run_id=run_id, render_mode=render_mode
             )
 
             for md_offset, (batch, batch_results) in enumerate(zip(matchday_batches, all_batch_results)):
-                curr_start = start_idx + md_offset * matches_per_week
-                matchday = curr_start // matches_per_week
+                matchday = round_chunk_start + md_offset
                 season_start = datetime(premier_league.season_year, 8, 1)
                 scheduled_date = season_start + timedelta(days=7 * matchday)
 
                 for idx_in_batch, match_result in enumerate(batch_results):
-                    match_global_idx = curr_start + idx_in_batch
+                    home_team, away_team = batch[idx_in_batch]
+                    match_number = fixture_numbers[(id(home_team), id(away_team))]
                     if match_result is not None:
                         match_id = match_result.get("match_id")
                         if not match_id:
                             raise RuntimeError(
-                                f"Simulation result missing match_id for fixture index {match_global_idx}"
+                                f"Simulation result missing match_id for fixture {match_number}"
                             )
                         match_result['date'] = scheduled_date.isoformat()
                         recorded_match_ids.add(str(match_id))
                     save_match_to_db(
                         match_result,
                         premier_league.season_year,
-                        match_global_idx + 1,
+                        match_number,
                         simulation_run_id=run_id,
                         video_url=match_result.get("video_url") if match_result else None
                     )
                     matches_played += 1
 
-                    home_team, away_team = batch[idx_in_batch]
                     if match_result:
                         attendance_factor = 1.0 if match_result['score'][0] >= match_result['score'][1] else 0.9
                         home_team.calculate_matchday_revenue(attendance_factor)
@@ -700,6 +723,7 @@ def simulate_season_with_transfers(premier_league, transfer_market, run_id=None,
 
                 # Instantly sync updated league standings, team records, and player stats after every matchday
                 sync_simulation_state_to_db(premier_league, transfer_market)
+                checkpoint_run()
                 if max_matches_limit > 0 and matches_played >= max_matches_limit:
                     break
             if max_matches_limit > 0 and matches_played >= max_matches_limit:
@@ -730,10 +754,11 @@ def simulate_season_with_transfers(premier_league, transfer_market, run_id=None,
         logger.info(f"\n{expired_contracts} players' contracts expired and became free agents")
 
     sync_simulation_state_to_db(premier_league, transfer_market)
+    checkpoint_run()
     
     return premier_league.get_final_table()
 
-def main(run_id: str = None, render_mode: str = None):
+def _run_main(run_id: str = None, render_mode: str = None):
     """Enhanced main function with run-scoped simulation"""
     from database.db_setup import init_simulation_run, clean_old_simulation_data, create_tables
     from database.session import get_db_session
@@ -758,7 +783,8 @@ def main(run_id: str = None, render_mode: str = None):
     logger.info(f"\nInitial Financial Overview (run_id={run_id}):")
     print_financial_summary(premier_league.teams)
     
-    for season in range(num_seasons):
+    completed_match_count = 0
+    for season_index in range(num_seasons):
         logger.info(f"\n{'='*60}")
         logger.info(f"SEASON {premier_league.season_year} (Run: {run_id})")
         logger.info(f"{'='*60}")
@@ -776,18 +802,8 @@ def main(run_id: str = None, render_mode: str = None):
         # Print results
         print_league_table(full_season_report['table'])
 
-    # Mark simulation run as completed
-    try:
-        with get_db_session() as db:
-            run_obj = db.query(SimulationRun).filter(SimulationRun.run_id == run_id).first()
-            if run_obj:
-                run_obj.status = "completed"
-                run_obj.matches_played = len(premier_league.schedule)
-                db.commit()
-    except Exception as e:
-        logger.warning(f"Notice on finalizing SimulationRun record: {e}")
-        print_league_table(full_season_report['table'])
-        
+        completed_match_count += int(getattr(premier_league, "last_matches_played", len(premier_league.schedule)))
+
         # Enhanced reporting
         champions_name = full_season_report['champions']
         logger.info(f"\n Premier League Champions: {champions_name}!")
@@ -842,6 +858,10 @@ def main(run_id: str = None, render_mode: str = None):
             }
         }
 
+        report_filename.write_text(
+            json.dumps(enhanced_report, indent=2, default=str),
+            encoding="utf-8",
+        )
         save_season_report_to_db(premier_league.season_year, champions_name, enhanced_report)
 
         transfer_report_data = {
@@ -852,11 +872,48 @@ def main(run_id: str = None, render_mode: str = None):
         }
         save_transfer_report_to_db(premier_league.season_year, transfer_report_data)
 
-        # Increment to next season
-        premier_league.increment_season()
-        transfer_market.season_year = premier_league.season_year
-        
-        logger.info(f"\n Season {premier_league.season_year - 1} completed successfully!")
+        completed_season = premier_league.season_year
+        logger.info(f"\n Season {completed_season} completed successfully!")
+
+        # Contract expiry is processed by simulate_season_with_transfers. Avoid
+        # decrementing contracts a second time during the rollover.
+        if season_index < num_seasons - 1:
+            premier_league.increment_season(process_contracts=False)
+            transfer_market.season_year = premier_league.season_year
+
+    # Mark the overall run complete only after every requested season finalized.
+    try:
+        with get_db_session() as db:
+            run_obj = db.query(SimulationRun).filter(SimulationRun.run_id == run_id).first()
+            if run_obj:
+                run_obj.status = "completed"
+                run_obj.matches_played = completed_match_count
+                run_obj.finished_at = datetime.now().astimezone().isoformat()
+                run_obj.heartbeat_at = run_obj.finished_at
+                run_obj.error_message = None
+    except Exception as e:
+        logger.warning(f"Notice on finalizing SimulationRun record: {e}")
+        raise
+
+
+def main(run_id: str = None, render_mode: str = None):
+    """Run a season and durably record terminal failure for managed runs."""
+    try:
+        return _run_main(run_id=run_id, render_mode=render_mode)
+    except Exception as exc:
+        if run_id:
+            try:
+                from datetime import timezone
+                from database.db_setup import simulation_cancel_requested, update_simulation_run
+                update_simulation_run(
+                    run_id,
+                    status="cancelled" if simulation_cancel_requested(run_id) else "failed",
+                    finished_at=datetime.now(timezone.utc).isoformat(),
+                    error_message=str(exc)[:2000],
+                )
+            except Exception as status_exc:
+                logger.error("Could not persist failure status for %s: %s", run_id, status_exc)
+        raise
 
 if __name__ == "__main__":
     main()

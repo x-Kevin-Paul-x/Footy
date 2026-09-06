@@ -441,7 +441,52 @@ def draw_pitch_frame_from_state(
     return annotated
 
 
+def _validate_and_publish_video(staging_path: str, output_path: str) -> None:
+    """Publish only a non-empty, decodable video produced in the target directory."""
+    if not os.path.exists(staging_path) or os.path.getsize(staging_path) == 0:
+        raise RuntimeError(f"Video encoder produced no output: {staging_path}")
+    probe = cv2.VideoCapture(staging_path)
+    try:
+        if not probe.isOpened() or int(probe.get(cv2.CAP_PROP_FRAME_COUNT)) <= 0:
+            raise RuntimeError(f"Video output failed decode validation: {staging_path}")
+    finally:
+        probe.release()
+    os.replace(staging_path, output_path)
+
+
 def render_video_from_trajectory(
+    trajectory: MatchTrajectory,
+    output_mp4: str,
+    progress_callback: Optional[Any] = None
+) -> str:
+    """Render to a partial file and atomically publish after decode validation."""
+    target = os.path.abspath(output_mp4)
+    os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
+    staging = f"{target}.partial.{os.getpid()}.mp4"
+    try:
+        _render_video_from_trajectory_to_path(trajectory, staging, progress_callback)
+        _validate_and_publish_video(staging, target)
+        try:
+            from logic.presentation_timeline import build_canonical_timeline
+            timeline = build_canonical_timeline(
+                match_id=str(trajectory.match_id),
+                total_steps=trajectory.total_steps,
+                events=trajectory.manifest.events,
+                fps=15.0,
+            )
+            timeline.save_to_file(Path(target).with_suffix(".timeline.json"))
+        except Exception as e:
+            logger.warning("Could not write presentation timeline: %s", e)
+    finally:
+        if os.path.exists(staging):
+            try:
+                os.remove(staging)
+            except OSError:
+                pass
+    return f"/recordings/{os.path.basename(target)}"
+
+
+def _render_video_from_trajectory_to_path(
     trajectory: MatchTrajectory,
     output_mp4: str,
     progress_callback: Optional[Any] = None
@@ -477,14 +522,16 @@ def render_video_from_trajectory(
         home_bgr=home_bgr, away_bgr=away_bgr
     )
     for _ in range(45):
-        writer.append_data(intro_card)
+        writer.append_data(cv2.cvtColor(intro_card, cv2.COLOR_BGR2RGB))
 
     goal_events_by_step = {}
     for ev in manifest.events:
         if ev.get("type") == "goal":
-            g_min = ev.get("minute", 0)
-            approx_step = int((g_min / 90.0) * total_steps)
-            goal_events_by_step[approx_step] = ev
+            event_step = ev.get("step")
+            if event_step is None:
+                event_step = int((float(ev.get("minute", 0)) / 90.0) * (total_steps - 1))
+            event_step = max(0, min(total_steps - 1, int(event_step)))
+            goal_events_by_step.setdefault(event_step, []).append(ev)
 
     goal_banner = None
     goal_banner_cd = 0
@@ -496,7 +543,7 @@ def render_video_from_trajectory(
 
         # Check for goal event trigger
         if step in goal_events_by_step:
-            gev = goal_events_by_step[step]
+            gev = goal_events_by_step[step][-1]
             scorer = gev.get("player", "Player")
             team_str = gev.get("team", "").upper()
             goal_banner = f"GOAL!  {scorer} ({team_str})  {match_min}'"
@@ -510,22 +557,23 @@ def render_video_from_trajectory(
             home_bgr=home_bgr, away_bgr=away_bgr,
             goal_banner=banner_to_show
         )
-        writer.append_data(frame)
+        writer.append_data(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
         replay_buffer.append(frame)
 
         # Slow-mo zoom action replay when goal is hit
         if step in goal_events_by_step and len(replay_buffer) >= 15:
             for _ in range(30):
-                writer.append_data(frame)
+                writer.append_data(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             recent_frames = list(replay_buffer)[-20:]
             for rf in recent_frames:
                 replay_annotated = draw_replay_frame(
                     rf, home_team, away_team, tuple(state["score"]),
                     match_min, home_bgr, away_bgr, state["is_second_half"], zoom_factor=1.35
                 )
-                writer.append_data(replay_annotated)
-                writer.append_data(replay_annotated)
+                replay_rgb = cv2.cvtColor(replay_annotated, cv2.COLOR_BGR2RGB)
+                writer.append_data(replay_rgb)
+                writer.append_data(replay_rgb)
 
         if goal_banner_cd > 0:
             goal_banner_cd -= 1
@@ -534,19 +582,34 @@ def render_video_from_trajectory(
 
         # Half-Time Studio Recap Card
         if step == (total_steps // 2):
+            half_events = [e for e in manifest.events if e.get("minute", 0) <= 45]
+            half_shots = [e for e in half_events if e.get("type") == "shot"]
+            h_half_shots = [e for e in half_shots if e.get("team") == "home"]
+            a_half_shots = [e for e in half_shots if e.get("team") == "away"]
+            if trajectory.ball_owned_team is not None:
+                ownership = trajectory.ball_owned_team[:step + 1]
+                h_owned = int(np.count_nonzero(ownership == 0))
+                a_owned = int(np.count_nonzero(ownership == 1))
+                owned_total = max(1, h_owned + a_owned)
+                h_half_poss = round(100.0 * h_owned / owned_total, 1)
+                a_half_poss = round(100.0 - h_half_poss, 1)
+            else:
+                h_half_poss, a_half_poss = 50.0, 50.0
             ht_card = draw_studio_stats_card(
                 w=1280, h=720, title="HALF TIME",
                 home_team=home_team, away_team=away_team,
                 score=tuple(state["score"]),
-                h_poss=manifest.possession[0], a_poss=manifest.possession[1],
-                h_shots=manifest.shots[0], a_shots=manifest.shots[1],
-                h_sot=manifest.shots_on_target[0], a_sot=manifest.shots_on_target[1],
-                h_xg=manifest.xg[0], a_xg=manifest.xg[1],
+                h_poss=h_half_poss, a_poss=a_half_poss,
+                h_shots=len(h_half_shots), a_shots=len(a_half_shots),
+                h_sot=sum(bool(e.get("on_target")) for e in h_half_shots),
+                a_sot=sum(bool(e.get("on_target")) for e in a_half_shots),
+                h_xg=sum(float(e.get("xg", 0.0)) for e in h_half_shots),
+                a_xg=sum(float(e.get("xg", 0.0)) for e in a_half_shots),
                 home_bgr=home_bgr, away_bgr=away_bgr,
-                events=[e for e in manifest.events if e.get("minute", 0) <= 45]
+                events=half_events
             )
             for _ in range(60):
-                writer.append_data(ht_card)
+                writer.append_data(cv2.cvtColor(ht_card, cv2.COLOR_BGR2RGB))
 
         # Progress Notification
         if progress_callback and (step % 50 == 0 or step == total_steps - 1):
@@ -574,13 +637,52 @@ def render_video_from_trajectory(
         motm_player=motm
     )
     for _ in range(75):
-        writer.append_data(ft_card)
+        writer.append_data(cv2.cvtColor(ft_card, cv2.COLOR_BGR2RGB))
 
     writer.close()
     return f"/recordings/{os.path.basename(output_mp4)}"
 
 
 def transcode_live_avi_to_broadcast_mp4(
+    raw_avi_path: str,
+    output_mp4_path: str,
+    manifest: MatchManifest,
+    home_color: Optional[str] = None,
+    away_color: Optional[str] = None,
+    progress_callback: Optional[Any] = None
+) -> str:
+    """Transcode safely, preserving the source and any prior published video."""
+    target = os.path.abspath(output_mp4_path)
+    os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
+    staging = f"{target}.partial.{os.getpid()}.mp4"
+    try:
+        _transcode_live_avi_to_path(
+            raw_avi_path, staging, manifest, home_color, away_color, progress_callback
+        )
+        _validate_and_publish_video(staging, target)
+        try:
+            from logic.presentation_timeline import build_canonical_timeline
+            timeline = build_canonical_timeline(
+                match_id=str(manifest.match_id),
+                total_steps=manifest.total_steps,
+                events=manifest.events,
+                fps=15.0,
+            )
+            timeline.save_to_file(Path(target).with_suffix(".timeline.json"))
+        except Exception as e:
+            logger.warning("Could not write presentation timeline: %s", e)
+    finally:
+        if os.path.exists(staging):
+            try:
+                os.remove(staging)
+            except OSError:
+                pass
+    out_norm = target.replace("\\", "/")
+    rel_path = out_norm.split("recordings/", 1)[-1] if "recordings/" in out_norm else os.path.basename(target)
+    return f"/recordings/{rel_path.lstrip('/')}"
+
+
+def _transcode_live_avi_to_path(
     raw_avi_path: str,
     output_mp4_path: str,
     manifest: MatchManifest,
@@ -630,16 +732,20 @@ def transcode_live_avi_to_broadcast_mp4(
         home_bgr=home_bgr, away_bgr=away_bgr
     )
     for _ in range(45):
-        writer.append_data(intro_card)
+        writer.append_data(cv2.cvtColor(intro_card, cv2.COLOR_BGR2RGB))
 
     goal_events_by_step = {}
+    sim_total_steps = getattr(manifest, "total_steps", None) or total_frames
     for ev in manifest.events:
         if ev.get("type") == "goal":
             s_idx = ev.get("step")
             if s_idx is None:
                 g_min = ev.get("minute", 0)
-                s_idx = int((g_min / 90.0) * total_frames)
-            goal_events_by_step.setdefault(s_idx, []).append(ev)
+                f_idx = int((g_min / 90.0) * total_frames)
+            else:
+                f_idx = int((s_idx / max(sim_total_steps, 1)) * total_frames)
+            f_idx = max(0, min(total_frames - 1, f_idx))
+            goal_events_by_step.setdefault(f_idx, []).append(ev)
 
     curr_score = [0, 0]
     goal_banner = None
@@ -648,7 +754,11 @@ def transcode_live_avi_to_broadcast_mp4(
     for step in range(total_frames):
         ret, frame_bgr = cap.read()
         if not ret or frame_bgr is None:
-            break
+            cap.release()
+            writer.close()
+            raise RuntimeError(
+                f"Recording ended early at frame {step}/{total_frames}: {raw_avi_path}"
+            )
 
         match_min = max(1, min(90, int((step / max(total_frames, 1)) * 90) + 1))
         is_second_half = step > (total_frames // 2)
@@ -659,13 +769,33 @@ def transcode_live_avi_to_broadcast_mp4(
                 g_team = g_ev.get("team", "home")
                 g_scorer = g_ev.get("player") or g_ev.get("scorer", "Goal")
                 g_min = g_ev.get("minute", match_min)
-                if g_team == "home":
+                g_score_str = g_ev.get("score")
+                if g_score_str and isinstance(g_score_str, str) and "-" in g_score_str:
+                    try:
+                        s_parts = g_score_str.split("-")
+                        curr_score[0] = int(s_parts[0])
+                        curr_score[1] = int(s_parts[1])
+                    except Exception:
+                        if g_team == "home":
+                            curr_score[0] += 1
+                        else:
+                            curr_score[1] += 1
+                elif g_team == "home":
                     curr_score[0] += 1
                 else:
                     curr_score[1] += 1
+
+                curr_score[0] = min(curr_score[0], manifest.home_score)
+                curr_score[1] = min(curr_score[1], manifest.away_score)
+
                 team_label = home_team if g_team == "home" else away_team
                 goal_banner = f"GOAL!  {g_scorer} ({team_label})  {g_min}'"
                 goal_banner_cd = 45
+
+        # Anti-drift guard: ensure final score matches manifest towards the end of match
+        if step >= total_frames - 10:
+            curr_score[0] = manifest.home_score
+            curr_score[1] = manifest.away_score
 
         # Resize frame if needed to 1280x720
         h_f, w_f = frame_bgr.shape[:2]
@@ -702,7 +832,7 @@ def transcode_live_avi_to_broadcast_mp4(
                 events=[e for e in manifest.events if e.get("minute", 0) <= 45]
             )
             for _ in range(45):
-                writer.append_data(ht_card)
+                writer.append_data(cv2.cvtColor(ht_card, cv2.COLOR_BGR2RGB))
 
         if progress_callback and (step % 50 == 0 or step == total_frames - 1):
             pct = min(98, 5 + int((step / max(total_frames - 1, 1)) * 93))
@@ -731,27 +861,16 @@ def transcode_live_avi_to_broadcast_mp4(
         motm_player=motm
     )
     for _ in range(60):
-        writer.append_data(ft_card)
+        writer.append_data(cv2.cvtColor(ft_card, cv2.COLOR_BGR2RGB))
 
     writer.close()
 
-    # Space Optimization: Remove intermediate raw AVI and redundant traces/dumps
-    try:
-        if os.path.exists(raw_avi_path):
-            os.remove(raw_avi_path)
-    except Exception:
-        pass
-
-    try:
-        dir_name = os.path.dirname(output_mp4_path)
-        m_id = manifest.match_id
-        # Remove redundant dumps, grfstates, and npz traces (the 3D video is already permanently saved)
-        for ext in [".dump", ".grfstate", "_states.grfstate", ".npz"]:
-            cand = os.path.join(dir_name, f"trace_{m_id}{ext}")
-            if os.path.exists(cand):
-                os.remove(cand)
-    except Exception:
-        pass
-
-    return f"/recordings/{os.path.basename(output_mp4_path)}"
+    out_norm = output_mp4_path.replace("\\", "/")
+    if "reports/recordings/" in out_norm:
+        rel_path = out_norm.split("reports/recordings/")[-1].lstrip("/")
+    elif "recordings/" in out_norm:
+        rel_path = out_norm.split("recordings/")[-1].lstrip("/")
+    else:
+        rel_path = os.path.basename(output_mp4_path)
+    return f"/recordings/{rel_path}"
 

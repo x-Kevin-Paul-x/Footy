@@ -30,6 +30,17 @@ from logic.simulation.policy_backend import CPUSinglePolicy
 from logic.replay.persistent_replay_engine import PersistentReplayEngine
 from logic.match_manifest import MatchManifest, compute_file_sha256, ArtifactLifecycle
 
+import pytest
+try:
+    import gfootball.env as football_env
+except ImportError:
+    football_env = None
+
+pytestmark = pytest.mark.skipif(
+    football_env is None,
+    reason="Google Research Football (gfootball) is not installed on this host. Run inside WSL/Linux."
+)
+
 CKPT_PATH = os.getenv("FOOTY_CHECKPOINT", str(REPO_ROOT / "checkpoints" / "tikick" / "actor.pt"))
 TIKICK_DIR = os.getenv("FOOTY_TIKICK_DIR", str(REPO_ROOT / "third_party" / "tikick"))
 E2E_DIR = Path(tempfile.gettempdir()) / "test_e2e_certification"

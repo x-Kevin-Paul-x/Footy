@@ -85,7 +85,7 @@ class GRFBatchRunner:
         for fix in fixtures:
             m_id = str(fix["match_id"])
             npz_win = run_dir / f"trace_{m_id}.npz"
-            mp4_win = run_dir / f"match_{m_id}.mp4"
+            mp4_win = run_dir / f"match_{m_id}_{'3d' if is_3d else '2d'}.mp4"
             wsl_fixtures.append({
                 "match_id": m_id,
                 "home_team": fix.get("home_team", "Home"),
@@ -112,7 +112,7 @@ class GRFBatchRunner:
                 "trace_dump": None,
                 "states_file": None,
                 "record_dump": False,
-                "record_3d_video": is_3d,
+                "record_3d_video": is_3d and bool(fix.get("render_video_sync", os.getenv("FOOTY_SYNC_VIDEO_RENDER", "0") in ("1", "true", "True"))),
                 "render_mode": eff_render_mode,
                 "seed_val": fix.get("seed_val"),
                 "created_at": fix.get("created_at"),
@@ -123,8 +123,9 @@ class GRFBatchRunner:
 
         payload_win = run_dir / f"batch_payload_{int(time.time()*1000)%100000}.json"
 
-        # Concurrency safety: 2 workers for 3D OpenGL rendering under WSL, 8 workers for 2D headless
-        num_workers = min(2, len(fixtures)) if is_3d else min(8, len(fixtures))
+        sync_video = any(f.get("record_3d_video") for f in wsl_fixtures)
+        # Decoupled simulation throughput: 8 workers for headless simulation, 2 workers if synchronous 3D rendering requested
+        num_workers = min(2, len(fixtures)) if sync_video else min(8, len(fixtures))
 
         try:
             payload_win.write_text(json.dumps({
@@ -135,7 +136,7 @@ class GRFBatchRunner:
                 "num_workers": num_workers,
             }), encoding="utf-8")
 
-            if is_3d:
+            if sync_video:
                 cmd = [
                     "wsl", "-u", "root", "xvfb-run", "-a", "-s", "-screen 0 1280x720x24",
                     self.wsl_python, self.batch_worker_wsl, to_wsl_path(payload_win)

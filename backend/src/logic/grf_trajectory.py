@@ -43,6 +43,22 @@ class MatchManifest:
     video_url: Optional[str] = None
     created_at: Optional[str] = None
 
+    def __post_init__(self):
+        if self.score is not None:
+            self.score = (int(self.score[0]), int(self.score[1]))
+        if self.possession is not None:
+            self.possession = (float(self.possession[0]), float(self.possession[1]))
+        if self.shots is not None:
+            self.shots = (int(self.shots[0]), int(self.shots[1]))
+        if self.shots_on_target is not None:
+            self.shots_on_target = (int(self.shots_on_target[0]), int(self.shots_on_target[1]))
+        if self.xg is not None:
+            self.xg = (float(self.xg[0]), float(self.xg[1]))
+        if self.passes_attempted is not None:
+            self.passes_attempted = (int(self.passes_attempted[0]), int(self.passes_attempted[1]))
+        if self.passes_completed is not None:
+            self.passes_completed = (int(self.passes_completed[0]), int(self.passes_completed[1]))
+
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
@@ -200,7 +216,8 @@ class MatchTrajectory:
     def get_frame_state(self, step: int) -> Dict[str, Any]:
         """Retrieve complete O(1) state snapshot for a specific simulation step."""
         idx = max(0, min(step, self.total_steps - 1))
-        match_min = max(1, min(90, int((idx / max(self.total_steps, 1)) * 90)))
+        denom = max(self.total_steps - 1, 1)
+        match_min = max(1, min(90, int((idx / denom) * 90)))
         state = {
             "step": idx,
             "match_minute": match_min,
@@ -237,7 +254,7 @@ class MatchTrajectory:
             "actions": self.actions.astype(np.uint8),
             "scores": self.scores.astype(np.uint8),
             "seed": np.array([self.seed], dtype=np.int64),
-            "manifest": np.array([manifest_json], dtype=object),
+            "manifest": np.array([manifest_json]),
         }
         if self.game_mode is not None:
             payload["game_mode"] = self.game_mode.astype(np.int8)

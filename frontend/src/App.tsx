@@ -152,6 +152,7 @@ function MainLayout({ mode, setMode, toast, setToast }: {
   const [unreadCount, setUnreadCount] = useState(3);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    if (localStorage.getItem('footy_enable_toasts') === 'false') return;
     setToast({ message, type });
   };
 

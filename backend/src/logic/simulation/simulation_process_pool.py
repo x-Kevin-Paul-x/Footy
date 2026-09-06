@@ -121,10 +121,11 @@ def _dynamic_queue_worker_runner(
                     obs, done, _ = worker.step(acts)
                 res = worker.finalize()
                 t_match_end = time.perf_counter()
-                res["match_duration_sec"] = round(t_match_end - t_match_start, 3)
+                res_dict = res.to_dict() if hasattr(res, "to_dict") else dict(res)
+                res_dict["match_duration_sec"] = round(t_match_end - t_match_start, 3)
                 if in_flight_dict is not None:
                     in_flight_dict[w_id] = None
-                result_queue.put({"success": True, "match_id": worker.match_id, "data": res})
+                result_queue.put({"success": True, "match_id": worker.match_id, "data": res_dict})
             except Exception as ex:
                 if in_flight_dict is not None:
                     in_flight_dict[w_id] = None
@@ -188,8 +189,9 @@ def _sync_worker_pipe_runner(
                 if done or worker.step_idx >= max_steps:
                     summary = worker.finalize()
                     t_match_end = time.perf_counter()
-                    summary["match_duration_sec"] = round(t_match_end - t_match_start, 3)
-                    pipe.send({"type": "done", "match_id": worker.match_id, "data": summary})
+                    summary_dict = summary.to_dict() if hasattr(summary, "to_dict") else dict(summary)
+                    summary_dict["match_duration_sec"] = round(t_match_end - t_match_start, 3)
+                    pipe.send({"type": "done", "match_id": worker.match_id, "data": summary_dict})
                     break
                 else:
                     pipe.send({"type": "obs", "match_id": worker.match_id, "obs": next_obs})
@@ -420,7 +422,12 @@ class SimulationProcessPool:
                     p.terminate()
                 p.join(timeout=1)
 
-        return [results_by_id[str(f["match_id"])] for f in fixtures]
+        return [
+            results_by_id[str(f["match_id"])].to_dict()
+            if hasattr(results_by_id[str(f["match_id"])], "to_dict")
+            else results_by_id[str(f["match_id"])]
+            for f in fixtures
+        ]
 
     def _run_central_batched_pool(
         self,
@@ -430,6 +437,17 @@ class SimulationProcessPool:
         max_steps: int,
         replay_mode: ReplayMode
     ) -> List[Dict[str, Any]]:
+        if len(fixtures) > self.num_workers:
+            results = []
+            for start in range(0, len(fixtures), self.num_workers):
+                chunk = fixtures[start:start + self.num_workers]
+                results.extend(
+                    self._run_central_batched_pool(
+                        chunk, ckpt_path, tikick_dir, max_steps, replay_mode
+                    )
+                )
+            return results
+
         ctx = mp.get_context("spawn")
         num_fixtures = len(fixtures)
         device = "cuda" if self.backend_type == "cuda_batch" else "cpu"

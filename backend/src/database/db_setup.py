@@ -24,10 +24,28 @@ def create_tables(db_file=DB_FILE):
                 cur.execute("ALTER TABLE Match ADD COLUMN simulation_run_id TEXT;")
             if "video_url" not in cols:
                 cur.execute("ALTER TABLE Match ADD COLUMN video_url TEXT;")
+            cur.execute("PRAGMA table_info(SimulationRun);")
+            run_cols = {col[1] for col in cur.fetchall()}
+            for column_name, definition in (
+                ("started_at", "TEXT"),
+                ("finished_at", "TEXT"),
+                ("heartbeat_at", "TEXT"),
+                ("cancel_requested", "INTEGER NOT NULL DEFAULT 0"),
+                ("error_message", "TEXT"),
+            ):
+                if column_name not in run_cols:
+                    cur.execute(f"ALTER TABLE SimulationRun ADD COLUMN {column_name} {definition};")
+            cur.execute("CREATE INDEX IF NOT EXISTS ix_match_season_number ON Match(season_year, match_number);")
+            cur.execute("CREATE INDEX IF NOT EXISTS ix_match_teams ON Match(season_year, home_team_id, away_team_id);")
+            cur.execute("CREATE INDEX IF NOT EXISTS ix_match_sim_run_id ON Match(simulation_run_id);")
+            cur.execute("CREATE INDEX IF NOT EXISTS ix_matchevent_match_id ON MatchEvent(match_id);")
+            cur.execute("CREATE INDEX IF NOT EXISTS ix_transfer_season_year ON TransferHistory(season_year);")
+            cur.execute("CREATE INDEX IF NOT EXISTS ix_player_team_id ON Player(team_id);")
+            cur.execute("CREATE INDEX IF NOT EXISTS ix_attr_player_id ON PlayerAttribute(player_id);")
             conn.commit()
             conn.close()
     except Exception as e:
-        logger.warning(f"Note on SQLite column addition: {e}")
+        logger.warning(f"Note on SQLite column/index addition: {e}")
 
 def reset_database(db_file=DB_FILE):
     """Drop all tables for a true fresh start."""
@@ -76,13 +94,20 @@ def init_simulation_run(season_year: int = 2026, render_mode: str = "3d", total_
     run_dir = RECORDINGS_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
+    now = datetime.now(timezone.utc).isoformat()
     with get_db_session() as db:
-        # Mark any previous running runs as archived/cancelled
-        db.query(SimulationRun).filter(SimulationRun.status == "running").update({"status": "archived"})
+        # A running row cannot survive a process restart. Preserve the record and
+        # make the interruption explicit instead of presenting it as archived.
+        db.query(SimulationRun).filter(SimulationRun.status == "running").update({
+            "status": "interrupted", "finished_at": now,
+            "error_message": "API process restarted before the run completed",
+        })
         new_run = SimulationRun(
             run_id=run_id,
             season_year=season_year,
-            created_at=datetime.now(timezone.utc).isoformat(),
+            created_at=now,
+            started_at=now,
+            heartbeat_at=now,
             status="running",
             render_mode=render_mode,
             total_matches=total_matches,
@@ -93,6 +118,49 @@ def init_simulation_run(season_year: int = 2026, render_mode: str = "3d", total_
 
     logger.info(f"Initialized simulation run: {run_id} (season={season_year}, render_mode={render_mode})")
     return run_id
+
+
+def update_simulation_run(run_id: str, **updates) -> None:
+    """Atomically update durable run state from API or simulation workers."""
+    from datetime import datetime, timezone
+    from database.session import get_db_session
+    from database.models import SimulationRun
+
+    allowed = {
+        "status", "matches_played", "cancel_requested", "error_message",
+        "started_at", "finished_at", "heartbeat_at", "metadata_json",
+    }
+    values = {key: value for key, value in updates.items() if key in allowed}
+    values.setdefault("heartbeat_at", datetime.now(timezone.utc).isoformat())
+    with get_db_session() as db:
+        changed = db.query(SimulationRun).filter(SimulationRun.run_id == run_id).update(values)
+        if not changed:
+            raise KeyError(f"Unknown simulation run: {run_id}")
+
+
+def simulation_cancel_requested(run_id: str) -> bool:
+    from database.session import get_db_session
+    from database.models import SimulationRun
+    with get_db_session() as db:
+        value = db.query(SimulationRun.cancel_requested).filter(
+            SimulationRun.run_id == run_id
+        ).scalar()
+        return bool(value)
+
+
+def recover_interrupted_runs() -> int:
+    """Mark jobs left running by a previous process as interrupted."""
+    from datetime import datetime, timezone
+    from database.session import get_db_session
+    from database.models import SimulationRun
+    now = datetime.now(timezone.utc).isoformat()
+    with get_db_session() as db:
+        return db.query(SimulationRun).filter(SimulationRun.status == "running").update({
+            "status": "interrupted",
+            "finished_at": now,
+            "heartbeat_at": now,
+            "error_message": "API process stopped before the run completed",
+        })
 
 def get_current_simulation_run() -> str:
     """Returns the most recent active or completed simulation run_id."""
@@ -113,50 +181,42 @@ def clean_old_simulation_data(preserve_run_id: str = None):
     Preserves active run directory if specified.
     """
     import shutil
-    from config import RECORDINGS_DIR, REPORTS_DIR
+    import time
+    from config import RECORDINGS_DIR
 
-    logger.info(f"Purging old simulation run directories (preserving: {preserve_run_id})...")
+    logger.info("Applying simulation artifact retention policy (preserving: %s)", preserve_run_id)
 
-    # 1. Clean run directories in RECORDINGS_DIR
+    # Keep historical runs by default. Operators can opt into a count-based
+    # policy; transient files are only removed after a grace period so an active
+    # worker is never mistaken for stale output.
+    retention = max(0, int(os.environ.get("FOOTY_RUN_RETENTION", "0")))
+    run_dirs = sorted(
+        (p for p in RECORDINGS_DIR.glob("run_*") if p.is_dir()),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    ) if RECORDINGS_DIR.exists() else []
+    retained = 0
+    for run_dir in run_dirs:
+        if run_dir.name == preserve_run_id:
+            continue
+        retained += 1
+        if retention and retained > retention:
+            logger.info("Removing run outside configured retention: %s", run_dir.name)
+            shutil.rmtree(run_dir)
+
+    stale_before = time.time() - float(os.environ.get("FOOTY_TEMP_MAX_AGE_SECONDS", "86400"))
     if RECORDINGS_DIR.exists():
         for item in RECORDINGS_DIR.iterdir():
-            if item.is_dir() and item.name.startswith("run_"):
-                if item.name != preserve_run_id:
-                    logger.info(f"Purging old simulation run directory: {item.name}")
-                    try:
-                        shutil.rmtree(item)
-                    except Exception as e:
-                        logger.error(f"Failed to remove run directory {item}: {e}")
-            elif item.is_file() and not item.name.startswith("."):
+            if (
+                item.is_file()
+                and item.stat().st_mtime < stale_before
+                and (item.suffix in {".tmp", ".dump"} or item.name.startswith(("payload_", "run_grf_")))
+            ):
                 try:
                     item.unlink()
-                except Exception as e:
-                    logger.warning(f"Could not remove top-level file {item.name}: {e}")
-
-    # 2. Clear old season reports
-    for rep in REPORTS_DIR.glob("season_*.json"):
-        try:
-            rep.unlink()
-        except Exception as e:
-            logger.warning(f"Could not remove old report {rep.name}: {e}")
-
-    overview = REPORTS_DIR / "seasons_overview.json"
-    if overview.exists():
-        try:
-            overview.unlink()
-        except Exception as e:
-            logger.warning(f"Could not remove seasons_overview.json: {e}")
-
-    # 3. Clear transfer logs
-    trans_dir = REPORTS_DIR / "transfer_logs"
-    if trans_dir.exists():
-        for tf in trans_dir.glob("*.txt"):
-            try:
-                tf.unlink()
-            except Exception as e:
-                logger.warning(f"Could not remove transfer log {tf.name}: {e}")
-
-    logger.info("Cleaned up old simulation data successfully!")
+                except OSError as exc:
+                    logger.warning("Could not remove stale temporary file %s: %s", item.name, exc)
+    logger.info("Simulation artifact retention policy complete")
 
 if __name__ == '__main__':
     create_tables()

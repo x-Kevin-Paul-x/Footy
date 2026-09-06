@@ -1,0 +1,19 @@
+{
+  "match_id": "readme_showcase_arsenal_chelsea_20260906",
+  "home_team": "Arsenal",
+  "away_team": "Chelsea",
+  "score": [1, 0],
+  "possession": {"home": 63.0, "away": 37.0},
+  "shots": {"home": 1, "away": 0},
+  "xg": {"home": 0.3, "away": 0.0},
+  "goal": {"minute": 73, "player": "Arsenal Player 8"},
+  "render": {
+    "mode": "3d",
+    "codec": "H.264",
+    "resolution": "1280x720",
+    "fps": 15,
+    "duration_seconds": 108.93,
+    "size_bytes": 3776078,
+    "sha256": "4f9f01e20b19740fe84c87935b2c8b8cc2b2743f3f23384a26421f7dd8d59575"
+  }
+}

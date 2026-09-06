@@ -1,3 +1,4 @@
+from sqlalchemy.orm import joinedload
 from database.session import SessionLocal, get_db_session
 from database.models import Player, PlayerAttribute
 
@@ -36,7 +37,7 @@ def get_player(player_id, db_file=None):
     """Retrieves a player and their attributes by player ID."""
     db = SessionLocal()
     try:
-        player = db.query(Player).filter(Player.player_id == player_id).first()
+        player = db.query(Player).options(joinedload(Player.attributes)).filter(Player.player_id == player_id).first()
         if not player:
             return None
 
@@ -66,7 +67,7 @@ def get_all_players(db_file=None):
     """Retrieves all players and their attributes."""
     db = SessionLocal()
     try:
-        player_rows = db.query(Player).all()
+        player_rows = db.query(Player).options(joinedload(Player.attributes)).all()
         players = []
         for player in player_rows:
             attributes = {}

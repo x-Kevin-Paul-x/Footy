@@ -1,6 +1,6 @@
 """
 WSL Dedicated Worker: Pure GRF + TiKick MARL Match Simulation.
-Executes 11v11 MARL physics at maximum throughput without rendering graphics or encoding video.
+Executes 11v11 MARL physics using canonical GRFMatchExecutor.
 Outputs compact .npz trajectory, raw .dump trace, and verified MatchManifest JSON.
 Supports both one-shot CLI execution and persistent daemon mode.
 """
@@ -9,12 +9,7 @@ import os
 import sys
 import json
 import time
-import hashlib
-import random
-from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple
-import numpy as np
-import torch
+from typing import Dict, Any, Optional
 
 # Ensure backend/src and third-party modules can be imported
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -22,659 +17,51 @@ backend_src = os.path.dirname(os.path.dirname(script_dir))
 if backend_src not in sys.path:
     sys.path.insert(0, backend_src)
 
-import gym
-import gfootball.env as football_env
+from logic.simulation.match_executor import GRFMatchExecutor, ReplayMode, SimulationSpec, CanonicalMatchResult
+from logic.simulation.policy_backend import CPUSinglePolicy
 
-from logic.grf_trajectory import MatchTrajectory, MatchManifest
-from logic.grf_state_archive import GRFStateArchiveWriter, ReplayIntegrityError
-from logic.grf_core import extract_canonical_features, compute_shot_xg, apply_tactical_action_bias, ACTION_MIRROR_MAP
-from logic.replay_schema import SIM_STEP_SECONDS, PerformanceConfig
-from logic.footy_grf_adapter import FootyGRFAdapter, FORMATION_COORDINATES, GRFPlayerProfile, GRFTeamTactics
-
-
-class TiKickModelConfig:
-    hidden_size = 256
-    gain = 0.01
-    use_orthogonal = False
-    activation_id = 1
-    use_policy_active_masks = False
-    use_naive_recurrent_policy = False
-    use_recurrent_policy = True
-    use_influence_policy = False
-    influence_layer_N = 1
-    use_policy_vhead = False
-    recurrent_N = 1
-    use_feature_normalization = True
-    use_conv1d = False
-    stacked_frames = 1
-    layer_N = 3
-
-
-_GLOBAL_POLICY = None
-_GLOBAL_POLICY_PATH = None
-
-
-def get_or_load_policy(ckpt_path: str, tikick_dir: str, device: torch.device):
-    global _GLOBAL_POLICY, _GLOBAL_POLICY_PATH
-    if _GLOBAL_POLICY is not None and _GLOBAL_POLICY_PATH == ckpt_path:
-        return _GLOBAL_POLICY
-
-    if tikick_dir and tikick_dir not in sys.path:
-        sys.path.insert(0, tikick_dir)
-    from tmarl.networks.policy_network import PolicyNetwork
-    obs_space = gym.spaces.Box(low=-1e6, high=1e6, shape=(268,), dtype='float32')
-    action_space = gym.spaces.Discrete(33)
-    policy = PolicyNetwork(TiKickModelConfig(), obs_space, action_space, device=device)
-    state_dict = torch.load(ckpt_path, map_location=device)
-    policy.load_state_dict(state_dict)
-    policy.eval()
-
-    _GLOBAL_POLICY = policy
-    _GLOBAL_POLICY_PATH = ckpt_path
-    return policy
+_CANONICAL_POLICY = None
+_CANONICAL_POLICY_KEY = None
 
 
 def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
-    match_id = str(payload["match_id"])
-    home_team = payload.get("home_team", "Home Team")
-    away_team = payload.get("away_team", "Away Team")
-    home_formation = payload.get("home_formation", "4-3-3")
-    away_formation = payload.get("away_formation", "4-2-3-1")
-    home_players = payload.get("home_players") or [f"{home_team} Player {i+1}" for i in range(11)]
-    away_players = payload.get("away_players") or [f"{away_team} Player {i+1}" for i in range(11)]
-    home_color = payload.get("home_color", "#e63946")
-    away_color = payload.get("away_color", "#2196f3")
-    max_steps = int(payload.get("max_steps", 1200))
-    ckpt_path = payload["ckpt_path"]
-    tikick_dir = payload.get("tikick_dir", "")
-    trace_npz_path = payload.get("trace_npz")
-    trace_dump_path = payload.get("trace_dump")
-    seed_val = payload.get("seed_val")
-    record_grf_states = bool(payload.get("record_grf_states", False))
-    record_dump = bool(payload.get("record_dump", False))
-    states_file_path = payload.get("states_file")
+    """Execute match simulation using canonical GRFMatchExecutor.
 
-    # Full 32-bit Seed Space
-    if seed_val is None:
-        seed_val = int.from_bytes(hashlib.sha256(f"match_{match_id}".encode()).digest()[:4], "little")
-    else:
-        seed_val = int(seed_val)
+    Ensures single-match API calls, daemons, and matchday batches share the exact same
+    executor, event reducer, and seeding logic.
+    """
+    global _CANONICAL_POLICY, _CANONICAL_POLICY_KEY
 
-    # Deterministic Seeding Protocol across all PRNGs
-    random.seed(seed_val)
-    np.random.seed(seed_val)
-    torch.manual_seed(seed_val)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed_val)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
+    key = (str(payload.get("ckpt_path", "")), str(payload.get("tikick_dir", "")))
+    if _CANONICAL_POLICY is None or _CANONICAL_POLICY_KEY != key:
+        _CANONICAL_POLICY = CPUSinglePolicy(ckpt_path=key[0], tikick_dir=key[1])
+        _CANONICAL_POLICY_KEY = key
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    policy = get_or_load_policy(ckpt_path, tikick_dir, device)
-
-    # Build Team Simulation Contexts & Rosters
-    raw_h_profiles = payload.get("home_profiles")
-    if raw_h_profiles and isinstance(raw_h_profiles, list):
-        home_roster = [GRFPlayerProfile(**p) if isinstance(p, dict) else p for p in raw_h_profiles]
-    else:
-        home_roster = [FootyGRFAdapter.extract_player_profile(p, assigned_pos="GK" if i == 0 else "CM")
-                       for i, p in enumerate(home_players[:11])]
-    while len(home_roster) < 11:
-        home_roster.append(GRFPlayerProfile(name=f"{home_team} Player {len(home_roster)+1}"))
-
-    raw_a_profiles = payload.get("away_profiles")
-    if raw_a_profiles and isinstance(raw_a_profiles, list):
-        away_roster = [GRFPlayerProfile(**p) if isinstance(p, dict) else p for p in raw_a_profiles]
-    else:
-        away_roster = [FootyGRFAdapter.extract_player_profile(p, assigned_pos="GK" if i == 0 else "CM")
-                       for i, p in enumerate(away_players[:11])]
-    while len(away_roster) < 11:
-        away_roster.append(GRFPlayerProfile(name=f"{away_team} Player {len(away_roster)+1}"))
-
-    home_tactics = GRFTeamTactics(
-        team_name=home_team,
-        formation=home_formation if home_formation in FORMATION_COORDINATES else "4-3-3",
-        offensive_bias=float(payload.get("home_offensive_bias", 50.0)),
-        defensive_bias=float(payload.get("home_defensive_bias", 50.0)),
-        pressing_intensity=float(payload.get("home_pressing_intensity", 50.0)),
-        tempo=float(payload.get("home_tempo", 50.0)),
-        roster=home_roster
-    )
-    away_tactics = GRFTeamTactics(
-        team_name=away_team,
-        formation=away_formation if away_formation in FORMATION_COORDINATES else "4-2-3-1",
-        offensive_bias=float(payload.get("away_offensive_bias", 50.0)),
-        defensive_bias=float(payload.get("away_defensive_bias", 50.0)),
-        pressing_intensity=float(payload.get("away_pressing_intensity", 50.0)),
-        tempo=float(payload.get("away_tempo", 50.0)),
-        roster=away_roster
-    )
-
-    # 10 field player anchors (excluding GK at idx 0)
-    home_anchors = home_tactics.get_formation_anchors(is_right_team=False)[1:]
-    away_anchors = away_tactics.get_formation_anchors(is_right_team=True)[1:]
-
-    # Render mode & live 3D recording setup (Option 1 vs Option 2)
-    render_mode = str(payload.get("render_mode", os.getenv("FOOTY_DEFAULT_RENDER_MODE", "3d"))).lower()
-    record_3d_video = (render_mode == "3d") or bool(payload.get("record_3d_video", False))
-    if record_3d_video:
-        record_dump = True
-
-    # Dumps directory for native GRF trace recording
-    match_dump_dir = f"/tmp/dumps/tmp_{match_id}_{int(time.time()*1000)%100000}"
-    if record_dump:
-        os.makedirs(match_dump_dir, exist_ok=True)
-
-    other_opts = {
-        'action_set': 'full',
-        'random_seed': seed_val % (2**31 - 1),
-    }
-    if record_dump:
-        other_opts['tracesdir'] = match_dump_dir
-        other_opts['dump_full_episodes'] = True
-
-    if record_3d_video:
-        other_opts['write_video'] = True
-        other_opts['display_game_stats'] = False
-        other_opts['render_resolution_x'] = 1280
-        other_opts['render_resolution_y'] = 720
-
-    env = football_env.create_environment(
-        env_name="11_vs_11_kaggle",
-        stacked=False,
-        representation='raw',
-        rewards='scoring',
-        write_goal_dumps=False,
-        write_full_episode_dumps=record_dump,
-        render=record_3d_video,
-        write_video=record_3d_video,
-        number_of_left_players_agent_controls=10,
-        number_of_right_players_agent_controls=10,
-        other_config_options=other_opts
-    )
-
-    raw_obs = env.reset()
-    num_agents = 10
-
-    # Pre-allocated tensors & state buffers
-    left_rnn_states = torch.zeros((num_agents, 1, 256), dtype=torch.float32, device=device)
-    left_masks = torch.ones((num_agents, 1), dtype=torch.float32, device=device)
-    left_avail = torch.zeros((num_agents, 33), dtype=torch.float32, device=device)
-    left_avail[:, :20] = 1.0
-    left_loff = np.zeros(11, dtype=np.float32)
-    left_roff = np.zeros(11, dtype=np.float32)
-
-    right_rnn_states = torch.zeros((num_agents, 1, 256), dtype=torch.float32, device=device)
-    right_masks = torch.ones((num_agents, 1), dtype=torch.float32, device=device)
-    right_avail = torch.zeros((num_agents, 33), dtype=torch.float32, device=device)
-    right_avail[:, :20] = 1.0
-    right_loff = np.zeros(11, dtype=np.float32)
-    right_roff = np.zeros(11, dtype=np.float32)
-
-    # Trajectory recording buffers
-    recorded_players = np.empty((max_steps, 22, 2), dtype=np.float32)
-    recorded_player_dirs = np.empty((max_steps, 22, 2), dtype=np.float32)
-    recorded_balls = np.empty((max_steps, 3), dtype=np.float32)
-    recorded_ball_dirs = np.empty((max_steps, 3), dtype=np.float32)
-    recorded_actions = np.empty((max_steps, 20), dtype=np.uint8)
-    recorded_scores = np.empty((max_steps, 2), dtype=np.uint8)
-    recorded_game_modes = np.empty(max_steps, dtype=np.int8)
-    recorded_owned_teams = np.empty(max_steps, dtype=np.int8)
-    recorded_owned_players = np.empty(max_steps, dtype=np.int8)
-
-    # Streaming chunked GRF state writer (zero overhead if record_grf_states=False)
-    state_writer = None
-    if record_grf_states:
-        resolved_states_path = states_file_path or (
-            str(trace_npz_path).replace('.npz', '.grfstate') if trace_npz_path
-            else f"/tmp/states_{match_id}.grfstate"
-        )
-        state_writer = GRFStateArchiveWriter(resolved_states_path, match_id=match_id, chunk_size=50)
-
-    # Match state & statistics
-    curr_score = [0, 0]
-    last_score = [0, 0]
-    left_poss = 0
-    right_poss = 0
-    shots_h = 0
-    shots_a = 0
-    sot_h = 0
-    sot_a = 0
-    xg_h = 0.0
-    xg_a = 0.0
-    passes_h_att = 0
-    passes_h_cmp = 0
-    passes_a_att = 0
-    passes_a_cmp = 0
-
-    # Rigorous Event State Machine Trackers
-    active_pass: Optional[Dict[str, Any]] = None
-    active_shot: Optional[Dict[str, Any]] = None
-    last_home_touch = 10
-    last_away_touch = 10
-    events = []
-    half_time_recorded = False
-    half_time_step = max_steps // 2
-
-    step = 0
-    done = False
-
-    profile_enabled = PerformanceConfig.enabled
-    t_feature_acc = 0.0
-    t_policy_acc = 0.0
-    t_tensor_transfer_acc = 0.0
-    t_tactical_acc = 0.0
-    t_env_step_acc = 0.0
-    t_state_archive_acc = 0.0
-    t_trajectory_acc = 0.0
-    t_events_acc = 0.0
-    t_sim_start = time.perf_counter() if profile_enabled else 0.0
-
+    replay_mode = ReplayMode.FULL_STATE if payload.get("states_file") else ReplayMode.TRAJECTORY
+    worker = None
     try:
-        while not done and step < max_steps:
-            # Check for Half-Time transition
-            if step == half_time_step and not half_time_recorded:
-                half_time_recorded = True
-                events.append({
-                    "step": step,
-                    "sim_time": round(step * SIM_STEP_SECONDS, 2),
-                    "minute": 45,
-                    "type": "half_time",
-                    "score": f"{curr_score[0]}-{curr_score[1]}",
-                    "details": f"Half Time • {home_team} {curr_score[0]} - {curr_score[1]} {away_team}"
-                })
+        worker = GRFMatchExecutor(
+            payload,
+            max_steps=int(payload.get("max_steps", 1200)),
+            replay_mode=replay_mode,
+        )
+        _CANONICAL_POLICY.reset_match(worker.match_id, worker.seed_val)
+        observations = worker.get_initial_observations()
+        done = False
+        while not done and worker.step_idx < worker.max_steps:
+            actions = _CANONICAL_POLICY.evaluate(observations, match_ids=[worker.match_id])
+            observations, done, _ = worker.step(actions)
+        res = worker.finalize()
+        return res.to_dict() if hasattr(res, "to_dict") else res
+    except Exception:
+        if worker is not None:
+            worker.close()
+        raise
 
-            # 1. Canonical perspective feature extraction
-            if profile_enabled:
-                t0 = time.perf_counter()
 
-            obs_l, left_loff, left_roff = extract_canonical_features(
-                raw_obs[0:num_agents], team_side="left", num_agents=num_agents,
-                last_loff=left_loff, last_roff=left_roff
-            )
-            obs_r, right_loff, right_roff = extract_canonical_features(
-                raw_obs[num_agents:num_agents*2], team_side="right", num_agents=num_agents,
-                last_loff=right_loff, last_roff=right_roff
-            )
-
-            obs_batch_np = np.concatenate([obs_l, obs_r], axis=0)
-
-            if profile_enabled:
-                t1 = time.perf_counter()
-                t_feature_acc += (t1 - t0)
-
-            obs_batch_t = torch.from_numpy(obs_batch_np).to(device)
-            rnn_batch = torch.cat([left_rnn_states, right_rnn_states], dim=0)
-            masks_batch = torch.cat([left_masks, right_masks], dim=0)
-            avail_batch = torch.cat([left_avail, right_avail], dim=0)
-
-            if profile_enabled:
-                t2 = time.perf_counter()
-                t_tensor_transfer_acc += (t2 - t1)
-
-            # 2. TiKick Neural Policy Inference
-            if profile_enabled:
-                t0 = time.perf_counter()
-
-            with torch.inference_mode():
-                actions_batch, _, next_rnn_batch = policy(
-                    obs_batch_t, rnn_batch, masks_batch, avail_batch, deterministic=True
-                )
-
-            left_rnn_states = next_rnn_batch[:num_agents]
-            right_rnn_states = next_rnn_batch[num_agents:]
-
-            actions_np = actions_batch.cpu().numpy().flatten().astype(np.int32)
-            left_act_raw = actions_np[:num_agents].tolist()
-            right_act_raw = actions_np[num_agents:].tolist()
-
-            if profile_enabled:
-                t_policy_acc += (time.perf_counter() - t0)
-
-            # 3. Managerial Tactics & Action Modulation Layer
-            if profile_enabled:
-                t0 = time.perf_counter()
-
-            o_prev = raw_obs[0]
-            ball_xy = np.array(o_prev['ball'][:2], dtype=np.float32)
-            b_own_prev = o_prev.get('ball_owned_team', -1)
-            l_pos = np.array(o_prev['left_team'][1:], dtype=np.float32)
-            r_pos = np.array(o_prev['right_team'][1:], dtype=np.float32)
-
-            left_act = apply_tactical_action_bias(
-                left_act_raw, l_pos, home_anchors, home_tactics,
-                team_side="left", ball_xy=ball_xy, is_team_in_possession=(b_own_prev == 0)
-            )
-            right_act_tactical = apply_tactical_action_bias(
-                right_act_raw, -r_pos, [(-x, -y) for (x, y) in away_anchors], away_tactics,
-                team_side="right", ball_xy=-ball_xy, is_team_in_possession=(b_own_prev == 1)
-            )
-
-            # 4. Action Mirror Inversion for Right Team
-            right_act_mapped = [ACTION_MIRROR_MAP.get(a, a) for a in right_act_tactical]
-            combined_actions = left_act + right_act_mapped
-
-            if profile_enabled:
-                t_tactical_acc += (time.perf_counter() - t0)
-
-            # 5. Step Environment & Record State
-            if profile_enabled:
-                t0 = time.perf_counter()
-
-            raw_next_obs, _, done, _ = env.step(combined_actions)
-
-            if profile_enabled:
-                t1 = time.perf_counter()
-                t_env_step_acc += (t1 - t0)
-
-            if state_writer is not None:
-                if profile_enabled:
-                    t0 = time.perf_counter()
-                state_writer.append(env.get_state())
-                if profile_enabled:
-                    t_state_archive_acc += (time.perf_counter() - t0)
-
-            # 6. Trajectory Recording
-            if profile_enabled:
-                t0 = time.perf_counter()
-
-            o0 = raw_next_obs[0]
-            l_team = o0['left_team']
-            r_team = o0['right_team']
-            recorded_players[step, :11] = l_team
-            recorded_players[step, 11:] = r_team
-
-            recorded_player_dirs[step, :11] = o0['left_team_direction']
-            recorded_player_dirs[step, 11:] = o0['right_team_direction']
-
-            recorded_balls[step] = o0['ball']
-            recorded_ball_dirs[step] = o0['ball_direction']
-            recorded_actions[step] = combined_actions
-
-            curr_score = [int(o0['score'][0]), int(o0['score'][1])]
-            recorded_scores[step] = np.array(curr_score, dtype=np.uint8)
-
-            if 'game_mode' not in o0 or 'ball_owned_team' not in o0 or 'ball_owned_player' not in o0:
-                raise ReplayIntegrityError("GRF observation missing required fields (game_mode, ball_owned_team, ball_owned_player)")
-
-            recorded_game_modes[step] = int(o0['game_mode'])
-            recorded_owned_teams[step] = int(o0['ball_owned_team'])
-            recorded_owned_players[step] = int(o0['ball_owned_player'])
-
-            if profile_enabled:
-                t_trajectory_acc += (time.perf_counter() - t0)
-
-            # 7. Possession & Events Processing
-            if profile_enabled:
-                t0 = time.perf_counter()
-
-            # 7. Possession & True Ball-Touch Scorer Tracking
-            ball_owned = o0['ball_owned_team']
-            ball_player = o0['ball_owned_player']
-
-            if ball_owned == 0:
-                left_poss += 1
-                if ball_player >= 0:
-                    last_home_touch = ball_player
-            elif ball_owned == 1:
-                right_poss += 1
-                if ball_player >= 0:
-                    last_away_touch = ball_player
-
-            total_match_steps = max_steps if max_steps else 1200
-            match_min = max(1, min(90, int((step / max(1, total_match_steps)) * 90) + 1))
-
-            # 8. Rigorous Pass State Machine
-            if ball_owned == 0 and ball_player >= 1 and (ball_player - 1) < len(left_act):
-                p_act = left_act[ball_player - 1]
-                if p_act in (9, 10, 11):
-                    passes_h_att += 1
-                    active_pass = {"team": 0, "passer": ball_player, "step": step}
-            elif ball_owned == 1 and ball_player >= 1 and (ball_player - 1) < len(right_act_tactical):
-                p_act = right_act_tactical[ball_player - 1]
-                if p_act in (9, 10, 11):
-                    passes_a_att += 1
-                    active_pass = {"team": 1, "passer": ball_player, "step": step}
-
-            if active_pass is not None:
-                if ball_owned == active_pass["team"]:
-                    if ball_player != active_pass["passer"] and ball_player >= 0:
-                        if active_pass["team"] == 0:
-                            passes_h_cmp += 1
-                        else:
-                            passes_a_cmp += 1
-                        active_pass = None
-                elif ball_owned != -1 and ball_owned != active_pass["team"]:
-                    # Intercepted by opposition
-                    active_pass = None
-                elif step - active_pass["step"] > 35:
-                    # Out of bounds / expired
-                    active_pass = None
-
-            # 9. Rigorous Shot & GK-Aware xG State Machine
-            ball_x, ball_y = o0['ball'][0], o0['ball'][1]
-            ball_vx = o0['ball_direction'][0]
-
-            # Home team shot detection
-            if 12 in left_act or (ball_owned == 0 and ball_vx > 0.12 and ball_x > 0.35):
-                shots_h += 1
-                shooter_idx = max(0, min(10, ball_player if ball_player >= 0 else last_home_touch))
-                shooter_profile = home_roster[shooter_idx]
-                away_gk_profile = away_roster[0]
-                away_gk_pos = (float(r_team[0, 0]), float(r_team[0, 1]))
-
-                shot_xg = compute_shot_xg(
-                    shooter_x=ball_x, shooter_y=ball_y, goal_x=1.0,
-                    defenders=r_team, shooting_attr=shooter_profile.shooting,
-                    gk_pos=away_gk_pos, gk_save_coverage=away_gk_profile.gk_save_coverage
-                )
-                xg_h += shot_xg
-                if abs(ball_y) < 0.08:
-                    sot_h += 1
-                active_shot = {"team": 0, "shooter": shooter_idx, "xg": shot_xg, "step": step}
-
-            # Away team shot detection
-            if 12 in right_act_tactical or (ball_owned == 1 and ball_vx < -0.12 and ball_x < -0.35):
-                shots_a += 1
-                shooter_idx = max(0, min(10, ball_player if ball_player >= 0 else last_away_touch))
-                shooter_profile = away_roster[shooter_idx]
-                home_gk_profile = home_roster[0]
-                home_gk_pos = (float(l_team[0, 0]), float(l_team[0, 1]))
-
-                shot_xg = compute_shot_xg(
-                    shooter_x=ball_x, shooter_y=ball_y, goal_x=-1.0,
-                    defenders=l_team, shooting_attr=shooter_profile.shooting,
-                    gk_pos=home_gk_pos, gk_save_coverage=home_gk_profile.gk_save_coverage
-                )
-                xg_a += shot_xg
-                if abs(ball_y) < 0.08:
-                    sot_a += 1
-                active_shot = {"team": 1, "shooter": shooter_idx, "xg": shot_xg, "step": step}
-
-            # 10. Goal Event Detection & Scorer Attribution (Frame-Accurate)
-            if curr_score[0] > last_score[0]:
-                shots_h = max(shots_h, curr_score[0])
-                sot_h = max(sot_h, curr_score[0])
-                scorer_idx = active_shot["shooter"] if (active_shot and active_shot["team"] == 0) else last_home_touch
-                scorer_idx = max(0, min(len(home_players) - 1, scorer_idx))
-                scorer = home_players[scorer_idx].split('(')[0].strip()
-                events.append({
-                    "step": step,
-                    "sim_time": round(step * SIM_STEP_SECONDS, 2),
-                    "minute": match_min,
-                    "type": "goal",
-                    "team": "home",
-                    "player": scorer,
-                    "scorer": scorer,
-                    "score": f"{curr_score[0]}-{curr_score[1]}",
-                    "details": f"Goal! {scorer} scores for {home_team}!"
-                })
-                last_score = list(curr_score)
-                active_shot = None
-
-            elif curr_score[1] > last_score[1]:
-                shots_a = max(shots_a, curr_score[1])
-                sot_a = max(sot_a, curr_score[1])
-                scorer_idx = active_shot["shooter"] if (active_shot and active_shot["team"] == 1) else last_away_touch
-                scorer_idx = max(0, min(len(away_players) - 1, scorer_idx))
-                scorer = away_players[scorer_idx].split('(')[0].strip()
-                events.append({
-                    "step": step,
-                    "sim_time": round(step * SIM_STEP_SECONDS, 2),
-                    "minute": match_min,
-                    "type": "goal",
-                    "team": "away",
-                    "player": scorer,
-                    "scorer": scorer,
-                    "score": f"{curr_score[0]}-{curr_score[1]}",
-                    "details": f"Goal! {scorer} scores for {away_team}!"
-                })
-                last_score = list(curr_score)
-                active_shot = None
-
-            if profile_enabled:
-                t_events_acc += (time.perf_counter() - t0)
-
-            raw_obs = raw_next_obs
-            step += 1
-    finally:
-        actual_steps = step
-        env.close()
-        if state_writer is not None:
-            state_writer.close()
-
-    # Invariant guarantees
-    final_score = [int(curr_score[0]), int(curr_score[1])]
-    shots_h = max(shots_h, final_score[0])
-    shots_a = max(shots_a, final_score[1])
-    sot_h = max(sot_h, final_score[0])
-    sot_a = max(sot_a, final_score[1])
-    tot_poss = max(1, left_poss + right_poss)
-    h_poss_pct = round((left_poss / tot_poss) * 100.0, 1)
-    a_poss_pct = round(100.0 - h_poss_pct, 1)
-    xg_h = max(final_score[0] * 0.35, round(xg_h, 2))
-    xg_a = max(final_score[1] * 0.35, round(xg_a, 2))
-
-    if profile_enabled:
-        tot_sim_time = max(1e-5, time.perf_counter() - t_sim_start)
-        sim_profile = {
-            "total_wall_ms": round(tot_sim_time * 1000, 2),
-            "grf_step_ms": round(t_env_step_acc * 1000, 2),
-            "feature_extraction_ms": round(t_feature_acc * 1000, 2),
-            "tensor_transfer_ms": round(t_tensor_transfer_acc * 1000, 2),
-            "policy_inference_ms": round(t_policy_acc * 1000, 2),
-            "tactical_modulation_ms": round(t_tactical_acc * 1000, 2),
-            "trajectory_record_ms": round(t_trajectory_acc * 1000, 2),
-            "events_processing_ms": round(t_events_acc * 1000, 2),
-            "state_archive_ms": round(t_state_archive_acc * 1000, 2),
-            "steps_per_sec": round(actual_steps / tot_sim_time, 1),
-            "matches_per_sec": round(1.0 / tot_sim_time, 2),
-            "realtime_factor": round((actual_steps * SIM_STEP_SECONDS) / tot_sim_time, 1),
-        }
-    else:
-        sim_profile = {}
-
-    manifest = MatchManifest(
-        match_id=match_id,
-        home_team=home_team,
-        away_team=away_team,
-        home_score=final_score[0],
-        away_score=final_score[1],
-        score=(final_score[0], final_score[1]),
-        total_steps=actual_steps,
-        possession=(h_poss_pct, a_poss_pct),
-        shots=(shots_h, shots_a),
-        shots_on_target=(sot_h, sot_a),
-        xg=(xg_h, xg_a),
-        passes_attempted=(passes_h_att, passes_a_att),
-        passes_completed=(passes_h_cmp, passes_a_cmp),
-        events=events,
-        home_players=home_players,
-        away_players=away_players,
-        home_formation=home_formation,
-        away_formation=away_formation,
-        home_color=home_color,
-        away_color=away_color,
-        engine_fingerprint={
-            "engine": "GRF+TiKick",
-            "engine_version": "2.2.0",
-            "seed": seed_val,
-            "feature_schema": "canonical-268-v2",
-            "determinism_level": 3,
-            "sim_fps": 10.0,
-            "sim_step_seconds": SIM_STEP_SECONDS,
-            "scenario": "11_vs_11_kaggle",
-            "action_set": "full",
-            "state_schema": "grf_chunked_zlib_v2" if state_writer else "none",
-            "profile": sim_profile,
-        },
-        video_url=f"/recordings/match_{match_id}.mp4",
-        created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-    )
-
-    trajectory = MatchTrajectory(
-        match_id=match_id,
-        seed=seed_val,
-        total_steps=actual_steps,
-        player_coords=recorded_players[:actual_steps],
-        player_dirs=recorded_player_dirs[:actual_steps],
-        ball_coords=recorded_balls[:actual_steps],
-        ball_dirs=recorded_ball_dirs[:actual_steps],
-        actions=recorded_actions[:actual_steps],
-        scores=recorded_scores[:actual_steps],
-        manifest=manifest,
-        game_mode=recorded_game_modes[:actual_steps],
-        ball_owned_team=recorded_owned_teams[:actual_steps],
-        ball_owned_player=recorded_owned_players[:actual_steps],
-    )
-
-    if trace_npz_path:
-        trajectory.save_to_npz(Path(trace_npz_path))
-
-    result_json = manifest.to_dict()
-    result_json["trajectory_hash"] = trajectory.compute_trajectory_hash()
-    result_json["dump_file"] = trace_dump_path if record_dump else None
-    result_json["states_file"] = resolved_states_path if state_writer else None
-
-    import glob, shutil
-    if record_3d_video:
-        avi_files = sorted(glob.glob(f"{match_dump_dir}/episode_done_*.avi"))
-        if avi_files:
-            raw_avi = avi_files[-1]
-            custom_mp4 = payload.get("output_mp4")
-            run_id = payload.get("run_id")
-            if custom_mp4:
-                out_mp4 = custom_mp4
-            elif run_id:
-                out_mp4 = f"/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/backend/reports/recordings/{run_id}/match_{match_id}.mp4"
-            else:
-                out_mp4 = f"/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/backend/reports/recordings/match_{match_id}.mp4"
-
-            os.makedirs(os.path.dirname(out_mp4) or '.', exist_ok=True)
-            try:
-                from logic.grf_renderer import transcode_live_avi_to_broadcast_mp4
-                transcode_live_avi_to_broadcast_mp4(
-                    raw_avi_path=raw_avi,
-                    output_mp4_path=out_mp4,
-                    manifest=manifest,
-                    home_color=home_color,
-                    away_color=away_color
-                )
-                rel_path = out_mp4.split("backend/reports/recordings/")[-1].lstrip("/")
-                result_json["video_url"] = f"/recordings/{rel_path}"
-                result_json["render_mode_used"] = "3d"
-            except Exception as e:
-                print(f"Error transcoding live 3d video in grf_sim_worker: {e}", file=sys.stderr)
-
-    if record_dump:
-        dump_files = sorted(glob.glob(f"{match_dump_dir}/episode_done_*.dump"))
-        if dump_files and trace_dump_path:
-            os.makedirs(os.path.dirname(trace_dump_path), exist_ok=True)
-            shutil.move(dump_files[-1], trace_dump_path)
-
-    shutil.rmtree(match_dump_dir, ignore_errors=True)
-
-    return result_json
+def _legacy_run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Deprecated legacy simulation entrypoint forwarded to canonical run_simulation."""
+    return run_simulation(payload)
 
 
 def run_daemon_server(port: int = 58210):
@@ -688,6 +75,8 @@ def run_daemon_server(port: int = 58210):
     server.bind(("127.0.0.1", port))
     server.listen(5)
     print(f"GRF_SIM_DAEMON_READY:{port}", flush=True)
+    response_cache: Dict[str, Dict[str, Any]] = {}
+    max_request_bytes = int(os.environ.get("FOOTY_DAEMON_MAX_REQUEST_BYTES", str(2 * 1024 * 1024)))
 
     while True:
         try:
@@ -699,6 +88,8 @@ def run_daemon_server(port: int = 58210):
                     if not chunk:
                         break
                     data_bytes += chunk
+                    if len(data_bytes) > max_request_bytes:
+                        raise ValueError("Simulation daemon request exceeds configured size limit")
                     if b"\n" in data_bytes:
                         break
 
@@ -710,7 +101,15 @@ def run_daemon_server(port: int = 58210):
                     conn.sendall(b"OK\n")
                     break
 
-                res = run_simulation(payload)
+                request_id = str(payload.get("request_id", ""))
+                if request_id and request_id in response_cache:
+                    res = response_cache[request_id]
+                else:
+                    res = run_simulation(payload)
+                    if request_id:
+                        response_cache[request_id] = res
+                        if len(response_cache) > 128:
+                            response_cache.pop(next(iter(response_cache)))
                 resp_bytes = json.dumps(res).encode('utf-8') + b"\n"
                 conn.sendall(resp_bytes)
         except Exception as e:

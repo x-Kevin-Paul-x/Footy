@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { SeasonReport } from '../services/api'; // Type-only import
-import { getAvailableSeasons, getSeasonReportData, runSimulation as apiRunSimulation } from '../services/api';
+import { getAvailableSeasons, getCurrentSimulationRun, getSeasonReportData, runSimulation as apiRunSimulation } from '../services/api';
 
 
 interface SimulationState {
@@ -62,12 +62,20 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
     set({ isSimulating: true, error: null, simulationMessage: 'Simulation in progress...' });
     try {
       const result = await apiRunSimulation();
-      set({ isSimulating: false, simulationMessage: result.message });
       if (result.status === 'success') {
-        // Refresh available seasons and select the new latest one
+        let run = await getCurrentSimulationRun();
+        while (run.run_id === result.run_id && ['running', 'cancelling'].includes(run.status)) {
+          set({ simulationMessage: `Simulation in progress: ${run.matches_played}/${run.total_matches} matches` });
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          run = await getCurrentSimulationRun();
+        }
+        if (run.status === 'failed' || run.status === 'interrupted') {
+          throw new Error(run.error_message || `Simulation ${run.status}`);
+        }
+        set({ isSimulating: false, simulationMessage: `Simulation ${run.status}.` });
         await get().fetchAvailableSeasons(); 
       } else {
-        set({ error: result.message || 'Simulation failed.' });
+        set({ error: result.message || 'Simulation failed.', isSimulating: false });
       }
     } catch (err: any) {
       let errorMessage = 'An error occurred during simulation.';

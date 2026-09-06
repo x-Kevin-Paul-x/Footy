@@ -53,7 +53,7 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
         replay_mode=replay_mode
     )
 
-    return results
+    return [r.to_dict() if hasattr(r, "to_dict") else r for r in results]
 
 
 if __name__ == "__main__":

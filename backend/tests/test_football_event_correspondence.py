@@ -24,6 +24,17 @@ from logic.simulation.policy_backend import CPUSinglePolicy
 from logic.grf_trajectory import MatchTrajectory
 from logic.grf_core import compute_shot_xg
 
+import pytest
+try:
+    import gfootball.env as football_env
+except ImportError:
+    football_env = None
+
+pytestmark = pytest.mark.skipif(
+    football_env is None,
+    reason="Google Research Football (gfootball) is not installed on this host. Run inside WSL/Linux."
+)
+
 CKPT_PATH = os.getenv("FOOTY_CHECKPOINT", str(REPO_ROOT / "checkpoints" / "tikick" / "actor.pt"))
 TIKICK_DIR = os.getenv("FOOTY_TIKICK_DIR", str(REPO_ROOT / "third_party" / "tikick"))
 OUT_DIR = Path(tempfile.gettempdir()) / "test_event_correspondence"

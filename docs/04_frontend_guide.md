@@ -1,131 +1,75 @@
-# 04. Frontend Guide & UI Architecture
+# 04. Frontend Guide
 
-This document details the architecture, component hierarchy, state management, and visualization layers of the React frontend (`frontend/`).
+Last verified: **6 September 2026**
 
----
+## Stack
 
-## 1. Tech Stack & Libraries
+- React 19.1 and React DOM 19.1
+- TypeScript 5.8 and Vite 6.3
+- Material UI 5, Tailwind CSS 4, Emotion
+- React Query 5 for server data
+- Zustand 5 for simulation/season state
+- Axios, Recharts, React Router 7
 
-* **Framework**: React 18 (Vite + TypeScript)
-* **Styling**: Tailwind CSS 3.4 + Material UI (MUI v5)
-* **Icons**: Material Icons + Lucide React
-* **Charts & Visualizations**: Recharts (financial metrics, progression curves, radar pentagons)
-* **State Management**: Zustand stores + React Query (TanStack Query v5)
-* **HTTP & Sockets**: Axios API client + native WebSocket client
+## Structure
 
----
+| Path | Responsibility |
+| --- | --- |
+| `src/App.tsx` | Layout, lazy routes, global toast/error boundary. |
+| `src/pages/Dashboard.tsx` | Season overview, matches, engine/settings, simulation trigger/progress. |
+| `src/pages/MatchDetail.tsx` | Match statistics, events, lineups, replay generation. |
+| `src/components/MatchVideoReplay.tsx` | Video playback, render polling, timeline-aware seek helpers. |
+| `src/components/FormationViewer.tsx` | Responsive percentage-based pitch formation. |
+| `src/components/HeaderSettingsModal.tsx` | Local API/toast settings and backend simulation settings. |
+| `src/services/api.ts` | Axios contracts and endpoint functions. |
+| `src/hooks/useSimulationSocket.ts` | WebSocket lifecycle and reconnect backoff. |
+| `src/store/simulationStore.ts` | Zustand season/report/simulation actions. |
 
-## 2. Directory Structure
+## Data flow
 
-```
-frontend/src/
-├── components/
-│   ├── FormationViewer.tsx         # Interactive 2D tactical formation canvas
-│   ├── MatchVideoReplay.tsx        # Video player for broadcast highlight reels & multi-cam
-│   ├── StandingsTable.tsx          # Real-time league table with form chips
-│   ├── SeasonComparisonCharts.tsx  # Multi-season performance graph
-│   ├── FinancialChart.tsx          # Club revenue vs. wage expenditures
-│   ├── HeaderNotificationsDrawer.tsx
-│   ├── HeaderBookmarksMenu.tsx
-│   └── HeaderSettingsModal.tsx
-├── pages/
-│   ├── Dashboard.tsx               # Command center, live sim controls, standings
-│   ├── LeagueOverview.tsx          # Complete league table & form analysis
-│   ├── MatchDetail.tsx             # Deep match analysis with xG timeline & video
-│   ├── MatchReports.tsx            # Historical fixture results & event logs
-│   ├── ManagerProfiles.tsx         # AI Manager brain overview & win rates
-│   ├── ManagerDetail.tsx           # Individual manager tactical setup & Q-learning state
-│   ├── PlayerProfiles.tsx          # League-wide player scouting directory
-│   ├── PlayerDetail.tsx            # Attribute pentagon, contract, & valuation breakdown
-│   ├── TransferMarket.tsx          # Transfer window activity & top signings
-│   ├── YouthAcademy.tsx            # U21 academy talents & coaching pipelines
-│   ├── MlBenchmarks.tsx            # DQN vs Heuristic/Rule-Based policy charts
-│   ├── StatisticsAnalytics.tsx     # League statistical distributions & xG leaders
-│   └── SeasonReports.tsx           # Multi-season historical archive
-├── services/
-│   └── api.ts                      # Centralized typed API service layer
-├── store/                          # Zustand global state slices
-├── App.tsx                         # Client-side routing & master layout
-└── main.tsx                        # React application bootstrap
-```
+React Query loads most dashboard and detail resources. Zustand also loads seasons/reports and implements a separate simulation flow. The WebSocket hook receives `{event, message, data}` frames and can invalidate/refetch UI state. Replay rendering is polled using completion-scheduled `setTimeout`, avoiding overlapping requests.
 
----
+The formation component positions players using percentages plus `translate(-50%, -50%)`, which prevents fixed-width pitch clipping.
 
-## 3. Core Pages & Visualization Features
+## API configuration
 
-### 1. Premier League Command Center (`Dashboard.tsx`)
-* Live season standings with UEFA Champions League / Europa League qualification markers.
-* Instant simulation trigger buttons with real-time WebSocket progress bars.
-* Multi-season history selector.
+Development currently defaults to `http://localhost:5001`. The Axios client reads `process.env.VITE_API_BASE_URL` when `services/api.ts` loads; Vite supplies a compatibility define. The WebSocket hook also checks `localStorage.footy_api_url` and `import.meta.env`.
 
-### 2. Tactical Formation Viewer (`FormationViewer.tsx`)
-* Interactive 2D football pitch mapping real $(x, y)$ coordinates.
-* Visualizes player positions, tactical width, pressing line depth, and role tags (GK, CB, CDM, CAM, ST).
-* Supports instant formation toggling (`4-3-3`, `4-2-3-1`, `3-5-2`, `4-4-2`, `5-3-2`).
+The settings modal writes `footy_api_url`, but Axios does not read that local value. Until the client is centralized, changing the API URL does not update REST requests.
 
-### 3. Broadcast Replay Player (`MatchVideoReplay.tsx`)
-* Streams pre-rendered broadcast highlight videos or interactive keyframes directly from `MatchTrajectory` artifacts.
-* Features Premier League / UCL style floating HUD scoreboards, goal celebration banners, and studio halftime analytics.
-* Instant replay toggle for key match events with slow-motion playback.
+`getSeasonReportData()` currently converts every request failure into `null`. This makes an unavailable backend or HTTP 500 look like a season with no report and prevents several page-level error states from appearing. It should return `null` only for the defined not-found case and propagate other failures.
 
-### 4. Player Attribute Radar (`PlayerDetail.tsx`)
-* FM-style 5-axis pentagon radar chart comparing:
-  - **Technical**: Shooting, Passing, Dribbling, Tackling.
-  - **Mental**: Vision, Composure, Positioning.
-  - **Physical**: Pace, Stamina, Strength.
-  - **Goalkeeping**: Handling, Reflexes (for GKs).
-* Real-time market valuation calculator and wage breakdown.
+## Known integration defects
 
-### 5. AI Manager & ML Benchmarks (`MlBenchmarks.tsx`, `ManagerDetail.tsx`)
-* Compares trained PyTorch DQN manager checkpoints against static and heuristic policies.
-* Displays win rate percentages, average league finish, cumulative rewards, and tactical style breakdowns.
+1. The backend season trigger returns success without `run_id`; Dashboard and Zustand expect it for polling.
+2. `runMlEvaluation()` expects `{status, report}`, while the backend returns HTTP 202 with only `{status, message}` and offers no job-status endpoint. The ML work also executes synchronous episode loops inside the API event loop.
+3. Timeline-aware seeking is approximate for 3D paths whose frame inserts differ from the shared timeline defaults.
+4. React Query and Zustand duplicate server-owned season/simulation state.
+5. Existing frontend tests cover two components and do not cover the above workflows, replay controls, responsive breakpoints, or accessibility.
 
----
+## Main API resources used
 
-## 4. Asynchronous Job & Simulation Execution Flow
+| Resource | Purpose |
+| --- | --- |
+| `GET /api/v1/seasons` and `/season-report/{year}` | Season selection and report data. |
+| `GET /api/v1/seasons/{season_year}/matches` and `/api/v1/match/{id}` | Match lists and detail. The season path is deliberately distinct from the single-match resource. |
+| `POST /api/v1/run-simulation` | Start season simulation. Contract currently lacks returned run ID. |
+| `GET /api/v1/simulation/current-run` | Most recent run metadata. |
+| `POST /api/v1/match/simulate-grf` | On-demand GRF match. |
+| `POST /api/v1/match/{id}/render` | On-demand replay render. |
+| `GET /api/v1/match/{id}/render-status` | Render progress. |
+| `GET /api/v1/match/{id}/timeline` | Presentation time mapping. |
+| `GET/POST /api/v1/settings/simulation` | Render mode/model settings. |
+| `GET /api/v1/ml-reports`, `POST /api/v1/run-ml-eval` | ML reports and evaluation trigger. |
 
-Simulations and video renderings run asynchronously without blocking the user interface:
+## Validation
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as User UI
-    participant API as FastAPI Backend
-    participant Queue as Job Dispatcher
-    participant Worker as Background GRF Worker
+Verified locally:
 
-    User->>API: POST /api/v1/match/simulate-grf (generate_video=True)
-    API->>Queue: Enqueue Simulation Job
-    API-->>User: 202 Accepted (job_id="job_78912")
-    
-    loop Progress Polling / WebSocket Feed
-        User->>API: GET /api/v1/jobs/job_78912
-        Worker-->>Queue: Update progress (stage="Rendering 3D Broadcast", progress=75%)
-        API-->>User: {"status": "running", "progress": 75, "stage": "Rendering..."}
-    end
-    
-    Worker->>Queue: Job Completed (result JSON + video_url)
-    User->>API: GET /api/v1/jobs/job_78912
-    API-->>User: {"status": "completed", "result": {...}, "video_url": "/recordings/match_3.mp4"}
-    User->>User: Mount MatchVideoReplay & Display Truth Stats
+```text
+TypeScript no-emit: passed
+Vite production build: passed; 2,225 modules transformed
+Jest: 2 suites, 6 tests passed
 ```
 
----
-
-## 5. API Client Integration (`services/api.ts`)
-
-The frontend interacts with the FastAPI backend through typed endpoints:
-
-| Endpoint | Method | Purpose |
-| :--- | :--- | :--- |
-| `/api/v1/seasons` | `GET` | Fetch list of available seasons |
-| `/api/v1/seasons/{year}` | `GET` | Get full season report snapshot |
-| `/api/v1/standings` | `GET` | Get current live league table |
-| `/api/v1/teams/{id}` | `GET` | Get squad roster, finances, and manager info |
-| `/api/v1/players/{id}` | `GET` | Get player attributes, contract, and form ratings |
-| `/api/v1/match/{id}` | `GET` | Get match statistics, $xG$ timeline, and events |
-| `/api/v1/match/{id}/video` | `GET` | Get video highlight stream URI |
-| `/api/v1/match/{id}/render-status` | `GET` | Check background video rendering progress |
-| `/api/v1/match/simulate-grf` | `POST` | Trigger authentic GRF simulation & trajectory creation |
-| `/api/v1/run-simulation` | `POST` | Trigger multi-season league simulation |
-| `/api/v1/ml/benchmarks` | `GET` | Retrieve DQN evaluation benchmark reports |
+The production build warns that Browserslist data is seven months old. Updating that data is maintenance, not a correctness blocker.

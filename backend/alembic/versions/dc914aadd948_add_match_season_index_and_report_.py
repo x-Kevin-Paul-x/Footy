@@ -23,21 +23,26 @@ def upgrade() -> None:
     with op.batch_alter_table('Match', schema=None) as batch_op:
         batch_op.create_index('ix_match_season_year', ['season_year'], unique=False)
 
-    # Deduplicate existing SeasonReport entries, keeping highest report_id per season_year
-    op.execute(
-        "DELETE FROM SeasonReport WHERE report_id NOT IN ("
-        "  SELECT MAX(report_id) FROM SeasonReport GROUP BY season_year"
-        ")"
-    )
+    bind = op.get_bind()
+    duplicate_seasons = bind.execute(sa.text(
+        "SELECT season_year FROM SeasonReport GROUP BY season_year HAVING COUNT(*) > 1"
+    )).fetchall()
+    if duplicate_seasons:
+        raise RuntimeError(
+            "SeasonReport contains duplicate years; reconcile them before applying "
+            f"the uniqueness constraint: {[row[0] for row in duplicate_seasons]}"
+        )
     with op.batch_alter_table('SeasonReport', schema=None) as batch_op:
         batch_op.create_unique_constraint('uq_season_report_season_year', ['season_year'])
 
-    # Deduplicate existing TransferReport entries, keeping highest report_id per season_year
-    op.execute(
-        "DELETE FROM TransferReport WHERE report_id NOT IN ("
-        "  SELECT MAX(report_id) FROM TransferReport GROUP BY season_year"
-        ")"
-    )
+    duplicate_transfers = bind.execute(sa.text(
+        "SELECT season_year FROM TransferReport GROUP BY season_year HAVING COUNT(*) > 1"
+    )).fetchall()
+    if duplicate_transfers:
+        raise RuntimeError(
+            "TransferReport contains duplicate years; reconcile them before applying "
+            f"the uniqueness constraint: {[row[0] for row in duplicate_transfers]}"
+        )
     with op.batch_alter_table('TransferReport', schema=None) as batch_op:
         batch_op.create_unique_constraint('uq_transfer_report_season_year', ['season_year'])
 

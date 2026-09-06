@@ -1,7 +1,9 @@
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
-from contextlib import contextmanager
+from contextlib import contextmanager, closing
 import os
+import sqlite3
+import tempfile
 from database.models import Base
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -47,7 +49,42 @@ def get_db_session():
 def init_db():
     Base.metadata.create_all(bind=engine)
 
-import sqlite3
+def backup_database(destination: str) -> None:
+    """Create a transactionally consistent SQLite snapshot, including WAL data."""
+    destination_path = os.path.abspath(destination)
+    os.makedirs(os.path.dirname(destination_path), exist_ok=True)
+    fd, staging_path = tempfile.mkstemp(
+        prefix=".footy-backup-", suffix=".db", dir=os.path.dirname(destination_path)
+    )
+    os.close(fd)
+    try:
+        with closing(sqlite3.connect(DB_FILE, timeout=30.0)) as source, closing(
+            sqlite3.connect(staging_path, timeout=30.0)
+        ) as target:
+            source.backup(target)
+            integrity = target.execute("PRAGMA integrity_check").fetchone()
+            if not integrity or integrity[0] != "ok":
+                raise RuntimeError(f"Backup integrity check failed: {integrity}")
+        os.replace(staging_path, destination_path)
+    finally:
+        if os.path.exists(staging_path):
+            os.unlink(staging_path)
+
+
+def restore_database(source_path: str) -> None:
+    """Restore a verified SQLite snapshot while invalidating pooled connections."""
+    source_path = os.path.abspath(source_path)
+    if not os.path.isfile(source_path):
+        raise FileNotFoundError(source_path)
+    with closing(sqlite3.connect(source_path, timeout=30.0)) as source:
+        integrity = source.execute("PRAGMA integrity_check").fetchone()
+        if not integrity or integrity[0] != "ok":
+            raise RuntimeError(f"Save integrity check failed: {integrity}")
+        engine.dispose()
+        with closing(sqlite3.connect(DB_FILE, timeout=30.0)) as target:
+            source.backup(target)
+            target.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        engine.dispose()
 
 def get_raw_conn(db_file=None):
     """

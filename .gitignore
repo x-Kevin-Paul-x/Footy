@@ -94,9 +94,7 @@ test_training.py
 test_transfers.py
 node_modules/*
 *.mp4
+!assets/readme/showcase-match.mp4
 *.avi
 *.webm
 backend/reports/recordings/
-
-# Planning / audit docs (local working documents — not committed)
-docs/

@@ -14,15 +14,13 @@ import {
   InputLabel,
   Button,
   Divider,
-  Slider,
   TextField,
   Chip,
 } from '@mui/material';
 import TuneIcon from '@mui/icons-material/Tune';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
-import SpeedIcon from '@mui/icons-material/Speed';
 import StorageIcon from '@mui/icons-material/Storage';
-import { getMlModels, type MlModelItem } from '../services/api';
+import { getMlModels, getSimulationSettings, updateSimulationSettings, type MlModelItem } from '../services/api';
 
 interface Props {
   open: boolean;
@@ -34,15 +32,6 @@ export const HeaderSettingsModal: React.FC<Props> = ({ open, onClose, onShowToas
   const [models, setModels] = useState<MlModelItem[]>([]);
   const [activeModel, setActiveModel] = useState<string>(() => {
     return localStorage.getItem('footy_active_model') || 'dqn_best.pt';
-  });
-  const [fastMode, setFastMode] = useState<boolean>(() => {
-    return localStorage.getItem('footy_fast_mode') !== 'false';
-  });
-  const [matchSpeed, setMatchSpeed] = useState<number>(() => {
-    return Number(localStorage.getItem('footy_match_speed') || '50');
-  });
-  const [enableSound, setEnableSound] = useState<boolean>(() => {
-    return localStorage.getItem('footy_enable_sound') !== 'false';
   });
   const [enableToasts, setEnableToasts] = useState<boolean>(() => {
     return localStorage.getItem('footy_enable_toasts') !== 'false';
@@ -62,26 +51,28 @@ export const HeaderSettingsModal: React.FC<Props> = ({ open, onClose, onShowToas
             { name: 'dqn_final.pt', path: 'backend/src/ml/models/dqn_final.pt', size_bytes: 176407, modified_at: '' },
           ]);
         });
+      getSimulationSettings()
+        .then((settings) => setActiveModel(settings.active_model || 'dqn_best.pt'))
+        .catch(() => undefined);
     }
   }, [open]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     localStorage.setItem('footy_active_model', activeModel);
-    localStorage.setItem('footy_fast_mode', String(fastMode));
-    localStorage.setItem('footy_match_speed', String(matchSpeed));
-    localStorage.setItem('footy_enable_sound', String(enableSound));
     localStorage.setItem('footy_enable_toasts', String(enableToasts));
     localStorage.setItem('footy_api_url', apiUrl);
-
-    onShowToast('Settings saved successfully!', 'success');
-    onClose();
+    try {
+      const current = await getSimulationSettings();
+      await updateSimulationSettings({ ...current, active_model: activeModel });
+      onShowToast('Settings saved successfully!', 'success');
+      onClose();
+    } catch {
+      onShowToast('The backend rejected these settings.', 'error');
+    }
   };
 
   const handleResetDefaults = () => {
     setActiveModel('dqn_best.pt');
-    setFastMode(true);
-    setMatchSpeed(50);
-    setEnableSound(true);
     setEnableToasts(true);
     setApiUrl('http://localhost:5001');
     onShowToast('Settings reset to defaults.', 'info');
@@ -151,46 +142,6 @@ export const HeaderSettingsModal: React.FC<Props> = ({ open, onClose, onShowToas
 
         <Divider />
 
-        {/* Section 2: Engine Speed & Simulation */}
-        <Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-            <SpeedIcon sx={{ color: '#F7A400', fontSize: 20 }} />
-            <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-              Simulation Engine Speed
-            </Typography>
-          </Box>
-          <FormControlLabel
-            control={<Switch checked={fastMode} onChange={(e) => setFastMode(e.target.checked)} color="primary" />}
-            label={
-              <Box>
-                <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                  Turbo Simulation Mode
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Bypasses frame delays for 100x match generation speed
-                </Typography>
-              </Box>
-            }
-          />
-          {!fastMode && (
-            <Box sx={{ mt: 1.5, px: 1 }}>
-              <Typography variant="caption" color="text.secondary">
-                Match Tick Delay ({matchSpeed}ms)
-              </Typography>
-              <Slider
-                value={matchSpeed}
-                min={10}
-                max={200}
-                step={10}
-                onChange={(_, val) => setMatchSpeed(val as number)}
-                valueLabelDisplay="auto"
-              />
-            </Box>
-          )}
-        </Box>
-
-        <Divider />
-
         {/* Section 3: Audio & Telemetry */}
         <Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
@@ -203,10 +154,6 @@ export const HeaderSettingsModal: React.FC<Props> = ({ open, onClose, onShowToas
             <FormControlLabel
               control={<Switch checked={enableToasts} onChange={(e) => setEnableToasts(e.target.checked)} />}
               label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Enable Live Toast Notifications</Typography>}
-            />
-            <FormControlLabel
-              control={<Switch checked={enableSound} onChange={(e) => setEnableSound(e.target.checked)} />}
-              label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Enable Whistle & Goal Sound FX</Typography>}
             />
             <TextField
               size="small"

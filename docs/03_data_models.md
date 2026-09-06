@@ -1,177 +1,69 @@
-# 03. Data Models & Schemas
+# 03. Data Models and Schemas
 
-This document defines the database schemas (SQLAlchemy / SQLite), domain classes, trajectory binary schemas, and API request/response contracts (Pydantic v2).
+Last verified: **6 September 2026**
 
----
+## SQLite and SQLAlchemy
 
-## 1. Database Schema (`backend/src/database/models.py`)
+The default database is `backend/data/football_sim.db`, or `${FOOTY_DATA_DIR}/football_sim.db` when overridden. Connections enable foreign keys, WAL, and a 10-second busy timeout.
 
-Persistent match and season data is stored in SQLite (`football_sim.db`) and managed with **SQLAlchemy ORM** and **Alembic**.
+### Core records
 
-```mermaid
-erDiagram
-    Team ||--o{ Player : employs
-    Team ||--o{ Coach : employs
-    Team ||--|| Manager : managed_by
-    Team ||--o{ Match : home_matches
-    Team ||--o{ Match : away_matches
-    Match ||--o{ MatchEvent : logs
-    Match ||--o{ MatchShots : records
-    Player ||--o{ TransferListing : listed
-    Player ||--o{ TransferHistory : transferred
-```
+| Model | Identity and important fields |
+| --- | --- |
+| `League` | `league_id`, `name`, `season_year`; many-to-many teams. |
+| `Team` | `team_id`, unique `name`, budgets, optional manager relation. |
+| `Player` | `player_id`, unique `name`, age, position, optional `team_id`, potential, wage, contract, squad role. |
+| `Manager` | identity, formation, experience and performance counters. |
+| `SimulationRun` | string `run_id`, season, lifecycle timestamps, status, render mode, match totals, cancellation flag, error and metadata. |
+| `Match` | integer PK, nullable run FK, match number, season, team IDs, score/stat fields, trace path, video URL. |
+| `MatchEvent` | event PK, match FK/index, minute, type, player, team, text details. |
+| `MatchShots` | `(match_id, team)` composite PK with totals/on-target count. |
+| `SeasonReport` / `TransferReport` | one report row per season year. |
 
-### Core Table Definitions
+`Match` has a uniqueness constraint on `(simulation_run_id, season_year, match_number)`. `home_team_id` and `away_team_id` are integer identifiers in the current ORM but are not declared foreign keys. `MatchEvent` also lacks dedicated step, xG, on-target, and structured-details columns.
 
-#### `Team`
-* `team_id` (PK, Integer): Unique identifier.
-* `name` (String, Unique): Club name (e.g. "Arsenal", "Manchester City").
-* `manager_id` (FK $\rightarrow$ `Manager.manager_id`, Nullable): Current head coach.
-* `transfer_budget` (Float): Available transfer funds in GBP.
-* `wage_budget` (Float): Weekly wage allowance in GBP.
-* `stadium_capacity` (Integer): Matchday seat capacity.
+Lifecycle status values used by the code include `running`, `completed`, `failed`, `cancelled`, and `interrupted`. Timestamps are ISO-formatted strings.
 
-#### `Player`
-* `player_id` (PK, Integer): Unique identifier.
-* `name` (String): Full name.
-* `age` (Integer): Current age (16–40).
-* `position` (String): Primary tactical role ("GK", "CB", "LB", "RB", "CM", "CAM", "LW", "RW", "ST").
-* `team_id` (FK $\rightarrow$ `Team.team_id`, Nullable): Associated club.
-* `potential` (Integer, 1–100): Ceiling rating.
-* `wage` (Float): Weekly salary in GBP.
-* `contract_length` (Integer): Remaining years on contract.
-* `squad_role` (String): "KEY", "FIRST_TEAM", "ROTATION", "YOUTH".
-
-#### `Manager`
-* `manager_id` (PK, Integer): Unique identifier.
-* `name` (String): Manager name.
-* `formation` (String): Preferred layout ("4-3-3", "4-2-3-1", "3-5-2", "5-3-2").
-* `style` (String): Tactical philosophy ("Gegenpress", "Tiki-Taka", "Counter", "Direct").
-
-#### `Match`
-* `match_id` (PK, Integer): Unique fixture ID.
-* `match_number` (Integer): Matchday fixture number (1–380).
-* `season_year` (Integer): Calendar season.
-* `date` (String): Scheduled match timestamp.
-* `home_team_id` (FK $\rightarrow$ `Team.team_id`), `away_team_id` (FK $\rightarrow$ `Team.team_id`).
-* `home_goals` (Integer), `away_goals` (Integer).
-* `home_possession` (Float), `away_possession` (Float).
-* `weather` (String): "Sunny", "Rain", "Snow", "Windy".
-* `intensity` (String): Match tempo rating (1–100).
-* `trace_file` (String, Nullable): Path to recorded `MatchTrajectory` artifact (`.npz` or `.dump`).
-
-#### `MatchEvent`
-* `event_id` (PK, Integer): Unique event index.
-* `match_id` (FK $\rightarrow$ `Match.match_id`): Fixture reference.
-* `minute` (Integer): Match minute (0–90+).
-* `type` (String): "goal", "yellow_card", "red_card", "injury", "substitution", "home_lineup", "away_lineup".
-* `player` (String): Involved player name or formation identifier.
-* `team` (String): "home", "away", or "both".
-* `details` (String): JSON encoded metadata or descriptive commentary.
-
----
-
-## 2. Footy $\to$ GRF Domain Adapter (`GRFPlayerProfile`)
-
-Translates high-level Footy attributes into physical simulation multipliers:
-
-```python
-@dataclass
-class GRFPlayerProfile:
-    player_id: int
-    name: str
-    position: str
-    speed_multiplier: float        # 0.85 to 1.15
-    acceleration_multiplier: float # 0.90 to 1.10
-    shot_power_multiplier: float   # 0.80 to 1.20
-    pass_accuracy_bias: float      # -0.15 to +0.15
-    tackle_success_rate: float     # 0.50 to 0.90
-    stamina_depletion_rate: float  # 0.80 to 1.20
-```
-
----
-
-## 3. Match Trajectory Binary Schema (`.npz`)
-
-The central immutable artifact generated during simulation and consumed during replay rendering:
+## Match trajectory
 
 ```python
 @dataclass
 class MatchTrajectory:
-    # 1. Identification & Versioning
     match_id: str
-    season_year: int
     seed: int
-    fingerprint: str              # SHA256 of metadata + actions
-    
-    # 2. Time & Spatial Arrays (Compressed uint16 / float16)
-    ticks: np.ndarray             # (T,) uint16
-    player_positions: np.ndarray  # (T, 22, 2) float16
-    player_directions: np.ndarray # (T, 22, 2) float16
-    ball_position: np.ndarray     # (T, 3) float16
-    ball_velocity: np.ndarray     # (T, 3) float16
-    
-    # 3. Discrete Actions & Ownership
-    actions: np.ndarray           # (T, 20) uint8
-    ball_owner_team: np.ndarray   # (T,) int8 (-1, 0, 1)
-    ball_owner_player: np.ndarray # (T,) int8 (0..10)
-    score_timeline: np.ndarray    # (T, 2) uint8
-    
-    # 4. Opta Event List
-    events: List[Dict[str, Any]]
+    total_steps: int
+    player_coords: np.ndarray       # (T, 22, 2), float32
+    player_dirs: np.ndarray         # (T, 22, 2), float32
+    ball_coords: np.ndarray         # (T, 3), float32
+    ball_dirs: np.ndarray           # (T, 3), float32
+    actions: np.ndarray             # (T, 20), uint8
+    scores: np.ndarray              # (T, 2), uint8
+    manifest: MatchManifest
+    game_mode: np.ndarray | None    # (T,), int8
+    ball_owned_team: np.ndarray | None
+    ball_owned_player: np.ndarray | None
 ```
 
----
+`MatchManifest` contains teams, final score, totals, events, lineups/formations, colors, engine fingerprint, optional video URL, and creation time. Array shapes, dtypes, categorical domains, and finite floats are validated. Hashes cover the physics arrays and full artifact metadata.
 
-## 4. Simulation Fingerprint
+NPZ writing currently uses `np.savez_compressed` directly in the implementation visible during this review; callers should not assume crash-atomic publication unless the surrounding executor stages the target. Loading uses `allow_pickle=True` for legacy compatibility, so arbitrary uploads are not safe inputs.
 
-Ensures mathematical reproducibility across software revisions:
+## Full-state archive
 
-```json
-{
-  "engine": "GRF",
-  "engine_version": "2.1.0",
-  "grf_version": "1.1.0",
-  "tikick_checkpoint_sha256": "4f9b87c12d4a5b6e...",
-  "feature_schema": "268-v3-canonical",
-  "seed": 84592,
-  "home_formation": "4-3-3",
-  "away_formation": "4-2-3-1",
-  "ruleset": "premier_league_2026",
-  "trajectory_sha256": "e3b0c44298fc1c14..."
-}
-```
+`.grfstate` V2 stores a magic header, fixed metadata/index region, compressed chunks, per-chunk checksums, and a global hash. Chunk payloads use pickle. The reader also supports V1 and automatically treats unknown magic as a legacy pickle file. This is a trusted-local format pending P3.4.
 
----
+## API schemas
 
-## 5. API Request & Response Schemas (Pydantic v2)
+`schemas.py` defines typed responses for teams, players, reports, saves, simulation status, match simulation/rendering, and simulation settings. `MatchSimulationRequest` validates match IDs, team-name length, formations, `max_steps` from 100 to 5000, and render mode (`2d`, `3d`, `auto`). `SimulationSettings` validates render mode, steps, and model filename shape.
 
-### `GRFSimulationRequest`
-```python
-class GRFSimulationRequest(BaseModel):
-    match_id: Optional[str] = None
-    home_team_name: str = "Arsenal"
-    away_team_name: str = "Chelsea"
-    home_formation: str = "4-3-3"
-    away_formation: str = "4-2-3-1"
-    generate_video: bool = False
-    max_steps: int = Field(default=1200, ge=1, le=5000)
-    seed: Optional[int] = None
-```
+Many read endpoints still return ad hoc dictionaries/`JSONResponse` without response models. Versioned API coverage is therefore broad but not complete.
 
-### `MatchSimulationResponse`
-```python
-class MatchSimulationResponse(BaseModel):
-    match_id: str
-    home_team: str
-    away_team: str
-    home_score: int
-    away_score: int
-    possession: Dict[str, float]       # {"home": 53.0, "away": 47.0}
-    shots: Dict[str, int]              # {"home": 8, "away": 5}
-    xg: Dict[str, float]               # {"home": 1.42, "away": 0.88}
-    events: List[Dict[str, Any]]
-    video_url: Optional[str] = None
-    trajectory_url: Optional[str] = None
-    fingerprint: Optional[str] = None
-```
+## Backup and restore
+
+`backup_database()` uses SQLite’s online backup API into a staging database, runs `PRAGMA integrity_check`, and atomically publishes the save. `restore_database()` validates the source, disposes pooled connections, uses the backup API into the live DB, checkpoints WAL, and disposes again.
+
+## Migration state
+
+The live database was verified at revision `879f4c01467a`, with `integrity_check=ok` and zero foreign-key violations. The chain is not a clean bootstrap: on an empty isolated database, `f1279028ebae` creates only report tables and `c7c6ac0ab9c1` then fails while altering missing `Match`.
+
+Fresh setup currently relies on SQLAlchemy `create_all()` plus compatibility DDL in `create_tables()`. Do not run schema experiments against the live database. Repair and test empty and legacy migration paths in isolated copies before making Alembic the sole schema owner.

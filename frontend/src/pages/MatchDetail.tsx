@@ -170,8 +170,11 @@ const MatchDetail: React.FC = () => {
     const fetchMatch = async () => {
       setLoading(true);
       setError(null);
+      setMatch(null);
+      setVideoUrl(null);
       try {
-        const data = await getMatchDetails(Number(matchId));
+        const targetId = matchId ? (isNaN(Number(matchId)) ? matchId : Number(matchId)) : 1;
+        const data = await getMatchDetails(targetId);
         setMatch(data);
         if (data && data.video_url) {
           setVideoUrl(data.video_url);
@@ -186,7 +189,8 @@ const MatchDetail: React.FC = () => {
           // Video metadata check optional
         }
       } catch (err) {
-        setError("Failed to fetch match details.");
+        const message = err instanceof Error ? err.message : "Unknown request error";
+        setError(`Failed to fetch match details: ${message}`);
       } finally {
         setLoading(false);
       }
