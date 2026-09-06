@@ -50,6 +50,53 @@ flowchart LR
 
 The intended rule is that rendering consumes recorded results and artifacts. Current paths follow that rule for score/event overlays, but renderer frame inserts are not yet represented by one exact timeline profile. See [Current Status](05_current_status.md).
 
+## Match execution sequence
+
+```mermaid
+sequenceDiagram
+    actor Manager
+    participant UI as React UI
+    participant API as FastAPI
+    participant Runner as GRFMatchExecutor
+    participant GRF as GRF environment
+    participant Store as SQLite / artifacts
+    participant Render as Replay renderer
+
+    Manager->>UI: Choose teams, formations and render mode
+    UI->>API: POST /api/v1/match/simulate-grf
+    API->>Runner: Build SimulationSpec
+    Runner->>GRF: Create seeded 11v11 environment
+    loop Every simulation step
+        Runner->>GRF: Policy actions
+        GRF-->>Runner: Observation, reward and match state
+        Runner->>Runner: Attribute events and update statistics
+        Runner->>Store: Append trajectory/state data
+    end
+    Runner->>Store: Persist canonical result and manifest
+    Runner->>Render: Render trajectory or captured frames
+    Render->>Store: Atomically publish MP4 and timeline
+    API-->>UI: Result, statistics and replay URL
+    UI-->>Manager: Match center and broadcast playback
+```
+
+## Match artifact lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Requested
+    Requested --> Simulating
+    Simulating --> Captured: canonical result + trajectory
+    Simulating --> Failed: engine error / timeout
+    Captured --> Rendering: 2D or 3D
+    Rendering --> Validating
+    Rendering --> Failed: renderer / encoder error
+    Validating --> Published: atomic replace succeeds
+    Validating --> Failed: output invalid
+    Published --> Reused: later request finds artifact
+    Reused --> [*]
+    Failed --> [*]
+```
+
 ## Scheduling and season lifecycle
 
 `League.generate_schedule()` creates explicit matchday rounds with the circle method. `main.py` prepares and simulates each round, persists successful results under a `simulation_run_id`, applies weekly domain changes, writes season reports, and advances the season after successful completion.
@@ -75,3 +122,4 @@ The configured report root contains season reports, transfer logs, match reports
 5. Alembic cannot bootstrap an empty database.
 6. Timeline metadata is not exact for every renderer.
 7. Full-state archive deserialization is safe only for trusted local artifacts.
+
