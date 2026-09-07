@@ -50,6 +50,15 @@ NUM_SEASONS = _env_int("FOOTY_NUM_SEASONS", 1)
 FOOTY_GRF_MAX_STEPS = _env_int("FOOTY_GRF_MAX_STEPS", 1200)
 FOOTY_PARALLEL_WORKERS = _env_int("FOOTY_PARALLEL_WORKERS", 10)
 
+# Broadcast presentation is deliberately configured outside the canonical
+# simulation specification.  These switches must never affect a match seed,
+# trajectory, state archive, event ledger, or deterministic simulation hash.
+BROADCAST_V2_ENABLED = _env_bool("BROADCAST_V2_ENABLED", False)
+CAMERA_DIRECTOR_ENABLED = _env_bool("CAMERA_DIRECTOR_ENABLED", False)
+PRESENTATION_FPS = _env_int("PRESENTATION_FPS", 30)
+ALTERNATE_REPLAYS_ENABLED = _env_bool("ALTERNATE_REPLAYS_ENABLED", False)
+CELEBRATIONS_ENABLED = _env_bool("CELEBRATIONS_ENABLED", False)
+
 
 def ensure_report_directories() -> None:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)

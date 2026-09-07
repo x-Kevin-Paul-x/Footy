@@ -1374,7 +1374,10 @@ async def simulate_grf_match(req: MatchSimulationRequest):
             match_id=match_id_str,
             seed_val=seed_val,
             render_video=should_render_video,
-            record_grf_states=False,
+            # Preserve the established endpoint default (no state archive) while
+            # honouring an explicit caller request.  Presentation settings are
+            # intentionally not added to canonical simulation inputs.
+            record_grf_states=(False if req.record_grf_states is None else req.record_grf_states),
             record_dump=req.record_dump,
             render_mode=req.render_mode or "3d",
             run_id=effective_run_id,
