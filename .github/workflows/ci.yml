@@ -25,6 +25,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
+          # Architecture tests import the TiKick policy backend. CI only needs
+          # CPU inference dependencies, avoiding the CUDA runtime download.
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
 
       - name: Run Backend Regression & Architecture Tests
         env:
