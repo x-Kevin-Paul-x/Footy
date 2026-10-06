@@ -41,6 +41,7 @@ const StatisticsAnalytics = lazy(() => import("./pages/StatisticsAnalytics"));
 const MlBenchmarks = lazy(() => import("./pages/MlBenchmarks"));
 
 import Toast from "./components/Toast";
+import LiveSeasonUpdates from "./components/LiveSeasonUpdates";
 import { HeaderBookmarksMenu } from "./components/HeaderBookmarksMenu";
 import { HeaderAppLauncher } from "./components/HeaderAppLauncher";
 import { HeaderNotificationsDrawer } from "./components/HeaderNotificationsDrawer";
@@ -93,7 +94,7 @@ function AppBreadcrumbs() {
         {pathnames.map((value, index) => {
           const to = `/${pathnames.slice(0, index + 1).join('/')}`;
           const isLast = index === pathnames.length - 1;
-          const formatted = value.replace(/-/g, ' ');
+          const formatted = decodeURIComponent(value).replace(/-/g, ' ');
 
           return isLast ? (
             <Chip
@@ -158,6 +159,7 @@ function MainLayout({ mode, setMode, toast, setToast }: {
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', color: 'text.secondary', p: { xs: 1.5, md: 2.5 }, transition: 'background-color 0.3s ease, color 0.3s ease' }}>
+      <LiveSeasonUpdates />
       {/* Top Header Bar - Floating Soft Tactile Capsule (Screenshot Style) */}
       <Box
         className="finnova-header-bar"

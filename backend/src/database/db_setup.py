@@ -116,6 +116,7 @@ def init_simulation_run(season_year: int = 2026, render_mode: str = "3d", total_
         db.add(new_run)
         db.commit()
 
+    clean_old_simulation_data(preserve_run_id=run_id)
     logger.info(f"Initialized simulation run: {run_id} (season={season_year}, render_mode={render_mode})")
     return run_id
 
@@ -136,6 +137,20 @@ def update_simulation_run(run_id: str, **updates) -> None:
         changed = db.query(SimulationRun).filter(SimulationRun.run_id == run_id).update(values)
         if not changed:
             raise KeyError(f"Unknown simulation run: {run_id}")
+
+
+def complete_simulation_run(run_id: str) -> None:
+    """Finalize progress from persisted fixtures, never a stale halftime counter."""
+    from datetime import datetime, timezone
+    from database.session import get_db_session
+    from database.models import SimulationRun, Match
+    with get_db_session() as db:
+        run = db.query(SimulationRun).filter(SimulationRun.run_id == run_id).one()
+        run.matches_played = db.query(Match).filter(Match.simulation_run_id == run_id).count()
+        run.status = 'completed'
+        run.finished_at = datetime.now(timezone.utc).isoformat()
+        run.heartbeat_at = run.finished_at
+        run.error_message = None
 
 
 def simulation_cancel_requested(run_id: str) -> bool:
@@ -175,10 +190,11 @@ def get_current_simulation_run() -> str:
         logger.debug("Failed to query SimulationRun: %s", e)
     return "default"
 
-def clean_old_simulation_data(preserve_run_id: str = None):
+def clean_old_simulation_data(preserve_run_id: str = None, recordings_dir: Path = None):
     """
     Safely purges previous simulation run directories and old reports.
-    Preserves active run directory if specified.
+    Preserves the new run. By default, no previous run recordings are retained.
+    Curated repository assets live outside this runtime directory.
     """
     import shutil
     import time
@@ -186,27 +202,29 @@ def clean_old_simulation_data(preserve_run_id: str = None):
 
     logger.info("Applying simulation artifact retention policy (preserving: %s)", preserve_run_id)
 
-    # Keep historical runs by default. Operators can opt into a count-based
-    # policy; transient files are only removed after a grace period so an active
-    # worker is never mistaken for stale output.
+    recordings_root = Path(recordings_dir or RECORDINGS_DIR).resolve()
+    # Zero means zero previous runs, rather than unlimited historical storage.
+    # A positive override keeps that many additional runs for diagnostics.
     retention = max(0, int(os.environ.get("FOOTY_RUN_RETENTION", "0")))
     run_dirs = sorted(
-        (p for p in RECORDINGS_DIR.glob("run_*") if p.is_dir()),
+        (p for p in recordings_root.glob("run_*") if p.is_dir()),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
-    ) if RECORDINGS_DIR.exists() else []
+    ) if recordings_root.exists() else []
     retained = 0
     for run_dir in run_dirs:
         if run_dir.name == preserve_run_id:
             continue
         retained += 1
-        if retention and retained > retention:
+        if retained > retention:
+            if run_dir.is_symlink() or run_dir.resolve().parent != recordings_root:
+                raise ValueError(f"Refusing to delete recordings outside {recordings_root}: {run_dir}")
             logger.info("Removing run outside configured retention: %s", run_dir.name)
             shutil.rmtree(run_dir)
 
     stale_before = time.time() - float(os.environ.get("FOOTY_TEMP_MAX_AGE_SECONDS", "86400"))
-    if RECORDINGS_DIR.exists():
-        for item in RECORDINGS_DIR.iterdir():
+    if recordings_root.exists():
+        for item in recordings_root.iterdir():
             if (
                 item.is_file()
                 and item.stat().st_mtime < stale_before

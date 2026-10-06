@@ -70,7 +70,7 @@ npm run dev:frontend
 | `FOOTY_WSL_PYTHON` | `/root/venv_baller/bin/python3` | WSL interpreter. |
 | `FOOTY_DEFAULT_RENDER_MODE` | `3d` | Default rendering mode. |
 | `FOOTY_SYNC_VIDEO_RENDER` | `0` | Enable synchronous 3D video in batch payloads. |
-| `FOOTY_RUN_RETENTION` | `0` | Runs to retain; zero keeps all historical run directories. |
+| `FOOTY_RUN_RETENTION` | `0` | Previous recording runs to retain; zero removes all previous runtime runs when a new run starts. Curated match assets are preserved. |
 | `FOOTY_TEMP_MAX_AGE_SECONDS` | `86400` | Age before stale temporary cleanup. |
 | `FOOTY_MAX_MATCHES` | `0` | Optional shortened-run fixture cap. |
 

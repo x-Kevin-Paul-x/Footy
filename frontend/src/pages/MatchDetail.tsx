@@ -293,7 +293,7 @@ const MatchDetail: React.FC = () => {
             x: coord.x,
             y: coord.y,
             number: p.number ?? (i + 1),
-            rating: p.potential ? (p.potential > 10 ? p.potential / 10 : p.potential) : 7.2,
+            rating: p.match_rating,
           };
         })
       : coords.map((c, i) => ({
@@ -302,7 +302,7 @@ const MatchDetail: React.FC = () => {
           x: c.x,
           y: c.y,
           number: i + 1,
-          rating: 7.2,
+          rating: undefined,
         }));
 
     return baseList.map((p) => {
@@ -407,7 +407,7 @@ const MatchDetail: React.FC = () => {
         name: b.name,
         position: b.position || "SUB",
         number: b.number ?? (i + 12),
-        rating: b.potential ? (b.potential > 10 ? b.potential / 10 : b.potential) : 6.8,
+        rating: b.match_rating,
         subbedInMinute,
         subbedForPlayer,
         goals,
@@ -604,6 +604,7 @@ const MatchDetail: React.FC = () => {
               formation={match.home_formation || "4-3-3"}
               players={homePlayers}
               bench={homeBench}
+              benchRecorded={match.home_bench_recorded}
               coachName={match.home_manager_name || `${match.home_team_name} Manager`}
               teamColor={homeMeta.bg.includes("#2563eb") ? "#2563eb" : "#4f46e5"}
             />
@@ -612,6 +613,7 @@ const MatchDetail: React.FC = () => {
               formation={match.away_formation || "4-2-3-1"}
               players={awayPlayers}
               bench={awayBench}
+              benchRecorded={match.away_bench_recorded}
               coachName={match.away_manager_name || `${match.away_team_name} Manager`}
               teamColor={awayMeta.bg.includes("#334155") ? "#334155" : "#f43f5e"}
             />
@@ -776,7 +778,7 @@ const MatchDetail: React.FC = () => {
                                 }}
                               />
                               <Typography variant="caption" sx={{ fontWeight: 800, fontSize: "0.68rem", textTransform: "uppercase", letterSpacing: 0.3, color: isHome ? "#4f46e5" : "#e11d48" }}>
-                                {isHome ? match.home_team_name : match.away_team_name}
+                                {event.team === 'both' ? 'Match' : isHome ? match.home_team_name : match.away_team_name}
                               </Typography>
                             </Box>
                             <Typography variant="body2" sx={{ fontWeight: 600, fontSize: "0.8rem", color: "text.primary", lineHeight: 1.35 }}>

@@ -20,6 +20,7 @@ from config import (
     TIKICK_CHECKPOINT_PATH,
     LOCAL_TIKICK_DIR,
     FOOTY_GRF_MAX_STEPS,
+    FOOTY_PARALLEL_WORKERS,
     BASE_DIR
 )
 from logic.grf_renderer import team_color_from_name
@@ -110,7 +111,7 @@ class GRFBatchRunner:
                 "output_mp4": to_wsl_path(mp4_win),
                 "run_id": eff_run_id,
                 "trace_dump": None,
-                "states_file": None,
+                "states_file": to_wsl_path(run_dir / f"trace_{m_id}.grfstate") if is_3d else None,
                 "record_dump": False,
                 "record_3d_video": is_3d and bool(fix.get("render_video_sync", os.getenv("FOOTY_SYNC_VIDEO_RENDER", "0") in ("1", "true", "True"))),
                 "render_mode": eff_render_mode,
@@ -125,7 +126,7 @@ class GRFBatchRunner:
 
         sync_video = any(f.get("record_3d_video") for f in wsl_fixtures)
         # Decoupled simulation throughput: 8 workers for headless simulation, 2 workers if synchronous 3D rendering requested
-        num_workers = min(2, len(fixtures)) if sync_video else min(8, len(fixtures))
+        num_workers = min(2, len(fixtures)) if sync_video else min(max(1, FOOTY_PARALLEL_WORKERS), len(fixtures))
 
         try:
             payload_win.write_text(json.dumps({

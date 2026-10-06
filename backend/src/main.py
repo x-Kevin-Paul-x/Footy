@@ -340,6 +340,7 @@ from database.models import Team as DBTeam, Manager as DBManager, Player as DBPl
 def sync_simulation_state_to_db(premier_league, transfer_market):
     """Fast batched sync of teams, managers, players, youth academy, and free agents to the database in a single transaction."""
     logger.info("Syncing simulation state to database...")
+    from logic.squad_numbers import assign_squad_numbers, sync_player_attributes
     try:
         with get_db_session() as db:
             existing_teams = {t.name: t for t in db.query(DBTeam).all()}
@@ -348,6 +349,7 @@ def sync_simulation_state_to_db(premier_league, transfer_market):
 
             for team in premier_league.teams:
                 # 1. Team sync
+                assign_squad_numbers(team.players + team.youth_academy)
                 db_team = existing_teams.get(team.name)
                 if db_team:
                     db_team.budget = team.budget
@@ -449,6 +451,11 @@ def sync_simulation_state_to_db(premier_league, transfer_market):
                         player.player_id = db_p.player_id
                         existing_players[player.name] = db_p
 
+                for player in team.players + team.youth_academy:
+                    db_player = existing_players[player.name]
+                    db_player.jersey_number = player.jersey_number
+                    sync_player_attributes(db, player, db_player)
+
             # 5. Free Agents sync
             for player in transfer_market.free_agents:
                 db_p = existing_players.get(player.name)
@@ -470,6 +477,7 @@ def sync_simulation_state_to_db(premier_league, transfer_market):
                     db.flush()
                     player.player_id = db_p.player_id
                     existing_players[player.name] = db_p
+                sync_player_attributes(db, player, existing_players[player.name])
         logger.info("Database sync complete.")
 
         # Immediately save live season report so frontend displays current standings in real time
@@ -755,6 +763,7 @@ def simulate_season_with_transfers(premier_league, transfer_market, run_id=None,
 
     sync_simulation_state_to_db(premier_league, transfer_market)
     checkpoint_run()
+    premier_league.last_matches_played = matches_played
     
     return premier_league.get_final_table()
 
@@ -766,7 +775,6 @@ def _run_main(run_id: str = None, render_mode: str = None):
 
     eff_render_mode = str(render_mode or os.getenv("FOOTY_DEFAULT_RENDER_MODE", "3d")).lower()
     if not run_id:
-        clean_old_simulation_data()
         create_tables()
         run_id = init_simulation_run(season_year=2026, render_mode=eff_render_mode, total_matches=380)
 
@@ -783,7 +791,6 @@ def _run_main(run_id: str = None, render_mode: str = None):
     logger.info(f"\nInitial Financial Overview (run_id={run_id}):")
     print_financial_summary(premier_league.teams)
     
-    completed_match_count = 0
     for season_index in range(num_seasons):
         logger.info(f"\n{'='*60}")
         logger.info(f"SEASON {premier_league.season_year} (Run: {run_id})")
@@ -802,7 +809,6 @@ def _run_main(run_id: str = None, render_mode: str = None):
         # Print results
         print_league_table(full_season_report['table'])
 
-        completed_match_count += int(getattr(premier_league, "last_matches_played", len(premier_league.schedule)))
 
         # Enhanced reporting
         champions_name = full_season_report['champions']
@@ -883,14 +889,8 @@ def _run_main(run_id: str = None, render_mode: str = None):
 
     # Mark the overall run complete only after every requested season finalized.
     try:
-        with get_db_session() as db:
-            run_obj = db.query(SimulationRun).filter(SimulationRun.run_id == run_id).first()
-            if run_obj:
-                run_obj.status = "completed"
-                run_obj.matches_played = completed_match_count
-                run_obj.finished_at = datetime.now().astimezone().isoformat()
-                run_obj.heartbeat_at = run_obj.finished_at
-                run_obj.error_message = None
+        from database.db_setup import complete_simulation_run
+        complete_simulation_run(run_id)
     except Exception as e:
         logger.warning(f"Notice on finalizing SimulationRun record: {e}")
         raise

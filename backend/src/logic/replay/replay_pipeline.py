@@ -17,12 +17,16 @@ from typing import Dict, List, Any, Optional, Tuple
 import numpy as np
 import cv2
 
+from .grf_render_runtime import render_restored_native_frame
+from .render_status import write_render_status
+
 try:
     import gfootball.env as football_env
 except ImportError:
     football_env = None
 
 from logic.grf_trajectory import MatchTrajectory, MatchManifest
+from logic.broadcast.stats import StatsSnapshotReducer
 from logic.grf_state_archive import GRFStateArchiveReader, ReplayIntegrityError
 from logic.replay_schema import SIM_STEP_SECONDS, PerformanceConfig
 from logic.grf_renderer import (
@@ -32,6 +36,7 @@ from logic.grf_renderer import (
     draw_studio_stats_card,
     draw_hud
 )
+from .native_goal_frames import NativeGoalFrames
 from .replay_encoder import create_encoder, ReplayEncoder
 
 
@@ -138,6 +143,10 @@ class ReplayPipeline:
         states_file = payload.get("states_file")
         trajectory_file = payload.get("trajectory_file")
         output_mp4 = payload["output_mp4"]
+        progress_file = payload.get('progress_file')
+        pending_mp4 = str(Path(output_mp4).with_suffix('.rendering.mp4'))
+        write_render_status(progress_file, {'status': 'initializing', 'progress': 0,
+            'stage': 'Preparing saved match frames', 'completed': False})
         broadcast_fps = int(payload.get("fps", 10))
         requested_res = str(payload.get("resolution", "720p")).lower()
 
@@ -157,6 +166,9 @@ class ReplayPipeline:
         traj = None
         if trajectory_file and os.path.exists(trajectory_file):
             traj = MatchTrajectory.load_from_npz(Path(trajectory_file))
+            if traj.match_id != match_id or traj.manifest.match_id != match_id:
+                archive.close()
+                raise ReplayIntegrityError("Replay trajectory belongs to a different match")
             if total_steps != traj.total_steps:
                 archive.close()
                 raise ReplayIntegrityError(
@@ -179,7 +191,7 @@ class ReplayPipeline:
         home_bgr = hex_to_bgr(home_color)
         away_bgr = hex_to_bgr(away_color)
 
-        half_time_step = total_steps // 2
+        half_time_step = int(traj.manifest.engine_fingerprint.get('native_duration', total_steps)) // 2 if traj else total_steps // 2
         if traj:
             for ev in traj.manifest.events:
                 if ev.get("type") == "half_time" and "step" in ev:
@@ -207,7 +219,7 @@ class ReplayPipeline:
 
         # Encoder & Instrumented Queue setup
         encoder = create_encoder(self.encoder_type, preset=self.encoder_preset)
-        encoder.start(width=width, height=height, fps=broadcast_fps, output_mp4=output_mp4)
+        encoder.start(width=width, height=height, fps=broadcast_fps, output_mp4=pending_mp4)
         frame_queue = InstrumentedFrameQueue(maxsize=self.queue_size)
 
         encoder_exception = None
@@ -260,6 +272,7 @@ class ReplayPipeline:
         t_hud_acc = 0.0
         t_queue_push_acc = 0.0
 
+        native_goals = NativeGoalFrames(states_file, match_id, traj)
         try:
             # 1. Pre-Match Card (3 seconds)
             intro_card_bgr = draw_pre_match_card(
@@ -299,6 +312,11 @@ class ReplayPipeline:
                 if encoder_exception is not None:
                     raise RuntimeError(f"Encoder thread failed: {encoder_exception}")
 
+                duration = int(traj.manifest.engine_fingerprint.get('native_duration', 3000)) if traj else 3000
+                for goal_frame in native_goals.render_before(step, env, width, height,
+                        home_team, away_team, home_bgr, away_bgr, duration, half_time_step):
+                    _enqueue(goal_frame)
+
                 # Archive Read
                 t0 = time.perf_counter()
                 st_bytes = archive.get_state(step)
@@ -311,7 +329,7 @@ class ReplayPipeline:
 
                 # 3D OpenGL Render
                 t0 = time.perf_counter()
-                frame_rgb = env.render(mode='rgb_array')
+                frame_rgb = render_restored_native_frame(env)
                 t_render_acc += (time.perf_counter() - t0)
 
                 # Frame Sanitization & Resizing
@@ -326,6 +344,13 @@ class ReplayPipeline:
                 # HUD Compositing
                 t0 = time.perf_counter()
                 raw_o = env.observation()[0]
+                if traj:
+                    restored_players = np.concatenate([raw_o['left_team'], raw_o['right_team']])
+                    if (not np.allclose(restored_players, traj.player_coords[step], rtol=0, atol=1e-6)
+                            or not np.allclose(raw_o['ball'], traj.ball_coords[step], rtol=0, atol=1e-6)
+                            or not np.array_equal(raw_o['score'], traj.scores[step])
+                            or (traj.game_mode is not None and int(raw_o['game_mode']) != int(traj.game_mode[step]))):
+                        raise ReplayIntegrityError(f"Restored replay diverges from simulation at frame {step}")
                 curr_score = [int(raw_o['score'][0]), int(raw_o['score'][1])]
                 b_own = raw_o.get('ball_owned_team', -1)
                 if b_own == 0:
@@ -333,7 +358,9 @@ class ReplayPipeline:
                 elif b_own == 1:
                     right_poss += 1
 
-                match_min = max(1, min(90, int((step / max(1, total_steps - 1)) * 90)))
+                duration = int(traj.manifest.engine_fingerprint.get('native_duration', 3000)) if traj else 3000
+                elapsed = duration - int(raw_o.get('steps_left', duration - step))
+                match_min = max(1, min(90, int(elapsed * 90 / duration) + 1))
                 is_second_half = step >= half_time_step
 
                 for shot_event in shot_events_by_step.get(step, []):
@@ -363,7 +390,8 @@ class ReplayPipeline:
                     home_bgr=home_bgr,
                     away_bgr=away_bgr,
                     goal_banner=goal_banner if goal_banner_cd > 0 else None,
-                    is_second_half=is_second_half
+                    is_second_half=is_second_half,
+                    match_seconds=elapsed * 5400 / duration,
                 )
                 if goal_banner_cd > 0:
                     goal_banner_cd -= 1
@@ -375,6 +403,12 @@ class ReplayPipeline:
                 t0 = time.perf_counter()
                 _enqueue(composite_rgb)
                 t_queue_push_acc += (time.perf_counter() - t0)
+                if step % 30 == 0 or step == total_steps - 1:
+                    write_render_status(progress_file, {'status': 'rendering',
+                        'progress': min(95, 5 + int((step + 1) / total_steps * 90)),
+                        'step': step + 1, 'total_steps': total_steps, 'match_minute': match_min,
+                        'score': curr_score, 'stage': f"Rendering saved match · {match_min}' / 90'",
+                        'completed': False})
 
                 # Half-Time Card
                 if step == half_time_step and not half_time_shown:
@@ -382,12 +416,17 @@ class ReplayPipeline:
                     tot_poss = max(1, left_poss + right_poss)
                     h_pct = round((left_poss / tot_poss) * 100.0, 1)
                     a_pct = round(100.0 - h_pct, 1)
+                    snapshot = StatsSnapshotReducer.at_step(traj, step) if traj else None
                     ht_card_bgr = draw_studio_stats_card(
                         w=width, h=height, title="HALF TIME",
                         home_team=home_team, away_team=away_team,
                         score=(curr_score[0], curr_score[1]),
                         h_poss=h_pct, a_poss=a_pct,
                         h_shots=shots_h, a_shots=shots_a,
+                        h_sot=snapshot.shots_on_target[0] if snapshot else 0,
+                        a_sot=snapshot.shots_on_target[1] if snapshot else 0,
+                        h_xg=snapshot.xg[0] if snapshot else 0.0,
+                        a_xg=snapshot.xg[1] if snapshot else 0.0,
                         home_bgr=home_bgr, away_bgr=away_bgr
                     )
                     ht_card_rgb = cv2.cvtColor(ht_card_bgr, cv2.COLOR_BGR2RGB)
@@ -399,11 +438,15 @@ class ReplayPipeline:
             h_pct = round((left_poss / tot_poss) * 100.0, 1)
             a_pct = round(100.0 - h_pct, 1)
             ft_card_bgr = draw_studio_stats_card(
-                w=width, h=height, title="FULL TIME",
+                w=width, h=height, title="SIMULATION STOPPED" if traj and traj.manifest.engine_fingerprint.get('match_complete') is False else "FULL TIME",
                 home_team=home_team, away_team=away_team,
                 score=(curr_score[0], curr_score[1]),
                 h_poss=h_pct, a_poss=a_pct,
                 h_shots=shots_h, a_shots=shots_a,
+                h_sot=traj.manifest.shots_on_target[0] if traj else 0,
+                a_sot=traj.manifest.shots_on_target[1] if traj else 0,
+                h_xg=traj.manifest.xg[0] if traj else 0.0,
+                a_xg=traj.manifest.xg[1] if traj else 0.0,
                 home_bgr=home_bgr, away_bgr=away_bgr
             )
             ft_card_rgb = cv2.cvtColor(ft_card_bgr, cv2.COLOR_BGR2RGB)
@@ -412,6 +455,9 @@ class ReplayPipeline:
 
             # Signal sentinel to encoder thread
             t_flush_start = time.perf_counter()
+            write_render_status(progress_file, {'status': 'rendering', 'progress': 98,
+                'stage': 'Finalizing playable video', 'match_minute': 90, 'score': curr_score,
+                'completed': False})
             _enqueue(None)
             consumer_thread.join(timeout=30)
             if consumer_thread.is_alive():
@@ -423,6 +469,7 @@ class ReplayPipeline:
             t_ffmpeg_flush_time = time.perf_counter() - t_flush_start
 
         finally:
+            native_goals.close()
             cancel_event.set()
             if consumer_thread.is_alive():
                 try:
@@ -440,6 +487,19 @@ class ReplayPipeline:
         t_shutdown_time = time.perf_counter() - (t_pipeline_start + (time.perf_counter() - t_pipeline_start))
         total_time = time.perf_counter() - t_pipeline_start
         total_frames = encoder.frames_written
+        if traj:
+            from logic.presentation_timeline import build_canonical_timeline
+            timeline = build_canonical_timeline(match_id, total_steps, traj.manifest.events,
+                fps=broadcast_fps, intro_frames=intro_frames,
+                halftime_frames=int(3.0 * broadcast_fps) if half_time_shown else 0,
+                fulltime_frames=int(4.0 * broadcast_fps), goal_hold_frames=0, goal_replay_frames=0,
+                native_duration=int(traj.manifest.engine_fingerprint.get('native_duration', 3000)),
+                native_goal_frames={step: len(frames) for step, frames in native_goals.by_step.items()})
+            if timeline.total_frames != total_frames:
+                raise ReplayIntegrityError('Encoded video does not match its presentation timeline')
+            timeline.native_redraw = True
+            timeline.save_to_file(Path(output_mp4).with_suffix('.timeline.json'))
+        os.replace(pending_mp4, output_mp4)
         eff_fps = total_frames / total_time if total_time > 0 else 0.0
 
         queue_telemetry = frame_queue.get_telemetry()

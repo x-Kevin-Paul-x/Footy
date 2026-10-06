@@ -14,6 +14,7 @@ import {
   CircularProgress,
   ToggleButton,
   ToggleButtonGroup,
+  Alert,
 } from "@mui/material";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PauseIcon from "@mui/icons-material/Pause";
@@ -24,7 +25,7 @@ import SpeedIcon from "@mui/icons-material/Speed";
 import MemoryIcon from "@mui/icons-material/Memory";
 import HourglassTopIcon from "@mui/icons-material/HourglassTop";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
-import { getMatchRenderStatus, getMatchTimeline, type PresentationTimeline } from "../services/api";
+import { getMatchRenderStatus, getMatchTimeline, resolveReplayVideoUrl, type PresentationTimeline } from "../services/api";
 
 interface MatchVideoReplayProps {
   videoUrl?: string | null;
@@ -36,19 +37,6 @@ interface MatchVideoReplayProps {
   onGenerateReplay?: (mode: "3d" | "2d") => void;
   isGenerating?: boolean;
 }
-
-const resolveVideoUrl = (url?: string | null): string => {
-  if (!url) return "";
-  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("blob:")) {
-    return url;
-  }
-  const base = window.localStorage.getItem("footy_api_url")?.trim()
-    || import.meta.env.VITE_API_BASE_URL?.trim()
-    || (import.meta.env.DEV ? "http://localhost:5001" : window.location.origin);
-  const cleanBase = base.replace(/\/+$/, "");
-  const cleanPath = url.replace(/^\/+/, "");
-  return `${cleanBase}/${cleanPath}`;
-};
 
 export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
   videoUrl,
@@ -77,6 +65,9 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [liveScore, setLiveScore] = useState<[number, number]>(score);
   const [timeline, setTimeline] = useState<PresentationTimeline | null>(null);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(true);
+  const [mediaReady, setMediaReady] = useState(false);
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   // Load canonical presentation timeline for sample-accurate seeking (P3.1)
   useEffect(() => {
@@ -91,97 +82,62 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
     };
   }, [matchId, activeVideoUrl]);
 
-  // Synchronize when videoUrl prop changes
+  // Always recover the server-side job, even when a stale video URL was supplied.
   useEffect(() => {
-    setActiveVideoUrl(videoUrl || null);
-    setIsActivelyRendering(false);
-    setRenderProgress(0);
-    setElapsedSeconds(0);
-  }, [videoUrl, matchId]);
-
-  // Synchronize when isGenerating prop changes
-  useEffect(() => {
-    if (isGenerating) {
-      setIsActivelyRendering(true);
-      setRenderProgress((prev) => (prev > 0 ? prev : 5));
-    }
-  }, [isGenerating]);
-
-  // Status Polling and Mount Check
-  useEffect(() => {
-    let timerInterval: ReturnType<typeof setInterval> | null = null;
-    let pollTimer: ReturnType<typeof setTimeout> | null = null;
     let disposed = false;
-
-    const checkStatus = async () => {
+    let pollTimer: ReturnType<typeof setTimeout> | undefined;
+    setIsCheckingStatus(true);
+    setMediaReady(false);
+    setRenderError(null);
+    setCurrentTime(0);
+    setDuration(0);
+    const poll = async () => {
       try {
-        const statusData = await getMatchRenderStatus(String(matchId));
-        if (!disposed && statusData) {
-          if (statusData.completed && statusData.video_url) {
-            setActiveVideoUrl(statusData.video_url);
-            setIsActivelyRendering(false);
-            return;
-          }
-          if (
-            statusData.status === "rendering" ||
-            statusData.status === "initializing" ||
-            (statusData.progress !== undefined && statusData.progress > 0 && !statusData.completed)
-          ) {
-            setIsActivelyRendering(true);
-            if (statusData.progress !== undefined) setRenderProgress(statusData.progress);
-            if (statusData.stage) setRenderStage(statusData.stage);
-            if (statusData.match_minute !== undefined) setMatchMinute(statusData.match_minute);
-            if (statusData.score) setLiveScore(statusData.score);
-          }
+        const status = await getMatchRenderStatus(String(matchId));
+        if (disposed) return;
+        setIsCheckingStatus(false);
+        if (status.elapsed_seconds !== undefined) setElapsedSeconds(status.elapsed_seconds);
+        if (status.status === 'failed' || status.status === 'error') {
+          setIsActivelyRendering(false);
+          setActiveVideoUrl(null);
+          setRenderError(status.message || 'Replay generation failed. Please try again.');
+          return;
+        }
+        if (status.completed && status.video_url) {
+          setActiveVideoUrl(status.video_url);
+          setIsActivelyRendering(false);
+          setRenderProgress(100);
+          return;
+        }
+        const inProgress = ['initializing', 'rendering', 'simulating'].includes(status.status);
+        if (inProgress || isGenerating) {
+          setActiveVideoUrl(null);
+          setIsActivelyRendering(true);
+          setRenderProgress(inProgress ? status.progress ?? 0 : 0);
+          setRenderStage(inProgress ? status.stage || 'Rendering saved match frames' : 'Starting replay renderer');
+          if (status.match_minute !== undefined) setMatchMinute(status.match_minute);
+          if (status.score) setLiveScore(status.score);
+          pollTimer = setTimeout(poll, 1500);
+        } else {
+          setActiveVideoUrl(null);
+          setIsActivelyRendering(false);
         }
       } catch {
-        // Ignore poll error
-      }
-    };
-
-    // Check status on mount if no video
-    if (!activeVideoUrl) {
-      checkStatus();
-    }
-
-    if (isGenerating || isActivelyRendering) {
-      timerInterval = setInterval(() => {
-        setElapsedSeconds((prev) => prev + 1);
-      }, 1000);
-
-      const poll = async () => {
-        try {
-          const statusData = await getMatchRenderStatus(String(matchId));
-          if (!disposed && statusData) {
-            if (statusData.completed && statusData.video_url) {
-              setActiveVideoUrl(statusData.video_url);
-              setIsActivelyRendering(false);
-              return;
-            }
-            if (statusData.progress !== undefined && statusData.progress > 0) {
-              setRenderProgress(statusData.progress);
-              setIsActivelyRendering(true);
-            }
-            if (statusData.stage) setRenderStage(statusData.stage);
-            if (statusData.match_minute !== undefined) setMatchMinute(statusData.match_minute);
-            if (statusData.score) setLiveScore(statusData.score);
-          }
-        } catch {
-          // Ignore transient poll error
-        }
-        if (!disposed && (isGenerating || isActivelyRendering)) {
+        if (!disposed) {
+          setRenderStage('Reconnecting to replay progress');
           pollTimer = setTimeout(poll, 1500);
         }
-      };
-      pollTimer = setTimeout(poll, 500);
-    }
-
-    return () => {
-      disposed = true;
-      if (timerInterval) clearInterval(timerInterval);
-      if (pollTimer) clearTimeout(pollTimer);
+      }
     };
-  }, [isGenerating, isActivelyRendering, matchId, activeVideoUrl]);
+    poll();
+    return () => { disposed = true; if (pollTimer) clearTimeout(pollTimer); };
+  }, [matchId, videoUrl, isGenerating]);
+
+  useEffect(() => {
+    if (!isActivelyRendering) return;
+    const timer = setInterval(() => setElapsedSeconds(value => value + 1), 1000);
+    return () => clearInterval(timer);
+  }, [isActivelyRendering]);
 
   const handlePlayPause = () => {
     if (!videoRef.current) return;
@@ -233,10 +189,10 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
     handleSeekToMinute(evt.minute);
   };
 
-  const isDisplayingHUD = (isGenerating || isActivelyRendering) && !activeVideoUrl;
+  const isDisplayingHUD = isCheckingStatus || isActivelyRendering || (isGenerating && !activeVideoUrl);
 
   const goalEvents = events.filter(
-    (e) => (e.type || "").toLowerCase() === "goal" || (e.details || "").toLowerCase().includes("goal")
+    (e) => (e.type || "").toLowerCase() === "goal" || (!e.type && (e.details || "").toLowerCase().includes("goal"))
   );
 
   return (
@@ -285,7 +241,8 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
       </Box>
 
       <CardContent sx={{ p: 3 }}>
-        {activeVideoUrl ? (
+        {renderError && <Alert severity="error" sx={{ mb: 2 }}>{renderError}</Alert>}
+        {activeVideoUrl && !isDisplayingHUD ? (
           <Box>
             {/* HTML5 Video Player */}
             <Box
@@ -298,19 +255,24 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
                 boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
               }}
             >
+              {!mediaReady && <Box role="status" sx={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 2, color: "white" }}>
+                <CircularProgress size={28} /> Preparing video playback
+              </Box>}
               <video
                 ref={videoRef}
-                src={resolveVideoUrl(activeVideoUrl)}
-                controls
+                src={resolveReplayVideoUrl(activeVideoUrl)}
+                controls={mediaReady}
                 playsInline
                 preload="auto"
-                style={{ width: "100%", maxHeight: "520px", display: "block" }}
+                style={{ width: "100%", minHeight: "300px", maxHeight: "520px", display: "block" }}
                 onTimeUpdate={() => {
                   if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
                 }}
                 onLoadedMetadata={() => {
                   if (videoRef.current) setDuration(videoRef.current.duration);
                 }}
+                onLoadedData={() => setMediaReady(true)}
+                onError={() => { setActiveVideoUrl(null); setRenderError("The replay could not be loaded. Please retry generation."); }}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
               />
@@ -409,7 +371,7 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
             <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 2, my: 2 }}>
               <Box sx={{ position: "relative", display: "inline-flex" }}>
                 <CircularProgress
-                  variant="determinate"
+                  variant={renderProgress > 0 && !isCheckingStatus ? "determinate" : "indeterminate"}
                   value={renderProgress}
                   size={80}
                   thickness={5}
@@ -428,7 +390,7 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
                   }}
                 >
                   <Typography variant="h6" component="div" sx={{ fontWeight: 900, color: theme.palette.primary.main }}>
-                    {`${Math.round(renderProgress)}%`}
+                    {renderProgress > 0 && !isCheckingStatus ? `${Math.round(renderProgress)}%` : ""}
                   </Typography>
                 </Box>
               </Box>
@@ -436,7 +398,7 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
 
             {/* Stage Title */}
             <Typography variant="h6" sx={{ fontWeight: 800, color: "text.primary", mb: 0.5 }}>
-              {renderStage}
+              {isCheckingStatus ? "Checking replay status" : renderStage}
             </Typography>
 
             {/* Live Match Minute Counter & Stats */}
@@ -447,7 +409,7 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
             {/* Linear Progress Bar */}
             <Box sx={{ maxWidth: 500, mx: "auto", mb: 2.5 }}>
               <LinearProgress
-                variant="determinate"
+                variant={renderProgress > 0 && !isCheckingStatus ? "determinate" : "indeterminate"}
                 value={renderProgress}
                 sx={{
                   borderRadius: 3,
@@ -472,7 +434,7 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
               />
               <Chip
                 icon={<MemoryIcon sx={{ fontSize: 16 }} />}
-                label="TiKick MARL • CUDA GPU Accelerated"
+                label="Recorded TiKick match"
                 size="small"
                 variant="outlined"
                 sx={{ fontWeight: 700 }}

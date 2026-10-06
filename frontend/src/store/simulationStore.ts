@@ -11,6 +11,8 @@ interface SimulationState {
   isSimulating: boolean;
   error: string | null;
   simulationMessage: string | null;
+  liveRevision: number;
+  refreshLiveSeason: () => Promise<void>;
 
   fetchAvailableSeasons: () => Promise<void>;
   selectSeason: (season: number | null) => Promise<void>;
@@ -25,6 +27,16 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   isSimulating: false,
   error: null,
   simulationMessage: null,
+  liveRevision: 0,
+
+  refreshLiveSeason: async () => {
+    const seasons = await getAvailableSeasons();
+    const season = get().selectedSeason ?? seasons[0] ?? null;
+    const report = season ? await getSeasonReportData(season) : null;
+    if (get().selectedSeason !== null && get().selectedSeason !== season) return;
+    set({ availableSeasons: seasons, selectedSeason: season, currentReport: report,
+          liveRevision: get().liveRevision + 1 });
+  },
 
   fetchAvailableSeasons: async () => {
     set({ isLoading: true, error: null });

@@ -70,7 +70,7 @@ const StandingsTable: React.FC<StandingsTableProps> = ({ rows }) => {
             <TableCell align="center" sx={{ fontWeight: 700 }}>GA</TableCell>
             <TableCell align="center" sx={{ fontWeight: 700 }}>GD</TableCell>
             <TableCell align="center" sx={{ fontWeight: 700 }}>Pts</TableCell>
-            <TableCell align="center" sx={{ fontWeight: 700, pr: 2 }}>Form</TableCell>
+            <TableCell align="center" sx={{ fontWeight: 700, pr: 2 }}>Form (last 5)</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>

@@ -9,7 +9,7 @@ Footy runs 11v11 matches inside Google Research Football, manages entire multi-t
 Built with **FastAPI, React 19, SQLAlchemy, Google Research Football, TiKick, FFmpeg, and PyTorch**.
 
 [![CI](https://github.com/x-Kevin-Paul-x/Footy/actions/workflows/ci.yml/badge.svg)](https://github.com/x-Kevin-Paul-x/Footy/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/Tests-95%20passed%2C%209%20skipped-2ea44f?logo=pytest&logoColor=white)](backend/tests)
+[![Tests](https://img.shields.io/badge/Tests-128%20passed%2C%209%20skipped-2ea44f?logo=pytest&logoColor=white)](backend/tests)
 [![Replay Frames](https://img.shields.io/badge/Replay%20Frames-1%2C634%20Validated-8A2BE2)](assets/readme/showcase-match.mp4)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Database](https://img.shields.io/badge/SQLite-WAL%20OK-003B57?logo=sqlite&logoColor=white)](#tests-and-verification)
@@ -20,7 +20,11 @@ Built with **FastAPI, React 19, SQLAlchemy, Google Research Football, TiKick, FF
 
 <br/>
 
-![Arsenal attacks Chelsea in the generated GRF match](assets/readme/match-highlight.gif)
+![Burnley vs Bournemouth: a goal from the verified full-season recording](assets/matches/burnley-bournemouth.gif)
+
+**Burnley 2–4 Bournemouth · Match #372 · Fresh 2026 season**
+
+[Watch the full match recording](assets/matches/full-match-recordings/burnley-2-4-bournemouth.mp4) · [Recorded replay timeline](assets/matches/full-match-recordings/burnley-2-4-bournemouth.timeline.json)
 
 **11v11 Multi-Agent Physics** · **SHA-256 Verified Determinism** · **~10× Real-Time Sim** · **14 Interactive Surfaces**
 
@@ -78,8 +82,8 @@ React 19 Analytics & Tables    Broadcast-Style 3D Replay (.mp4)
 
 | Engineering Surface | Metric / Evidence | Verification Standard |
 | :--- | :---: | :--- |
-| **Automated Backend Tests** | **95 passed, 9 skipped** | Pytest unit, lifecycle, and GRF integration suite (105 test functions) |
-| **Targeted Regression Suites** | **23 passed** | Database schema constraints, foreign keys, and run isolation |
+| **Automated Backend Tests** | **128 passed, 9 skipped** | Full backend suite (137 collected cases) |
+| **Targeted Regression Suites** | **33 passed** | Season contracts, replay loading, squad data, and recording retention |
 | **API Surface** | **63 routes** | FastAPI REST endpoints, WebSocket channels, and media streaming |
 | **Relational Schema** | **41 ORM models** | SQLAlchemy 2.0 entities, SQLite WAL persistence, 5 Alembic revisions |
 | **Replay Validation** | **1,634 decoded frames** | H.264 High Profile @ 720p 15fps, verified against canonical score |
@@ -121,6 +125,18 @@ To evaluate the multiprocess worker pool, inter-process communication (IPC), and
 ---
 
 ## A Real Generated Match
+
+### Latest verified season: Burnley 2–4 Bournemouth
+
+The October 2026 verification run completed all **380 fixtures in 38 minutes 38 seconds** using ten CPU workers and the official TiKick actor checkpoint. An additional native-state audit checked **1,140,380 saved states and all 1,874 goals** without a mismatch. The season simulation saves the authoritative native states; video generation later restores and renders those states without simulating the match again.
+
+The GIF above shows a ten-second excerpt around Bournemouth's opening goal. Its source is the complete match #372 recording: **310.7 seconds, 1280×720, H.264, 10 fps, 37,349,145 bytes (35.62 MiB)**. The full MP4 and its goal timeline are preserved in [`assets/matches/full-match-recordings/`](assets/matches/full-match-recordings/).
+
+Runtime videos, trajectories and native state archives are saved under `backend/reports/recordings/<run_id>/` by default, or `$FOOTY_REPORTS_DIR/recordings/<run_id>/` when a custom reports directory is configured. Timed verification runs use `backend/verification/season_<timestamp>/reports/recordings/<run_id>/`.
+
+**Storage policy:** starting a new simulation deletes previous runtime run directories, including their videos and native archives. The current run and curated files under `assets/matches/` are preserved. `FOOTY_RUN_RETENTION=N` optionally retains N previous runs; the default is zero. Timed verification runs also clear previous verification recordings while keeping their audit summaries and databases.
+
+### Earlier standalone showcase
 
 This repository includes a verified match generated through the real `/api/v1/match/simulate-grf` endpoint on **6 September 2026**. Arsenal beat Chelsea **1–0**, with Arsenal Player 8 scoring at the 73rd minute.
 

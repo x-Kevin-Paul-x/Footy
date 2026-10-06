@@ -67,10 +67,13 @@ const TeamDetails: React.FC = () => {
     if (currentReport && teamName) {
       setLocalLoading(true);
       setLocalError(null);
-      const foundTeam = currentReport.all_teams_details.find((t) => t.name === teamName);
+      const foundTeam = currentReport.all_teams_details.find(
+        (t) => String(t.id) === teamName || t.name.toLowerCase() === teamName.toLowerCase()
+      );
       if (foundTeam) {
         setTeam(foundTeam);
       } else {
+        setTeam(null);
         setLocalError(`Team "${teamName}" not found for season ${selectedSeason}.`);
       }
       setLocalLoading(false);
@@ -81,9 +84,9 @@ const TeamDetails: React.FC = () => {
 
   // Fetch history data when History tab is selected
   useEffect(() => {
-    if (tab === 4 && teamName && historyData.length === 0) {
+    if (tab === 4 && team && historyData.length === 0) {
       setHistoryLoading(true);
-      getTeamHistory(teamName)
+      getTeamHistory(team.name)
         .then((response) => {
           setHistoryData(response.history);
         })
@@ -94,7 +97,7 @@ const TeamDetails: React.FC = () => {
           setHistoryLoading(false);
         });
     }
-  }, [tab, teamName, historyData.length]);
+  }, [tab, team, historyData.length]);
 
   if (isLoading || localLoading) {
     return (
@@ -128,6 +131,7 @@ const TeamDetails: React.FC = () => {
   const roster = team.players
     .map((player: Player) => ({
       name: player.name,
+      jersey_number: player.jersey_number,
       position: player.age <= 18 ? `${player.position} (Youth)` : player.position,
       avatar: "",
       age: player.age,
@@ -260,6 +264,7 @@ const TeamDetails: React.FC = () => {
             <Table>
               <TableHead>
                 <TableRow>
+                  <TableCell align="center">No.</TableCell>
                   <TableCell></TableCell>
                   <TableCell>Name</TableCell>
                   <TableCell>Position</TableCell>
@@ -270,6 +275,7 @@ const TeamDetails: React.FC = () => {
               <TableBody>
                 {roster.map((player, idx) => (
                   <TableRow key={idx} hover>
+                    <TableCell align="center">{player.jersey_number ?? '—'}</TableCell>
                     <TableCell>
                       <Avatar sx={{ width: 32, height: 32, fontSize: 14 }}>{player.name[0]}</Avatar>
                     </TableCell>
@@ -286,7 +292,7 @@ const TeamDetails: React.FC = () => {
                     </TableCell>
                     <TableCell align="right">
                       <Chip
-                        label={player.overall ? (player.overall ?? 0).toFixed(1) : "N/A"}
+                        label={player.overall ? player.overall.toFixed(1) : "Not recorded"}
                         size="small"
                         color={player.overall >= 70 ? "success" : player.overall >= 50 ? "warning" : "default"}
                       />

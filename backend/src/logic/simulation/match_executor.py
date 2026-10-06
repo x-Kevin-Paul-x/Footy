@@ -66,7 +66,7 @@ class SimulationSpec:
     home_team_name: Optional[str] = None
     away_team_name: Optional[str] = None
     seed_val: Optional[int] = None
-    max_steps: int = 1200
+    max_steps: int = 3200
     replay_mode: ReplayMode = ReplayMode.FULL_STATE
     home_formation: str = "4-3-3"
     away_formation: str = "4-2-3-1"
@@ -82,6 +82,7 @@ class SimulationSpec:
     away_defensive_bias: float = 50.0
     away_pressing_intensity: float = 50.0
     away_tempo: float = 50.0
+    apply_tactical_bias: bool = False
     home_color: str = "#e63946"
     away_color: str = "#2196f3"
     trace_npz: Optional[str] = None
@@ -116,7 +117,7 @@ class SimulationSpec:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any], max_steps: Optional[int] = None, replay_mode: Optional[Union[ReplayMode, str]] = None) -> "SimulationSpec":
-        effective_max_steps = int(max_steps or d.get("max_steps", 1200))
+        effective_max_steps = int(max_steps if max_steps is not None else d.get("max_steps", 3200))
         effective_replay_mode = replay_mode or d.get("replay_mode", ReplayMode.FULL_STATE)
         if isinstance(effective_replay_mode, str):
             effective_replay_mode = ReplayMode(effective_replay_mode)
@@ -149,6 +150,7 @@ class SimulationSpec:
             away_defensive_bias=float(d.get("away_defensive_bias", 50.0)),
             away_pressing_intensity=float(d.get("away_pressing_intensity", 50.0)),
             away_tempo=float(d.get("away_tempo", 50.0)),
+            apply_tactical_bias=bool(d.get("apply_tactical_bias", False)),
             home_color=str(d.get("home_color", "#e63946")),
             away_color=str(d.get("away_color", "#2196f3")),
             trace_npz=trace_npz,
@@ -227,6 +229,8 @@ class CanonicalMatchResult:
     render_mode_used: Optional[str] = None
     match_duration_sec: Optional[float] = None
     result_schema_version: str = "2.1.0"
+    match_complete: bool = False
+    native_steps_left: int = 3000
 
     @property
     def home_goals(self) -> int:
@@ -295,6 +299,7 @@ class GRFMatchExecutor:
 
         # Compatibility attributes
         self.fixture = self.spec.to_dict()
+        self.policy_provenance = {}
         self.max_steps = self.spec.max_steps
         self.replay_mode = self.spec.replay_mode
         self.match_id = self.spec.match_id
@@ -396,8 +401,14 @@ class GRFMatchExecutor:
         # State Archive Writer setup
         self.env = None
         self.archive_writer = None
+        self.goal_archive_writer = None
+        self.native_goal_frames = []
+        self.native_goal_observation = None
+        self.native_observed_score = [0, 0]
         if self.replay_mode == ReplayMode.FULL_STATE and self.states_file:
             self.archive_writer = GRFStateArchiveWriter(self.states_file, self.match_id)
+            self.goal_archive_writer = GRFStateArchiveWriter(
+                str(Path(self.states_file).with_suffix('.goals.grfstate')), self.match_id)
 
         # Match statistics & state machines
         self.step_idx = 0
@@ -422,6 +433,9 @@ class GRFMatchExecutor:
         self.active_pass = None
         self.active_shot = None
         self.events: List[Dict[str, Any]] = []
+        self.native_duration = 3000
+        self.native_second_half = 1500
+        self.half_time_observed = False
 
         # C++ GRF Environment instantiation
         other_opts = {
@@ -460,6 +474,46 @@ class GRFMatchExecutor:
                 other_config_options=other_opts
             )
             self.raw_obs = self.env.reset()
+            # Public GRF step() skips stopped-play frames internally. Observe
+            # those frames without changing actions, physics or native stepping.
+            core = self.env.unwrapped._env
+            self.native_duration = int(core._env.config.game_duration)
+            self.native_second_half = int(core._env.config.second_half)
+            retrieve = core._retrieve_observation
+
+            def observe_native_restart():
+                in_play = retrieve()
+                native = core._observation
+                native_score = list(native['score'])
+                if native_score != self.native_observed_score:
+                    self.native_goal_observation = {
+                        'step': self.step_idx, 'ball': np.asarray(native['ball']).tolist(),
+                        'score': native_score,
+                    }
+                    self.native_observed_score = native_score
+                if (self.goal_archive_writer is not None and self.native_goal_observation
+                        and self.native_goal_observation['step'] == self.step_idx
+                        and np.linalg.norm(native['ball'][:2]) > 0.5):
+                    self.native_goal_frames.append({
+                        'step': self.step_idx, 'index': self.goal_archive_writer.total_steps,
+                        'ball': np.asarray(native['ball']).tolist(), 'score': native_score,
+                        'steps_left': int(native['steps_left']),
+                    })
+                    self.goal_archive_writer.append(self.env.get_state())
+                elapsed = self.native_duration - int(native['steps_left'])
+                if (not self.half_time_observed and not in_play
+                        and elapsed >= self.native_second_half - 1
+                        and np.linalg.norm(native['ball'][:2]) < 1e-6
+                        and list(native['score']) == self.last_score):
+                    self.half_time_observed = True
+                    self.events.append({
+                        'minute': 45, 'step': self.step_idx, 'type': 'half_time',
+                        'score': f"{native['score'][0]}-{native['score'][1]}",
+                        'source': 'native_restart', 'native_elapsed_steps': elapsed,
+                    })
+                return in_play
+
+            core._retrieve_observation = observe_native_restart
         except Exception:
             try:
                 self.close()
@@ -477,6 +531,15 @@ class GRFMatchExecutor:
     def close(self) -> None:
         """Release native resources safely and idempotently."""
         errors = []
+        goal_writer, self.goal_archive_writer = self.goal_archive_writer, None
+        if goal_writer is not None:
+            try:
+                goal_writer.close()
+                Path(self.states_file).with_suffix('.goals.json').write_text(json.dumps({
+                    'match_id': self.match_id, 'frames': self.native_goal_frames,
+                }))
+            except Exception as exc:
+                errors.append(f'goal archive close failed: {exc}')
         archive_writer, self.archive_writer = self.archive_writer, None
         if archive_writer is not None:
             try:
@@ -512,7 +575,7 @@ class GRFMatchExecutor:
             last_loff=self.left_loff, last_roff=self.left_roff
         )
         obs_r, self.right_loff, self.right_roff = extract_canonical_features(
-            self.raw_obs[10:20], team_side="right", num_agents=10,
+            self.raw_obs[10:20], team_side="left", num_agents=10,
             last_loff=self.right_loff, last_roff=self.right_roff
         )
         return np.concatenate([obs_l, obs_r], axis=0)  # Shape: (20, 268)
@@ -540,8 +603,12 @@ class GRFMatchExecutor:
         ball_xy = np.array(o_prev['ball'][:2], dtype=np.float32)
         b_own_prev = o_prev.get('ball_owned_team', -1)
         b_player_prev = o_prev.get('ball_owned_player', -1)
-        l_pos = np.array(o_prev['left_team'][1:], dtype=np.float32)
-        r_pos = np.array(o_prev['right_team'][1:], dtype=np.float32)
+        left_active = [int(o['active']) for o in self.raw_obs[:10]]
+        right_active = [int(o['active']) for o in self.raw_obs[10:20]]
+        l_pos = np.array(o_prev['left_team'], dtype=np.float32)[left_active]
+        r_pos = np.array(o_prev['right_team'], dtype=np.float32)[right_active]
+        home_anchors = self.home_tactics.get_formation_anchors(is_right_team=False)
+        away_anchors = self.away_tactics.get_formation_anchors(is_right_team=False)
 
         if b_own_prev == 0 and b_player_prev >= 0:
             self.last_home_touch = b_player_prev
@@ -549,16 +616,21 @@ class GRFMatchExecutor:
             self.last_away_touch = b_player_prev
 
         # Tactical modulation
-        l_act = apply_tactical_action_bias(
-            l_act_raw, l_pos, self.home_anchors, self.home_tactics,
-            team_side="left", ball_xy=ball_xy, is_team_in_possession=(b_own_prev == 0)
-        )
-        r_act_tactical = apply_tactical_action_bias(
-            r_act_raw, -r_pos, [(-x, -y) for (x, y) in self.away_anchors], self.away_tactics,
-            team_side="left", ball_xy=-ball_xy, is_team_in_possession=(b_own_prev == 1)
-        )
-        r_act_mapped = [ACTION_MIRROR_MAP.get(a, a) for a in r_act_tactical]
-        comb_act = l_act + r_act_mapped
+        l_act, r_act_tactical = l_act_raw, r_act_raw
+        if self.spec.apply_tactical_bias:
+            l_act = apply_tactical_action_bias(
+                l_act_raw, l_pos, [home_anchors[i] for i in left_active], self.home_tactics,
+                team_side="left", ball_xy=ball_xy, is_team_in_possession=(b_own_prev == 0)
+            )
+            r_act_tactical = apply_tactical_action_bias(
+                r_act_raw, -r_pos, [away_anchors[i] for i in right_active], self.away_tactics,
+                team_side="left", ball_xy=-ball_xy, is_team_in_possession=(b_own_prev == 1)
+            )
+        # GRF's agent wrapper rotates away actions into world coordinates.
+        # Its away observations are already in the actor's left-to-right view.
+        comb_act = l_act + r_act_tactical
+        left_actions_by_player = dict(zip(left_active, l_act))
+        right_actions_by_player = dict(zip(right_active, r_act_tactical))
 
         # C++ physics step
         raw_next, _, done, _ = self.env.step(comb_act)
@@ -604,16 +676,16 @@ class GRFMatchExecutor:
             if b_player >= 0:
                 self.last_away_touch = b_player
 
-        total_match_steps = self.max_steps if getattr(self, "max_steps", None) else 1200
-        m_min = max(1, min(90, int((step / max(1, total_match_steps)) * 90) + 1))
+        elapsed = self.native_duration - int(o0.get('steps_left', self.native_duration - step))
+        m_min = max(1, min(90, int(elapsed * 90 / self.native_duration) + 1))
 
         # Pass State Machine
-        if self.active_pass is None and b_own_prev == 0 and b_player_prev >= 1 and (b_player_prev - 1) < len(l_act):
-            if l_act[b_player_prev - 1] in (9, 10, 11):
+        if self.active_pass is None and b_own_prev == 0 and b_player_prev in left_actions_by_player:
+            if left_actions_by_player[b_player_prev] in (9, 10, 11):
                 self.passes_h_att += 1
                 self.active_pass = {"team": 0, "passer": b_player_prev, "step": step}
-        elif self.active_pass is None and b_own_prev == 1 and b_player_prev >= 1 and (b_player_prev - 1) < len(r_act_tactical):
-            if r_act_tactical[b_player_prev - 1] in (9, 10, 11):
+        elif self.active_pass is None and b_own_prev == 1 and b_player_prev in right_actions_by_player:
+            if right_actions_by_player[b_player_prev] in (9, 10, 11):
                 self.passes_a_att += 1
                 self.active_pass = {"team": 1, "passer": b_player_prev, "step": step}
 
@@ -632,8 +704,8 @@ class GRFMatchExecutor:
                 self.active_pass = None
 
         # Shot State Machine
-        if self.active_shot is None and b_own_prev == 0 and b_player_prev >= 1 and (b_player_prev - 1) < len(l_act):
-            if l_act[b_player_prev - 1] == 12:
+        if self.active_shot is None and b_own_prev == 0 and b_player_prev in left_actions_by_player:
+            if left_actions_by_player[b_player_prev] == 12:
                 self.shots_h += 1
                 shot_x = float(o_prev['left_team'][b_player_prev][0])
                 shot_y = float(o_prev['left_team'][b_player_prev][1])
@@ -655,8 +727,8 @@ class GRFMatchExecutor:
                     "outcome": "PENDING"
                 })
                 self.active_shot = {"team": 0, "shooter": shooter_name, "xg": calc_xg, "step": step}
-        elif self.active_shot is None and b_own_prev == 1 and b_player_prev >= 1 and (b_player_prev - 1) < len(r_act_tactical):
-            if r_act_tactical[b_player_prev - 1] == 12:
+        elif self.active_shot is None and b_own_prev == 1 and b_player_prev in right_actions_by_player:
+            if right_actions_by_player[b_player_prev] == 12:
                 self.shots_a += 1
                 shot_x = float(o_prev['right_team'][b_player_prev][0])
                 shot_y = float(o_prev['right_team'][b_player_prev][1])
@@ -778,7 +850,7 @@ class GRFMatchExecutor:
                 "minute": m_min, "step": step, "type": "goal", "team": "home",
                 "player": scorer, "scorer": scorer, "score": f"{self.curr_score[0]}-{self.curr_score[1]}",
                 "causality": {
-                    "ball_coord": [float(o0['ball'][0]), float(o0['ball'][1]), float(o0['ball'][2])],
+                    "ball_coord": self.native_goal_observation["ball"] if self.native_goal_observation and self.native_goal_observation["step"] == step else np.asarray(o0["ball"]).tolist(),
                     "goal_mouth_y": float(o0['ball'][1]),
                     "score_transition": [self.last_score[0], self.curr_score[0]]
                 }
@@ -821,20 +893,13 @@ class GRFMatchExecutor:
                 "minute": m_min, "step": step, "type": "goal", "team": "away",
                 "player": scorer, "scorer": scorer, "score": f"{self.curr_score[0]}-{self.curr_score[1]}",
                 "causality": {
-                    "ball_coord": [float(o0['ball'][0]), float(o0['ball'][1]), float(o0['ball'][2])],
+                    "ball_coord": self.native_goal_observation["ball"] if self.native_goal_observation and self.native_goal_observation["step"] == step else np.asarray(o0["ball"]).tolist(),
                     "goal_mouth_y": float(o0['ball'][1]),
                     "score_transition": [self.last_score[1], self.curr_score[1]]
                 }
             })
             self.last_score[1] = self.curr_score[1]
             self.active_shot = None
-
-        # Half-Time Event
-        if step == (self.max_steps // 2):
-            self.events.append({
-                "minute": 45, "step": step, "type": "half_time",
-                "score": f"{self.curr_score[0]}-{self.curr_score[1]}"
-            })
 
         self.step_idx += 1
         if self.done and self.actual_steps is None:
@@ -846,11 +911,14 @@ class GRFMatchExecutor:
     def finalize(self) -> CanonicalMatchResult:
         """Finalizes trajectory, closes archive and environment, and returns CanonicalMatchResult."""
         total_steps = self.actual_steps if self.actual_steps is not None else self.step_idx
+        remaining = int(self.raw_obs[0]['steps_left']) if self.raw_obs is not None else self.native_duration
+        match_complete = bool(self.done and remaining <= 0)
         self.close()
 
         # Add full time event
         self.events.append({
-            "minute": 90, "step": max(0, total_steps - 1), "type": "full_time",
+            "minute": 90 if match_complete else max(1, int((self.native_duration - remaining) * 90 / self.native_duration)),
+            "step": max(0, total_steps - 1), "type": "full_time" if match_complete else "simulation_stopped",
             "score": f"{self.curr_score[0]}-{self.curr_score[1]}"
         })
 
@@ -893,6 +961,10 @@ class GRFMatchExecutor:
             engine_fingerprint={
                 "engine": "GRFMatchExecutor", "engine_version": "2.1.0",
                 "seed": self.seed_val, "determinism_level": 2,
+                "match_complete": match_complete, "native_steps_left": remaining,
+                "native_duration": self.native_duration,
+                "policy": self.policy_provenance,
+                "tactical_action_overrides": self.spec.apply_tactical_bias,
             },
             video_url=None,
             created_at=self.spec.created_at or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -1017,6 +1089,8 @@ class GRFMatchExecutor:
             video_url=video_url,
             render_mode_used=render_mode_used,
             result_schema_version="2.1.0",
+            match_complete=match_complete,
+            native_steps_left=remaining,
         )
 
     def execute(self, policy: Any = None) -> CanonicalMatchResult:

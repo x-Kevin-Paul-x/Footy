@@ -80,8 +80,8 @@ class TransferMarket:
 
         # Create transfer logs directory
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-        REPORTS_DIR = os.path.join(BASE_DIR, "..", "..", "reports")
-        self.log_dir = os.path.join(REPORTS_DIR, "transfer_logs")
+        from config import TRANSFER_LOGS_DIR
+        self.log_dir = str(TRANSFER_LOGS_DIR)
         os.makedirs(self.log_dir, exist_ok=True)
 
         if log_path is None:

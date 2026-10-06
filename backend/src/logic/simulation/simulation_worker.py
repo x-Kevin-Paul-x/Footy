@@ -22,7 +22,7 @@ class SimulationWorker(GRFMatchExecutor):
     def __init__(
         self,
         fixture: Union[SimulationSpec, Dict[str, Any]],
-        max_steps: int = 1200,
+        max_steps: Optional[int] = None,
         replay_mode: ReplayMode = ReplayMode.FULL_STATE
     ):
         super().__init__(fixture, max_steps=max_steps, replay_mode=replay_mode)

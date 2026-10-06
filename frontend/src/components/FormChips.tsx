@@ -7,11 +7,11 @@ interface FormChipsProps {
 }
 
 /**
- * Renders last-n match form as colored chips.
+ * Renders the last five match results, oldest to newest, as colored chips.
  * W = win (green), D = draw (grey), L = loss (red)
  */
 const FormChips: React.FC<FormChipsProps> = ({ form, size = "small" }) => {
-  const results = Array.isArray(form) ? form : form.split("");
+  const results = (Array.isArray(form) ? form : form.split("")).slice(-5);
   return (
     <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
       {results.map((r, i) => {

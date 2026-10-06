@@ -54,6 +54,7 @@ class PresentationTimeline:
     events_pts_map: Dict[str, float] = field(default_factory=dict)
     minute_to_pts: Dict[int, float] = field(default_factory=dict)
     timeline_version: str = "1.0.0"
+    native_redraw: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -65,6 +66,7 @@ class PresentationTimeline:
             "events_pts_map": self.events_pts_map,
             "minute_to_pts": {str(k): round(v, 3) for k, v in self.minute_to_pts.items()},
             "timeline_version": self.timeline_version,
+            "native_redraw": self.native_redraw,
         }
 
     def to_json(self, indent: int = 2) -> str:
@@ -99,6 +101,7 @@ class PresentationTimeline:
             events_pts_map=events_pts_map,
             minute_to_pts=minute_to_pts,
             timeline_version=str(data.get("timeline_version", "1.0.0")),
+            native_redraw=bool(data.get('native_redraw', False)),
         )
 
     def seek_minute(self, minute: int) -> float:
@@ -130,6 +133,8 @@ def build_canonical_timeline(
     fulltime_frames: int = 75,
     goal_hold_frames: int = 30,
     goal_replay_frames: int = 40,
+    native_duration: Optional[int] = None,
+    native_goal_frames: Optional[Dict[int, int]] = None,
 ) -> PresentationTimeline:
     """
     Constructs 100% deterministic presentation timeline mapping from simulation steps and events.
@@ -181,13 +186,16 @@ def build_canonical_timeline(
     current_play_start_frame = frame_count
     current_play_start_minute = 1
 
-    halftime_step = total_steps // 2
+    halftime_step = next((int(e['step']) for e in events if e.get('type') == 'half_time' and e.get('step') is not None),
+                         (native_duration or total_steps) // 2)
 
     for step in range(total_steps):
-        match_min = max(1, min(90, int((step / max(1, total_steps)) * 90) + 1))
+        match_min = max(1, min(90, int((step / max(1, native_duration or total_steps)) * 90) + 1))
         if match_min not in minute_to_pts:
             minute_to_pts[match_min] = pts_for_frame(frame_count)
 
+        goal_start_frame = frame_count
+        frame_count += (native_goal_frames or {}).get(step, 0)
         # Append standard pitch frame
         frame_count += 1
 
@@ -196,7 +204,7 @@ def build_canonical_timeline(
             step_goals = goal_events_by_step[step]
             for ev_idx, gev in step_goals:
                 ev_key = str(gev.get("id", ev_idx))
-                event_pts = pts_for_frame(frame_count - 1)
+                event_pts = pts_for_frame(goal_start_frame)
                 events_pts_map[ev_key] = event_pts
                 events_pts_map[f"event_{ev_idx}"] = event_pts
                 events_pts_map[f"step_{step}"] = event_pts

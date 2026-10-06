@@ -27,7 +27,7 @@ BASE_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = BASE_DIR.parent
 PROJECT_ROOT = BACKEND_DIR.parent
 load_dotenv(PROJECT_ROOT / ".env")
-REPORTS_DIR = BACKEND_DIR / "reports"
+REPORTS_DIR = Path(os.environ.get("FOOTY_REPORTS_DIR") or (BACKEND_DIR / "reports"))
 SEASON_REPORTS_DIR = REPORTS_DIR / "season_reports"
 MATCH_REPORTS_DIR = REPORTS_DIR / "match_reports"
 TRANSFER_LOGS_DIR = REPORTS_DIR / "transfer_logs"
@@ -47,7 +47,9 @@ API_PORT = _env_int("FOOTY_API_PORT", 5001)
 API_DEBUG = _env_bool("FOOTY_API_DEBUG", False)
 SIMULATION_TIMEOUT_SECONDS = _env_int("FOOTY_SIMULATION_TIMEOUT_SECONDS", 1800)
 NUM_SEASONS = _env_int("FOOTY_NUM_SEASONS", 1)
-FOOTY_GRF_MAX_STEPS = _env_int("FOOTY_GRF_MAX_STEPS", 1200)
+# The native scenario lasts 3,000 playable ticks, plus its initial tick.
+# Leave headroom and let the engine signal full time; never stretch a cutoff.
+FOOTY_GRF_MAX_STEPS = _env_int("FOOTY_GRF_MAX_STEPS", 3200)
 FOOTY_PARALLEL_WORKERS = _env_int("FOOTY_PARALLEL_WORKERS", 10)
 
 # Broadcast presentation is deliberately configured outside the canonical

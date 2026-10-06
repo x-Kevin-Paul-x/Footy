@@ -1,4 +1,5 @@
 import shutil
+import struct
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -77,7 +78,9 @@ def test_find_match_video_and_url_direct_and_run_dir(tmp_path, monkeypatch):
 
     # 1. Root match video
     v_root = test_recordings / "match_99991.mp4"
-    v_root.write_bytes(b"dummy_video_content")
+    # Only atomically finalized MP4 containers can be advertised as playable.
+    complete_mp4 = struct.pack('>I4s', 12, b'ftyp') + b'isom' + struct.pack('>I4s', 8, b'moov')
+    v_root.write_bytes(complete_mp4)
     p, url = find_match_video_and_url("99991")
     assert p == v_root
     assert url == "/recordings/match_99991.mp4"
@@ -86,7 +89,7 @@ def test_find_match_video_and_url_direct_and_run_dir(tmp_path, monkeypatch):
     run_dir = test_recordings / "run_test_abc"
     run_dir.mkdir(parents=True)
     v_run = run_dir / "match_99992.mp4"
-    v_run.write_bytes(b"dummy_video_content_2")
+    v_run.write_bytes(complete_mp4)
     p2, url2 = find_match_video_and_url("99992")
     assert p2 == v_run
     assert url2 == "/recordings/run_test_abc/match_99992.mp4"
@@ -95,6 +98,10 @@ def test_find_match_video_and_url_direct_and_run_dir(tmp_path, monkeypatch):
     p3, url3 = find_match_video_and_url("nonexistent_match")
     assert p3 is None
     assert url3 is None
+
+    incomplete = test_recordings / 'match_99993.mp4'
+    incomplete.write_bytes(struct.pack('>I4s', 12, b'ftyp') + b'isom')
+    assert find_match_video_and_url('99993') == (None, None)
 
 
 def test_simulate_grf_preserves_existing_video(monkeypatch, tmp_path):

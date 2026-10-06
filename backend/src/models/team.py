@@ -439,6 +439,7 @@ class Team:
         if player in self.players:
             self.players.remove(player)
             player.team = None
+            player.jersey_number = None
 
     def set_manager(self, manager):
         """Assign a manager to the team with salary negotiation."""

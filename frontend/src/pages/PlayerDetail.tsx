@@ -69,7 +69,8 @@ function getClubMeta(teamName: string) {
 }
 
 // FM Rating Badge Style Helper
-const getFMRatingBadge = (value: number, isDark = false) => {
+const getFMRatingBadge = (value: number | null, isDark = false) => {
+  if (value === null) return { bg: "transparent", color: "#a8b9ae" };
   const val = Math.round(value);
   if (val >= 75) return { bg: "#10b981", color: "#ffffff" }; // Excellent (Green)
   if (val >= 60) return { bg: isDark ? "#F85525" : "#FAA968", color: isDark ? "#ffffff" : "#01204E" }; // Good
@@ -77,39 +78,11 @@ const getFMRatingBadge = (value: number, isDark = false) => {
   return { bg: isDark ? "rgba(143, 227, 236, 0.15)" : "rgba(1, 32, 78, 0.12)", color: isDark ? "#8FE3EC" : "#01204E" }; // Low
 };
 
-// Deterministic generator for full FM attribute profiles
-function getFMAttrValue(player: Player, attrKey: string, rawAttrs: { [key: string]: number }, overall: number): number {
-  if (rawAttrs[attrKey] !== undefined && rawAttrs[attrKey] !== null) {
-    return Math.round(rawAttrs[attrKey]);
-  }
-
-  const pos = (player.position || "").toUpperCase();
-  let base = overall || 70;
-
-  // Position bias adjustment
-  if (pos.includes("CB") || pos.includes("RB") || pos.includes("LB") || pos.includes("D")) {
-    if (["tackling", "marking", "heading", "positioning", "strength", "bravery", "jumping_reach", "sliding_tackle", "standing_tackle"].includes(attrKey)) base += 8;
-    if (["finishing", "flair", "dribbling", "penalties"].includes(attrKey)) base -= 15;
-  } else if (pos.includes("FW") || pos.includes("ST") || pos.includes("RW") || pos.includes("LW") || pos.includes("F")) {
-    if (["finishing", "dribbling", "acceleration", "pace", "off_the_ball", "composure", "first_touch"].includes(attrKey)) base += 10;
-    if (["tackling", "marking", "sliding_tackle", "diving"].includes(attrKey)) base -= 20;
-  } else if (pos.includes("CM") || pos.includes("CDM") || pos.includes("CAM") || pos.includes("M")) {
-    if (["passing", "vision", "stamina", "work_rate", "technique", "decisions", "ball_control"].includes(attrKey)) base += 8;
-  } else if (pos.includes("GK")) {
-    if (["diving", "handling", "kicking", "reflexes", "positioning"].includes(attrKey)) base += 14;
-    if (["dribbling", "finishing", "crossing", "tackling"].includes(attrKey)) base -= 35;
-  }
-
-  // Deterministic seed hash (-5 to +5)
-  let hash = 0;
-  const seedStr = `${player.name}-${attrKey}`;
-  for (let i = 0; i < seedStr.length; i++) {
-    hash = (hash << 5) - hash + seedStr.charCodeAt(i);
-    hash |= 0;
-  }
-  const variance = (Math.abs(hash) % 11) - 5;
-
-  return Math.min(99, Math.max(18, Math.round(base + variance)));
+// Display saved attributes only; missing attributes stay unknown.
+function getFMAttrValue(_player: Player, attrKey: string, rawAttrs: { [key: string]: number }, _overall: number): number | null {
+  const aliases: Record<string, string> = { pace: "sprint_speed", free_kick_taking: "free_kick", tackling: "standing_tackle" };
+  const value = rawAttrs[attrKey] ?? rawAttrs[aliases[attrKey]];
+  return Number.isFinite(value) ? Math.round(value) : null;
 }
 
 const getOverallRating = (attributes: Player["attributes"]): number => {
@@ -260,18 +233,21 @@ const PlayerDetail: React.FC = () => {
   // Top Stat Cards
   const statCards = [
     { label: "Goals", value: player.stats?.goals || 0, icon: <SportsSoccerIcon />, color: "primary.main" },
-    { label: "Assists", value: player.stats?.assists || 0, icon: <WorkspacePremiumIcon />, color: "#028391" },
+    { label: "Assists", value: player.stats?.assists_recorded === false ? "—" : player.stats?.assists || 0, icon: <WorkspacePremiumIcon />, color: "#028391" },
     { label: "Appearances", value: player.stats?.appearances || 0, icon: <PersonIcon />, color: "primary.main" },
     { label: "Clean Sheets", value: player.stats?.clean_sheets || 0, icon: <ShieldIcon />, color: "#10b981" },
   ];
 
-  // Pentagon Radar Data
+  const mean = (values: (number | null)[]) => {
+    const recorded = values.filter((v): v is number => v !== null);
+    return recorded.length ? Math.round(recorded.reduce((sum, v) => sum + v, 0) / recorded.length) : null;
+  };
   const radarData = [
-    { category: "Attacking", value: Math.round((technicalAttrs[3].val + technicalAttrs[2].val + technicalAttrs[7].val) / 3) },
-    { category: "Technical", value: Math.round((technicalAttrs[9].val + technicalAttrs[4].val + technicalAttrs[12].val) / 3) },
-    { category: "Tactical", value: Math.round((mentalAttrs[1].val + mentalAttrs[5].val + mentalAttrs[10].val) / 3) },
-    { category: "Physical", value: Math.round((physicalGkAttrs[0].val + physicalGkAttrs[5].val + physicalGkAttrs[6].val + physicalGkAttrs[7].val) / 4) },
-    { category: "Defending", value: Math.round((technicalAttrs[8].val + technicalAttrs[11].val + mentalAttrs[10].val) / 3) },
+    { category: "Attacking", value: mean([rawAttrs.finishing ?? null, rawAttrs.long_shots ?? null]) },
+    { category: "Technical", value: mean([rawAttrs.ball_control ?? null, rawAttrs.crossing ?? null]) },
+    { category: "Tactical", value: mean([rawAttrs.vision ?? null, rawAttrs.marking ?? null]) },
+    { category: "Physical", value: mean([rawAttrs.acceleration ?? null, rawAttrs.stamina ?? null, rawAttrs.strength ?? null]) },
+    { category: "Defending", value: mean([rawAttrs.standing_tackle ?? null, rawAttrs.sliding_tackle ?? null]) },
   ];
 
   return (
@@ -334,6 +310,7 @@ const PlayerDetail: React.FC = () => {
               </Typography>
 
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap", mt: 1, mb: 2 }}>
+                {player.jersey_number != null && <Chip label={`#${player.jersey_number}`} size="small" />}
                 <Chip label={player.position} sx={{ bgcolor: isDark ? "#F85525" : "#FAA968", color: "#ffffff", fontWeight: 800, borderRadius: 9999, height: 26 }} />
                 <Chip component={Link} to={`/team-details/${player.team}`} label={player.team} clickable sx={{ bgcolor: "var(--bg-pill)", color: "text.primary", fontWeight: 700, borderRadius: 9999, height: 26, border: "1px solid", borderColor: "divider" }} />
                 <Chip label={`${player.age} years`} sx={{ bgcolor: "var(--bg-subcard)", color: "text.primary", fontWeight: 700, borderRadius: 9999, height: 26, border: "1px solid", borderColor: "divider" }} />
@@ -385,7 +362,7 @@ const PlayerDetail: React.FC = () => {
             }}
           >
             <Typography variant="h4" sx={{ fontWeight: 900, fontFamily: "Outfit, sans-serif", lineHeight: 1, color: isDark ? "#F85525" : "#FAA968" }}>
-              {overall}
+              {player.overall_rating === null ? '—' : overall}
             </Typography>
             <Typography variant="caption" sx={{ fontWeight: 900, color: "#ffffff", fontSize: "0.7rem", letterSpacing: 1.2, mt: 0.2 }}>
               OVR
@@ -484,7 +461,7 @@ const PlayerDetail: React.FC = () => {
                           textAlign: "center"
                         }}
                       >
-                        {attr.val}
+                        {attr.val ?? "—"}
                       </Box>
                     </Box>
                   );
@@ -522,7 +499,7 @@ const PlayerDetail: React.FC = () => {
                           textAlign: "center"
                         }}
                       >
-                        {attr.val}
+                        {attr.val ?? "—"}
                       </Box>
                     </Box>
                   );
@@ -560,7 +537,7 @@ const PlayerDetail: React.FC = () => {
                           textAlign: "center"
                         }}
                       >
-                        {attr.val}
+                        {attr.val ?? "—"}
                       </Box>
                     </Box>
                   );
@@ -606,19 +583,17 @@ const PlayerDetail: React.FC = () => {
               <Box sx={{ display: "flex", gap: 1.5, mb: 2 }}>
                 <Box sx={{ flex: 1, bgcolor: "var(--bg-subcard)", p: 1.2, borderRadius: "14px", border: "1px solid", borderColor: "divider" }}>
                   <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary" }}>Left Foot</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 800, color: "text.primary" }}>Reasonable</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 800, color: "text.primary" }}>Not recorded</Typography>
                 </Box>
                 <Box sx={{ flex: 1, bgcolor: "var(--bg-subcard)", p: 1.2, borderRadius: "14px", border: "1px solid", borderColor: "divider" }}>
                   <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary" }}>Right Foot</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 800, color: "text.primary" }}>Very Strong</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 800, color: "text.primary" }}>Not recorded</Typography>
                 </Box>
               </Box>
 
               <Typography variant="caption" sx={{ fontWeight: 800, color: "text.secondary", textTransform: "uppercase" }}>Player Traits</Typography>
               <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mt: 0.8 }}>
-                <Chip label="Dictates Tempo" size="small" sx={{ bgcolor: isDark ? "rgba(248, 85, 37, 0.2)" : "#FAA968", color: isDark ? "#F8EBD5" : "#01204E", fontWeight: 800, borderRadius: 9999, fontSize: "0.72rem", border: "1px solid", borderColor: "divider" }} />
-                <Chip label="Tries Killer Balls" size="small" sx={{ bgcolor: "var(--bg-subcard)", color: "text.primary", fontWeight: 700, borderRadius: 9999, fontSize: "0.72rem", border: "1px solid", borderColor: "divider" }} />
-                <Chip label="Shoots From Distance" size="small" sx={{ bgcolor: "var(--bg-subcard)", color: "text.primary", fontWeight: 700, borderRadius: 9999, fontSize: "0.72rem", border: "1px solid", borderColor: "divider" }} />
+                <Typography variant="body2" color="text.secondary">No player traits recorded.</Typography>
               </Box>
             </Card>
 
@@ -631,9 +606,18 @@ const PlayerDetail: React.FC = () => {
       {tab === 1 && (
         <Card className="finnova-card" sx={{ borderRadius: "20px", p: 3 }}>
           <Typography variant="h6" sx={{ fontWeight: 900, color: "text.primary", fontFamily: "Outfit, sans-serif", mb: 2 }}>
-            Match Rating History & Form
+            Season Match History
           </Typography>
 
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Recorded appearances in Season {selectedSeason}. Match ratings and untracked assists are not estimated.
+          </Typography>
+          {(player.match_history || []).slice().reverse().map(m => (
+            <Box key={m.match_id} component={Link} to={`/match/${m.match_id}`} sx={{ display: "flex", justifyContent: "space-between", gap: 2, py: 1.5, borderBottom: "1px solid", borderColor: "divider", color: "text.primary", textDecoration: "none" }}>
+              <Typography variant="body2">vs {m.opponent} · {m.score}</Typography>
+              <Typography variant="body2">{m.minutes} minutes · {m.goals} goals</Typography>
+            </Box>
+          ))}
           {player.form && player.form.length > 0 ? (
             <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap", my: 2 }}>
               {player.form.map((f, i) => {
@@ -663,7 +647,7 @@ const PlayerDetail: React.FC = () => {
             </Box>
           ) : (
             <Typography variant="body2" sx={{ fontWeight: 600, color: "#028391" }}>
-              No recent match form records available for this season.
+              Match ratings were not recorded for this season.
             </Typography>
           )}
         </Card>

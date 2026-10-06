@@ -1058,7 +1058,7 @@ class Match:
             result = []
             for idx, p in enumerate(lineup):
                 pos = positions[idx] if (positions and idx < len(positions)) else getattr(p, "position", "CM")
-                num = 1 if pos == "GK" else (idx + 2 if idx < 10 else 11)
+                num = getattr(p, 'jersey_number', None)
                 result.append({
                     "player_id": getattr(p, "player_id", None),
                     "name": p.name,
@@ -1073,7 +1073,7 @@ class Match:
         def serialize_bench(bench):
             result = []
             for idx, p in enumerate(bench):
-                num = ((getattr(p, 'player_id', idx) or (idx + 12)) * 7) % 80 + 12
+                num = getattr(p, 'jersey_number', None)
                 result.append({
                     "player_id": getattr(p, "player_id", None),
                     "name": p.name,

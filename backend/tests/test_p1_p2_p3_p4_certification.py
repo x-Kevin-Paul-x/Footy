@@ -5,6 +5,7 @@ P2 (API Standardization), P3 (Canonical Presentation Timeline), and P4 (Benchmar
 
 import os
 import json
+import struct
 import pytest
 from pathlib import Path
 from fastapi.testclient import TestClient
@@ -104,7 +105,7 @@ def test_p1_4_on_demand_render_endpoint(monkeypatch, tmp_path):
 
     # 1. Existing video returns ready immediately
     dummy_video = test_recordings / "match_5555.mp4"
-    dummy_video.write_bytes(b"dummy_mp4_bytes")
+    dummy_video.write_bytes(struct.pack('>I4s', 12, b'ftyp') + b'isom' + struct.pack('>I4s', 8, b'moov'))
 
     resp = client.post("/api/v1/match/5555/render", json={"force": False})
     assert resp.status_code == 200

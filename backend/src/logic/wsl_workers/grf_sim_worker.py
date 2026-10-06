@@ -42,10 +42,15 @@ def run_simulation(payload: Dict[str, Any]) -> Dict[str, Any]:
     try:
         worker = GRFMatchExecutor(
             payload,
-            max_steps=int(payload.get("max_steps", 1200)),
+            max_steps=int(payload.get("max_steps", 3200)),
             replay_mode=replay_mode,
         )
         _CANONICAL_POLICY.reset_match(worker.match_id, worker.seed_val)
+        worker.policy_provenance = {
+            'name': 'TiKick actor', 'checkpoint_sha256': _CANONICAL_POLICY.checkpoint_sha256,
+            'checkpoint': key[0], 'direct_actions': 19, 'builtin_ai_allowed': True,
+            'available_actions': 20, 'inference_profile': 'tikick_kaggle',
+        }
         observations = worker.get_initial_observations()
         done = False
         while not done and worker.step_idx < worker.max_steps:

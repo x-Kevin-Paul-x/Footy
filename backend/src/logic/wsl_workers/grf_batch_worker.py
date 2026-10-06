@@ -33,7 +33,7 @@ def run_batch_simulation(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     fixtures = payload["fixtures"]
     ckpt_path = payload["ckpt_path"]
     tikick_dir = payload.get("tikick_dir", "")
-    max_steps = int(payload.get("max_steps", 1200))
+    max_steps = int(payload.get("max_steps", 3200))
     backend_type = payload.get("backend_type", "cpu_single")
     num_workers = int(payload.get("num_workers", min(16, len(fixtures))))
     replay_mode_str = payload.get("replay_mode", "full_state")

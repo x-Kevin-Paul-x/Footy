@@ -63,7 +63,7 @@ function getClubMeta(teamName: string) {
 const MatchReports: React.FC = () => {
   const theme = useTheme();
   const navigate = useNavigate();
-  const { selectedSeason, fetchAvailableSeasons, availableSeasons, selectSeason } = useSimulationStore();
+  const { selectedSeason, fetchAvailableSeasons, availableSeasons, selectSeason, liveRevision } = useSimulationStore();
   
   const [matches, setMatches] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -96,7 +96,7 @@ const MatchReports: React.FC = () => {
       }
     };
     fetchMatches();
-  }, [selectedSeason]);
+  }, [selectedSeason, liveRevision]);
 
   // Computed stats
   const matchStats = useMemo(() => {

@@ -34,10 +34,8 @@ from logic.grf_renderer import (
 
 
 def write_progress_atomic(progress_file: str, data: dict):
-    tmp_file = f"{progress_file}.tmp"
-    with open(tmp_file, "w", encoding="utf-8") as f:
-        json.dump(data, f)
-    os.replace(tmp_file, progress_file)
+    from logic.replay.render_status import write_render_status
+    write_render_status(progress_file, data)
 
 
 def render_from_trajectory_npz(payload: Dict[str, Any]):
