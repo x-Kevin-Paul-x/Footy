@@ -41,6 +41,7 @@ class FootballPlayer:
         
         # Database attributes
         self.player_id = None  # Will be set when saved to database
+        self.jersey_number = None
         
         # Enhanced attributes structure
         self.attributes = {
@@ -109,7 +110,8 @@ class FootballPlayer:
                 wage=self.wage,
                 contract_length=self.contract_length,
                 squad_role=self.squad_role,
-                attributes=self.attributes
+                attributes=self.attributes,
+                jersey_number=self.jersey_number
             )
         else:
             # Update existing player
@@ -123,7 +125,8 @@ class FootballPlayer:
                 wage=self.wage,
                 contract_length=self.contract_length,
                 squad_role=self.squad_role,
-                attributes=self.attributes
+                attributes=self.attributes,
+                jersey_number=self.jersey_number
             )
         return self.player_id
     
@@ -142,6 +145,7 @@ class FootballPlayer:
             wage=data["wage"]
         )
         player.player_id = data["player_id"]
+        player.jersey_number = data.get('jersey_number')
         player.contract_length = data["contract_length"]
         player.squad_role = data["squad_role"]
         
@@ -570,6 +574,7 @@ class FootballPlayer:
             "contract_length": self.contract_length,
             "squad_role": self.squad_role,
             "overall_rating": self.get_overall_rating(),
+            "jersey_number": self.jersey_number,
             "is_injured": self.is_injured,
             "injury_type": self.injury_type,
             "recovery_time": self.recovery_time,

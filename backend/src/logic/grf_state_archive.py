@@ -40,7 +40,7 @@ class GRFStateArchiveWriter:
         filepath: str,
         match_id: str,
         chunk_size: int = DEFAULT_CHUNK_SIZE,
-        compression_level: int = 6,
+        compression_level: int = 3,
     ):
         self.filepath = str(filepath)
         self.match_id = str(match_id)

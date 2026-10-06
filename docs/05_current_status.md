@@ -57,7 +57,7 @@ The first sandboxed full-suite attempt produced three WSL access errors. Re-runn
 | P2.1 repository/service boundaries | Open | `api_fastapi.py` remains a large module mixing HTTP, persistence, orchestration, filesystem access, and report construction. |
 | P2.2 versioned API | Mostly verified | Core `/api/v1` routes and deprecated aliases exist. Schemas are incomplete on several endpoints and errors are not fully uniform. |
 | P2.3 configuration ownership | Partial | Core paths/settings are centralized, but runtime settings also mutate environment variables and frontend API configuration is split. |
-| P2.4 retention policy | Verified | Historical runs are retained by default; explicit count retention and stale-temp cleanup are implemented. |
+| P2.4 retention policy | Verified | New runs delete previous runtime recordings by default. Explicit count retention and stale-temp cleanup are implemented; curated match assets are preserved. |
 | P3.1 canonical presentation timeline | **Partial / incorrect for 3D** | Builder and API exist. Its default 4s half-time, 5s full-time, and goal-replay inserts match the 2D trajectory renderer, not the AVI transcode or persistent 3D paths. |
 | P3.2 halftime statistics | Partial | 2D trajectory and persistent replay compute first-half counters. AVI transcode filters events but still displays final possession/shots/xG at halftime. |
 | P3.3 2D timing/color | Mostly verified | Exact event-step mapping and RGB conversion are implemented. Renderer resource cleanup needs hardening. |

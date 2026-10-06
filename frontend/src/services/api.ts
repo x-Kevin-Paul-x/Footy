@@ -9,6 +9,13 @@ const apiClient = axios.create({
   timeout: API_TIMEOUT_MS,
 });
 
+export const resolveReplayVideoUrl = (url?: string | null): string => {
+  if (!url) return '';
+  if (/^(https?:|blob:)/.test(url)) return url;
+  const base = window.localStorage.getItem('footy_api_url')?.trim() || API_BASE_URL;
+  return `${base.replace(/\/+$/, '')}/${url.replace(/^\/+/, '')}`;
+};
+
 export interface Manager {
   name: string;
   experience: number;
@@ -79,6 +86,8 @@ export interface PlayerAttributes {
 }
 
 export interface PlayerStats {
+  assists_recorded?: boolean;
+  minutes_played?: number;
   goals: number;
   assists: number;
   appearances: number;
@@ -90,6 +99,9 @@ export interface PlayerStats {
 }
 
 export interface Player {
+  jersey_number?: number | null;
+  overall_rating?: number | null;
+  match_history?: { match_id: number; date: string; opponent: string; score: string; goals: number; minutes: number }[];
   name: string;
   age: number;
   position: string;
@@ -566,7 +578,7 @@ export const simulateGrfMatch = async (params: GrfMatchSimulationRequest): Promi
 };
 
 export interface MatchRenderStatusResponse {
-  status: "idle" | "initializing" | "rendering" | "simulating" | "completed" | "failed";
+  status: "idle" | "initializing" | "rendering" | "simulating" | "completed" | "failed" | "error";
   progress: number;
   step?: number;
   total_steps?: number;
@@ -575,6 +587,8 @@ export interface MatchRenderStatusResponse {
   video_url?: string | null;
   score?: [number, number];
   completed: boolean;
+  elapsed_seconds?: number;
+  message?: string;
 }
 
 export const getMatchRenderStatus = async (matchId: string): Promise<MatchRenderStatusResponse> => {

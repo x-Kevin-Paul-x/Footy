@@ -15,6 +15,7 @@ import type { SeasonReport } from "../services/api";
 import StandingsTable from "../components/StandingsTable";
 import type { StandingRow } from "../components/StandingsTable";
 import FinancialChart from "../components/FinancialChart";
+import { useSimulationStore } from '../store/simulationStore';
 
 /**
  * LeagueOverview
@@ -23,6 +24,7 @@ import FinancialChart from "../components/FinancialChart";
  * - Normalizes backend season report data into the presentational components' expected shape.
  */
 const LeagueOverview: React.FC = () => {
+  const liveRevision = useSimulationStore(state => state.liveRevision);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<SeasonReport | null>(null);
@@ -63,7 +65,7 @@ const LeagueOverview: React.FC = () => {
       }
     };
     fetchReport();
-  }, [selectedSeason]);
+  }, [selectedSeason, liveRevision]);
 
   if (loading && seasonsList.length === 0) {
     return (

@@ -12,6 +12,7 @@ class TeamRead(BaseModel):
     wage_budget: float
 
 class PlayerRead(BaseModel):
+    jersey_number: Optional[int] = None
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -64,7 +65,7 @@ class MatchSimulationRequest(BaseModel):
     home_formation: str = Field(default="4-3-3", max_length=20)
     away_formation: str = Field(default="4-2-3-1", max_length=20)
     generate_video: bool = False
-    max_steps: int = Field(default=1200, ge=100, le=5000)
+    max_steps: int = Field(default=3200, ge=100, le=5000)
     record_grf_states: Optional[bool] = None
     record_dump: bool = True
     render_mode: Literal["3d", "2d", "auto"] = "3d"
@@ -83,11 +84,14 @@ class MatchSimulationResponse(BaseModel):
     video_url: Optional[str] = None
     render_mode_used: Optional[str] = None
     render_source: Optional[str] = None
+    match_complete: Optional[bool] = None
+    native_steps_left: Optional[int] = None
+    video_status: Optional[str] = None
 
 
 class SimulationSettings(BaseModel):
     default_render_mode: Literal["3d", "2d"] = "3d"
-    max_steps: int = Field(default=1200, ge=100, le=5000)
+    max_steps: int = Field(default=3200, ge=100, le=5000)
     active_model: str = Field(default="dqn_best.pt", pattern=r"^[A-Za-z0-9_.-]+\.pt$")
 
 

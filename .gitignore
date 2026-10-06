@@ -95,6 +95,13 @@ test_transfers.py
 node_modules/*
 *.mp4
 !assets/readme/showcase-match.mp4
+!assets/matches/full-match-recordings/*.mp4
+*.db-shm
+*.db-wal
 *.avi
 *.webm
 backend/reports/recordings/
+backend/verification/season_*/
+backend/verification/tmp/
+backend/verification/latest.json
+backend/native/runtime/

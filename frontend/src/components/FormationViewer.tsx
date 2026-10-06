@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Box,
   Typography,
@@ -55,6 +56,7 @@ export interface FormationViewerProps {
   formation: string;
   players: PlayerPosition[];
   bench?: BenchPlayer[];
+  benchRecorded?: boolean;
   coachName?: string;
   teamColor?: string;
 }
@@ -122,7 +124,7 @@ const getRatingColor = (rating?: number) => {
 };
 
 const formatRating = (rating?: number) => {
-  if (!rating) return "7.2";
+  if (rating === undefined || rating === null) return "—";
   const r = rating > 10 ? rating / 10 : rating;
   return r.toFixed(1);
 };
@@ -132,6 +134,7 @@ const FormationViewer: React.FC<FormationViewerProps> = ({
   formation,
   players,
   bench = [],
+  benchRecorded = true,
   coachName,
   teamColor = "#4f46e5",
 }) => {
@@ -377,7 +380,13 @@ const FormationViewer: React.FC<FormationViewerProps> = ({
                   placement="top"
                 >
                   <Box
+                    component={Link}
+                    to={`/player-profiles/${encodeURIComponent(p.name)}`}
+                    aria-label={`View profile for ${p.name}`}
                     sx={{
+                      color: "inherit",
+                      textDecoration: "none",
+                      "&:focus-visible": { outline: "2px solid #38bdf8", outlineOffset: 4 },
                       position: "absolute",
                       left: `${xPos}%`,
                       top: `${yPos}%`,
@@ -535,7 +544,13 @@ const FormationViewer: React.FC<FormationViewerProps> = ({
               return (
                 <Box
                   key={idx}
+                  component={Link}
+                  to={`/player-profiles/${encodeURIComponent(p.name)}`}
+                  aria-label={`View profile for ${p.name}`}
                   sx={{
+                    color: "inherit",
+                    textDecoration: "none",
+                    "&:focus-visible": { outline: "2px solid #38bdf8", outlineOffset: 4 },
                     p: 1.5,
                     px: 2,
                     borderRadius: "14px",
@@ -628,10 +643,10 @@ const FormationViewer: React.FC<FormationViewerProps> = ({
           {/* Substitutes Header */}
           <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.5, fontSize: "0.75rem", color: "text.secondary" }}>
-              Substitutes ({bench.length})
+              {benchRecorded ? `Matchday bench (${bench.length})` : 'Matchday bench · not recorded'}
             </Typography>
             <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 600 }}>
-              Green badge indicates in-game substitution
+              {bench.some(p => p.subbedInMinute !== undefined) ? 'Green badge indicates a recorded substitution' : 'No substitutions recorded'}
             </Typography>
           </Box>
 
@@ -644,7 +659,13 @@ const FormationViewer: React.FC<FormationViewerProps> = ({
               return (
                 <Box
                   key={bIdx}
+                  component={Link}
+                  to={`/player-profiles/${encodeURIComponent(b.name)}`}
+                  aria-label={`View profile for ${b.name}`}
                   sx={{
+                    color: "inherit",
+                    textDecoration: "none",
+                    "&:focus-visible": { outline: "2px solid #38bdf8", outlineOffset: 4 },
                     p: 1.2,
                     px: 1.8,
                     borderRadius: "14px",
@@ -725,7 +746,7 @@ const FormationViewer: React.FC<FormationViewerProps> = ({
 
             {bench.length === 0 && (
               <Typography variant="caption" color="text.secondary" sx={{ py: 2, textAlign: "center", gridColumn: "1 / -1" }}>
-                No bench substitutes listed.
+                {benchRecorded ? 'No players selected on the recorded bench.' : 'The bench was not saved for this match.'}
               </Typography>
             )}
           </Box>

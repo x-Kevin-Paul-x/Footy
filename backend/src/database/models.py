@@ -115,6 +115,7 @@ class Player(Base):
     __tablename__ = 'Player'
     
     player_id = Column(Integer, primary_key=True, autoincrement=True)
+    jersey_number = Column(Integer, nullable=True)
     name = Column(String, nullable=False, unique=True)
     age = Column(Integer, nullable=False)
     position = Column(String, nullable=False)

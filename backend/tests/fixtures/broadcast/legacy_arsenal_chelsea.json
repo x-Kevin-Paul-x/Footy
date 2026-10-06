@@ -1,0 +1,20 @@
+{
+  "fixture_status": "legacy_trajectory_video_only",
+  "match_id": "readme_showcase_arsenal_chelsea_20260906",
+  "canonical_result": {"home_team": "Arsenal", "away_team": "Chelsea", "score": [1, 0]},
+  "seed": 3953935634,
+  "trajectory_file_sha256": "02491aa9dec688d8ab4832c852f2937d67aca0dd26c64a88df0cf754920064c2",
+  "trajectory_hash": "cdefb1d5411ffcb424cc589941d9bc5e84c050e08086018c2e862f42fdeafb35",
+  "physics_hash": "a0a33e7f5b284f5c526c4e0c2411e048dd041ece33f01a35d201d5fed3ef9a5f",
+  "dump_sha256": "cddb26fd18d700cccfd32906a92e400da222ec51785c7f8c97e3e9396e884b8e",
+  "legacy_video_sha256": "4f9f01e20b19740fe84c87935b2c8b8cc2b2743f3f23384a26421f7dd8d59575",
+  "state_archive_sha256": null,
+  "halftime_step": 600,
+  "goal_step": 960,
+  "scorer": "Arsenal Player 8",
+  "final_statistics": {
+    "possession": [63.0, 37.0], "shots": [1, 0], "shots_on_target": [1, 0],
+    "xg": [0.3, 0.0], "passes_attempted": [5, 0], "passes_completed": [3, 0]
+  },
+  "full_state_fixture": "blocked_pending_grf_baseline_cleanup_reconciliation"
+}

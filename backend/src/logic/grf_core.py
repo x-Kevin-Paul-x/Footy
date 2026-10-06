@@ -236,14 +236,14 @@ def extract_canonical_features(
             for k in range(1, 11):
                 if ally[k, 0] > enemy_xs[-1] and k != eff_player and ally[k, 0] > 0.0:
                     loff[k] = 1.0
-            roff = last_roff
+            roff = np.zeros(11, dtype=np.float32)
         elif eff_team == 1:
             ally_xs = np.sort(ally[1:11, 0])
             roff = np.zeros(11, dtype=np.float32)
             for k in range(1, 11):
                 if enemy[k, 0] < ally_xs[0] and k != eff_player and enemy[k, 0] < 0.0:
                     roff[k] = 1.0
-            loff = last_loff
+            loff = np.zeros(11, dtype=np.float32)
         else:
             loff, roff = last_loff, last_roff
 

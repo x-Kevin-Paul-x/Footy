@@ -2,7 +2,7 @@ from sqlalchemy.orm import joinedload
 from database.session import SessionLocal, get_db_session
 from database.models import Player, PlayerAttribute
 
-def create_player(name, age, position, team_id, potential, wage, contract_length, squad_role, attributes, db_file=None):
+def create_player(name, age, position, team_id, potential, wage, contract_length, squad_role, attributes, db_file=None, jersey_number=None):
     """Inserts a new player and their attributes into the database."""
     db_team_id = None if (team_id == -1 or team_id is None) else team_id
     with get_db_session() as db:
@@ -14,7 +14,8 @@ def create_player(name, age, position, team_id, potential, wage, contract_length
             potential=potential,
             wage=wage,
             contract_length=contract_length,
-            squad_role=squad_role
+            squad_role=squad_role,
+            jersey_number=jersey_number
         )
         db.add(player)
         db.flush()
@@ -49,6 +50,7 @@ def get_player(player_id, db_file=None):
 
         player_data = {
             "player_id": player.player_id,
+            "jersey_number": player.jersey_number,
             "name": player.name,
             "age": player.age,
             "position": player.position,
@@ -78,6 +80,7 @@ def get_all_players(db_file=None):
 
             players.append({
                 "player_id": player.player_id,
+                "jersey_number": player.jersey_number,
                 "name": player.name,
                 "age": player.age,
                 "position": player.position,
@@ -93,7 +96,7 @@ def get_all_players(db_file=None):
         db.close()
 
 def update_player(player_id, name=None, age=None, position=None, team_id=None, potential=None, wage=None,
-                  contract_length=None, squad_role=None, attributes=None, db_file=None):
+                  contract_length=None, squad_role=None, attributes=None, db_file=None, jersey_number=None):
     """Updates a player's information and attributes."""
     with get_db_session() as db:
         player = db.query(Player).filter(Player.player_id == player_id).first()
@@ -109,6 +112,7 @@ def update_player(player_id, name=None, age=None, position=None, team_id=None, p
         if wage is not None: player.wage = wage
         if contract_length is not None: player.contract_length = contract_length
         if squad_role is not None: player.squad_role = squad_role
+        if jersey_number is not None: player.jersey_number = jersey_number
 
         if attributes is not None:
             db.query(PlayerAttribute).filter(PlayerAttribute.player_id == player_id).delete()

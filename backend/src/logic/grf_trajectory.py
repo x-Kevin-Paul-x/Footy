@@ -216,8 +216,10 @@ class MatchTrajectory:
     def get_frame_state(self, step: int) -> Dict[str, Any]:
         """Retrieve complete O(1) state snapshot for a specific simulation step."""
         idx = max(0, min(step, self.total_steps - 1))
-        denom = max(self.total_steps - 1, 1)
-        match_min = max(1, min(90, int((idx / denom) * 90)))
+        native_duration = self.manifest.engine_fingerprint.get('native_duration')
+        denom = max(int(native_duration) if native_duration else self.total_steps - 1, 1)
+        match_min = max(1, min(90, int((idx / denom) * 90) + (1 if native_duration else 0)))
+        half_time_step = int(native_duration) // 2 if native_duration else self.total_steps // 2
         state = {
             "step": idx,
             "match_minute": match_min,
@@ -227,7 +229,7 @@ class MatchTrajectory:
             "ball_dirs": self.ball_dirs[idx],
             "actions": self.actions[idx] if idx < len(self.actions) else np.zeros(20, dtype=np.uint8),
             "score": [int(self.scores[idx, 0]), int(self.scores[idx, 1])],
-            "is_second_half": idx > (self.total_steps // 2),
+            "is_second_half": idx >= half_time_step if native_duration else idx > half_time_step,
         }
         if self.game_mode is not None:
             state["game_mode"] = int(self.game_mode[idx])

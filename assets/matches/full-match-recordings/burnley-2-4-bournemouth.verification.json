@@ -1,0 +1,48 @@
+{
+  "match_id": "match_2026_20_3",
+  "database_match_id": 372,
+  "simulation_run_id": "run_1791240220_7b08d5",
+  "home_team": "Burnley",
+  "away_team": "Bournemouth",
+  "score": [
+    2,
+    4
+  ],
+  "duration_seconds": 310.7,
+  "frames": 3107,
+  "resolution": [
+    1280,
+    720
+  ],
+  "fps": 10,
+  "video_bytes": 37349145,
+  "video_sha256": "f20d7b38125c2a56b066b64654c14a3db623c74a9123c732c9396da7b8ee32b9",
+  "gif_bytes": 2893813,
+  "gif_source_seconds": [
+    75,
+    85
+  ],
+  "official_actor_sha256": "5e8157c79353cc916464faa0b2feba07ab4bdcf7b521060c85a19e86686dcef5",
+  "native_state_audit": {
+    "fixtures": 380,
+    "saved_states": 1140380,
+    "goals": 1874,
+    "mismatches": 0
+  },
+  "season_wall_seconds": 2317.94,
+  "source_video_bytes": 63377170,
+  "source_video_sha256": "67986e7db9b13c64e0ce8801180d3f5a8ebd06bff01ba967573a467d2984d553",
+  "source_gif_bytes": 4971794,
+  "gif_resolution": [
+    480,
+    270
+  ],
+  "gif_fps": 6,
+  "compression": {
+    "encoder": "libx264",
+    "preset": "slow",
+    "crf": 25,
+    "ssim_against_original": 0.980933,
+    "resolution_and_frame_timing_preserved": true
+  }
+}

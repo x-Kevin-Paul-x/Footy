@@ -1,5 +1,6 @@
 import os
 import logging
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import aliased
 from database.session import SessionLocal, get_db_session
@@ -21,6 +22,9 @@ def save_match_to_db(
         if hasattr(val, "team_id"):
             return val.team_id
         return int(val)
+
+    if match_data.get("match_complete") is False:
+        raise ValueError("Cannot persist an incomplete GRF simulation as a completed fixture")
 
     date = match_data.get("date")
     score = match_data.get("score")
@@ -130,6 +134,7 @@ def save_match_to_db(
 
             match_id = match_obj.match_id
 
+            import json
             # Save shots
             db.add(MatchShots(match_id=match_id, team='home', total=h_shots, on_target=h_sot))
             db.add(MatchShots(match_id=match_id, team='away', total=a_shots, on_target=a_sot))
@@ -143,7 +148,7 @@ def save_match_to_db(
                         type=event.get('type', 'goal'),
                         player=event.get('player', 'Unknown'),
                         team=event.get('team', 'home'),
-                        details=event.get('details', '')
+                        details=json.dumps({'canonical_event': event})
                     )
                 else:
                     evt = MatchEvent(
@@ -176,7 +181,7 @@ def save_match_to_db(
                     team='away',
                     details=json.dumps(match_data.get('away_lineup'))
                 ))
-            if match_data.get("home_bench"):
+            if "home_bench" in match_data:
                 db.add(MatchEvent(
                     match_id=match_id,
                     minute=0,
@@ -185,7 +190,7 @@ def save_match_to_db(
                     team='home',
                     details=json.dumps(match_data.get('home_bench'))
                 ))
-            if match_data.get("away_bench"):
+            if "away_bench" in match_data:
                 db.add(MatchEvent(
                     match_id=match_id,
                     minute=0,
@@ -277,24 +282,27 @@ def get_matches_for_season(season_year: int, simulation_run_id: Optional[str] = 
     finally:
         db.close()
 
-def get_match_details(match_id: Any) -> Optional[Dict[str, Any]]:
+def get_match_details(match_id: Any, simulation_run_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     Retrieve full details for a single match from the database.
     """
     db = SessionLocal()
     try:
         m = None
+        latest_run = simulation_run_id or db.query(SimulationRun.run_id).order_by(
+            SimulationRun.created_at.desc()
+        ).limit(1).scalar()
+        scoped = db.query(Match)
+        if latest_run:
+            scoped = scoped.filter(Match.simulation_run_id == latest_run)
         # 1. Direct integer or integer-string lookup
         if isinstance(match_id, int) or (isinstance(match_id, str) and match_id.strip().isdigit()):
             int_id = int(match_id)
             m = db.query(Match).filter(Match.match_id == int_id).first()
+            if m is not None and simulation_run_id and m.simulation_run_id != simulation_run_id:
+                return None
             if m is None:
-                latest_run = db.query(SimulationRun.run_id).order_by(
-                    SimulationRun.created_at.desc()
-                ).limit(1).scalar()
-                fallback = db.query(Match).filter(Match.match_number == int_id)
-                if latest_run:
-                    fallback = fallback.filter(Match.simulation_run_id == latest_run)
+                fallback = scoped.filter(Match.match_number == int_id)
                 m = fallback.first()
 
         # 2. Formatted string identifier lookup
@@ -304,27 +312,43 @@ def get_match_details(match_id: Any) -> Optional[Dict[str, Any]]:
                 rest = clean_str[6:]
                 if rest.isdigit():
                     int_id = int(rest)
-                    m = db.query(Match).filter(
-                        (Match.match_id == int_id) | (Match.match_number == int_id)
-                    ).first()
+                    m = db.query(Match).filter(Match.match_id == int_id).first()
+                    if m is not None and simulation_run_id and m.simulation_run_id != simulation_run_id:
+                        return None
+                    if m is None:
+                        m = scoped.filter(Match.match_number == int_id).first()
                 else:
                     parts = rest.split("_")
                     if len(parts) == 3 and all(p.isdigit() for p in parts):
                         # match_{season_year}_{home_team_id}_{away_team_id}
-                        m = db.query(Match).filter(
+                        m = scoped.filter(
                             Match.season_year == int(parts[0]),
                             Match.home_team_id == int(parts[1]),
                             Match.away_team_id == int(parts[2]),
                         ).first()
+                        if m is None and simulation_run_id is None:
+                            legacy = db.query(Match).filter(
+                                Match.simulation_run_id.is_(None),
+                                Match.season_year == int(parts[0]),
+                                Match.home_team_id == int(parts[1]),
+                                Match.away_team_id == int(parts[2]),
+                            ).all()
+                            if len(legacy) == 1:
+                                m = legacy[0]
                     elif len(parts) == 2 and all(p.isdigit() for p in parts):
-                        m = db.query(Match).filter(
+                        m = scoped.filter(
                             Match.home_team_id == int(parts[0]),
                             Match.away_team_id == int(parts[1]),
                         ).first()
 
             if not m:
-                # 3. Fallback to substring trace_file lookup
-                m = db.query(Match).filter(Match.trace_file.like(f"%{clean_str}%")).first()
+                # Match the complete artifact identity; substrings can select
+                # match_1 when the user asked for match_10 (or another run).
+                for candidate in scoped.filter(Match.trace_file.isnot(None)).all():
+                    stem = os.path.basename(str(candidate.trace_file).replace('\\', '/'))
+                    if stem == f"trace_{clean_str}.npz":
+                        m = candidate
+                        break
 
         if not m:
             return None
@@ -334,6 +358,7 @@ def get_match_details(match_id: Any) -> Optional[Dict[str, Any]]:
 
         match_details = {
             "match_id": m.match_id,
+            "fixture_id": f"match_{m.season_year}_{m.home_team_id}_{m.away_team_id}",
             "match_number": m.match_number,
             "date": m.date,
             "season_year": m.season_year,
@@ -385,6 +410,21 @@ def get_match_details(match_id: Any) -> Optional[Dict[str, Any]]:
             }
             for row in user_events
         ]
+        import json
+        for event in match_details['events']:
+            try:
+                payload = json.loads(event['details'])
+                if isinstance(payload, dict) and isinstance(payload.get('canonical_event'), dict):
+                    original = payload['canonical_event']
+                    event.update(original)
+                    event['details'] = original.get('details', '')
+            except (ValueError, TypeError):
+                pass
+        from logic.recorded_player_stats import describe_match_event
+        for event in match_details['events']:
+            event['details'] = describe_match_event(event)
+            if event['type'] in ('half_time', 'full_time'):
+                event['team'] = 'both'
 
         # Fetch Manager & Formations fallback
         home_mgr = db.query(Manager).filter(Manager.manager_id == home_team.manager_id).first() if home_team else None
@@ -401,6 +441,8 @@ def get_match_details(match_id: Any) -> Optional[Dict[str, Any]]:
         home_bench_evt = next((r for r in events_rows if r.type == 'home_bench'), None)
         away_bench_evt = next((r for r in events_rows if r.type == 'away_bench'), None)
         subs_evt = next((r for r in events_rows if r.type == 'substitutions'), None)
+        match_details['home_bench_recorded'] = home_bench_evt is not None
+        match_details['away_bench_recorded'] = away_bench_evt is not None
 
         import json
         exact_lineup_found = False
@@ -445,8 +487,8 @@ def get_match_details(match_id: Any) -> Optional[Dict[str, Any]]:
             for e in match_details["events"]:
                 det = e.get("details", "")
                 if e.get("type") == "substitution" or " replaced by " in det or " comes on for " in det:
-                    p_in = e.get("player", "")
-                    p_out = ""
+                    p_in = e.get("player_in") or e.get("player", "")
+                    p_out = e.get("player_out", "")
                     if " replaced by " in det:
                         parts = det.split(" replaced by ")
                         p_out = parts[0].strip()
@@ -465,6 +507,19 @@ def get_match_details(match_id: Any) -> Optional[Dict[str, Any]]:
                             "reason": "injury" if "injury" in det.lower() else "tactical"
                         })
             match_details["substitutions"] = subs_list
+
+        # Structured substitution records must also be visible in the timeline.
+        for substitution in match_details['substitutions']:
+            if not any(event.get('type') == 'substitution'
+                       and event.get('minute') == substitution.get('minute')
+                       and event.get('team') == substitution.get('team')
+                       and event.get('player_in') == substitution.get('player_in')
+                       and event.get('player_out') == substitution.get('player_out')
+                       for event in match_details['events']):
+                event = dict(substitution, type='substitution')
+                event['details'] = describe_match_event(event)
+                match_details['events'].append(event)
+        match_details['events'].sort(key=lambda event: event.get('minute', 0))
 
         # Fallback if no stored exact lineup/bench exists for this match
         if not exact_lineup_found or not match_details["home_lineup"] or not match_details["away_lineup"]:
@@ -548,13 +603,20 @@ def get_match_details(match_id: Any) -> Optional[Dict[str, Any]]:
 
         match_details["simulation_run_id"] = run_id
         resolved_video = None
+        from logic.replay.render_status import replay_video_is_ready
+        trace_source = getattr(m, 'trace_file', None)
+        source_id = Path(str(trace_source).replace('\\', '/')).stem.removeprefix('trace_') if trace_source else None
+
+        def ready_video(candidate):
+            return replay_video_is_ready(candidate, expected_match_id=source_id,
+                require_native=bool(trace_source and str(trace_source).endswith('.npz') and candidate.name.endswith('_3d.mp4')))
 
         if stored_url:
             clean_rel = stored_url.replace("\\", "/").replace("/recordings/", "").lstrip("/")
             try:
                 candidate = (RECORDINGS_DIR / clean_rel).resolve()
                 candidate.relative_to(RECORDINGS_DIR.resolve())
-                if candidate.exists():
+                if ready_video(candidate):
                     resolved_video = f"/recordings/{candidate.relative_to(RECORDINGS_DIR.resolve()).as_posix()}"
             except ValueError:
                 logger.warning("Ignored recording path outside artifact root for match %s", m.match_id)
@@ -590,6 +652,11 @@ def get_match_details(match_id: Any) -> Optional[Dict[str, Any]]:
                     f"match_{hid}_{aid}.mp4",
                 ])
             tf = getattr(m, "trace_file", None)
+            if tf and str(tf).endswith('.npz'):
+                trace_stem = os.path.basename(str(tf).replace('\\', '/'))[:-4]
+                source_id = trace_stem.removeprefix('trace_')
+                exact_names = [f'match_{source_id}_3d.mp4', f'match_{source_id}_native_3d.mp4', f'match_{source_id}_2d.mp4']
+                candidate_names = exact_names if run_id else exact_names + candidate_names
             if tf and str(tf).endswith(".mp4"):
                 candidate_names.insert(0, os.path.basename(str(tf)))
 
@@ -602,25 +669,25 @@ def get_match_details(match_id: Any) -> Optional[Dict[str, Any]]:
             if run_id:
                 for c in unique_candidates:
                     p = RECORDINGS_DIR / run_id / c
-                    if p.exists() and p.stat().st_size > 0:
+                    if ready_video(p):
                         resolved_video = f"/recordings/{run_id}/{c}"
                         break
 
             # Check in root RECORDINGS_DIR
-            if not resolved_video:
+            if not resolved_video and not run_id:
                 for c in unique_candidates:
                     p = RECORDINGS_DIR / c
-                    if p.exists() and p.stat().st_size > 0:
+                    if ready_video(p):
                         resolved_video = f"/recordings/{c}"
                         break
 
-            # Check in any run_* directory
-            if not resolved_video:
+            # Legacy unscoped records may search historical directories.
+            if not resolved_video and not run_id:
                 for run_dir in RECORDINGS_DIR.glob("run_*"):
                     if run_dir.is_dir():
                         for c in unique_candidates:
                             p = run_dir / c
-                            if p.exists() and p.stat().st_size > 0:
+                            if ready_video(p):
                                 resolved_video = f"/recordings/{run_dir.name}/{c}"
                                 break
                         if resolved_video:

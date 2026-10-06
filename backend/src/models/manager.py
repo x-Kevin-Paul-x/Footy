@@ -654,7 +654,7 @@ class Manager:
                         # Look up listing object to get rating
                         listing_obj = next((l for l in transfer_market.transfer_list if l.listing_id == listing_id), None)
                         
-                        if listing_obj and listing_obj.price <= avail_budget:
+                        if listing_obj and listing_obj.asking_price <= avail_budget:
                             rating = listing_obj.player.get_overall_rating()
                             if target_range[0] <= rating <= target_range[1]:
                                 eligible_buys.append((a, listing_obj))

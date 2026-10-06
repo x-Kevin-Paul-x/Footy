@@ -54,7 +54,7 @@ class GRFNativeRunner:
     """
 
     def __init__(self):
-        self.wsl_python = "/root/venv_baller/bin/python3"
+        self.wsl_python = os.environ.get("FOOTY_WSL_PYTHON", "/root/venv_baller/bin/python3")
         self.local_ckpt = TIKICK_CHECKPOINT_PATH
         self.local_tikick = LOCAL_TIKICK_DIR
         self.max_steps = FOOTY_GRF_MAX_STEPS
@@ -300,6 +300,7 @@ class GRFNativeRunner:
         away_color: Optional[str] = None,
         output_mp4: Optional[str] = None,
         mode: str = "3d",
+        force: bool = False,
     ) -> Dict[str, Any]:
         """
         Execute standalone TV broadcast video rendering from recorded trace (Phase B).
@@ -330,16 +331,23 @@ class GRFNativeRunner:
         existing_3d_video = None
         if mode in ("3d", "auto") and out_win.name.endswith("_3d.mp4") and out_win.exists() and out_win.stat().st_size > 0:
             existing_3d_video = out_win
-        elif (RECORDINGS_DIR / f"match_{m_id}_3d.mp4").exists() and (RECORDINGS_DIR / f"match_{m_id}_3d.mp4").stat().st_size > 0:
+        elif output_mp4 is None and (RECORDINGS_DIR / f"match_{m_id}_3d.mp4").exists() and (RECORDINGS_DIR / f"match_{m_id}_3d.mp4").stat().st_size > 0:
             existing_3d_video = RECORDINGS_DIR / f"match_{m_id}_3d.mp4"
-        else:
+        elif output_mp4 is None:
             for run_dir in RECORDINGS_DIR.glob("run_*"):
                 cand = run_dir / f"match_{m_id}_3d.mp4"
                 if cand.exists() and cand.stat().st_size > 0:
                     existing_3d_video = cand
                     break
 
-        if mode in ("3d", "auto") and existing_3d_video is not None:
+        if existing_3d_video is not None and states_win is not None:
+            timeline_path = existing_3d_video.with_suffix('.timeline.json')
+            try:
+                if not json.loads(timeline_path.read_text()).get('native_redraw'):
+                    existing_3d_video = None
+            except (OSError, ValueError):
+                existing_3d_video = None
+        if mode in ("3d", "auto") and existing_3d_video is not None and not force:
             logger.info("GRF Renderer: serving existing 3D broadcast video from simulation for match=%s: %s", m_id, existing_3d_video)
             from logic.grf_trajectory import MatchTrajectory
             traj = MatchTrajectory.load_from_npz(traj_win) if traj_win.exists() else None
@@ -466,6 +474,9 @@ class GRFNativeRunner:
 
         payload_render_win = RECORDINGS_DIR / f"render_payload_{m_id}_{int(time.time()*1000)%100000}.json"
         payload_render_win.write_text(json.dumps(payload), encoding="utf-8")
+        from logic.replay.render_status import write_render_status
+        write_render_status(prog_win, {'status': 'initializing', 'progress': 0,
+            'stage': 'Starting replay renderer', 'completed': False, 'started_at': time.time()})
 
         cmd = [
             "wsl", "-u", "root", "xvfb-run", "-a", "-s", "-screen 0 1280x720x24",
@@ -475,6 +486,10 @@ class GRFNativeRunner:
         logger.info("GRF Renderer: rendering authentic 3D broadcast via WSL worker for match=%s", m_id)
         try:
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        except Exception as exc:
+            write_render_status(prog_win, {'status': 'failed', 'progress': 0,
+                'stage': 'Replay generation failed', 'message': str(exc), 'completed': True})
+            raise
         finally:
             if payload_render_win.exists():
                 try:
@@ -487,6 +502,8 @@ class GRFNativeRunner:
             return json.loads(json_str)
 
         logger.error("GRF Renderer error:\nSTDOUT: %s\nSTDERR: %s", res.stdout, res.stderr)
+        write_render_status(prog_win, {'status': 'failed', 'progress': 0,
+            'stage': 'Replay generation failed', 'message': res.stderr or res.stdout, 'completed': True})
         raise RuntimeError(f"GRF video render failed: {res.stderr or res.stdout}")
 
     def run_match(

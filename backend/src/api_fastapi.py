@@ -23,7 +23,7 @@ from urllib.parse import unquote
 
 # DB query functions (these currently use raw sqlite)
 from database.session import get_db_session
-from database.models import Match, Team, Player, Manager as DBManager, TransferHistory
+from database.models import Match, Team, Player, Manager as DBManager, TransferHistory, MatchEvent, SimulationRun
 from database.team_db import get_all_teams
 from database.player_db import get_all_players
 from database.match_db import get_matches_for_season, get_match_details
@@ -94,6 +94,25 @@ def find_match_video_and_url(match_id: Any) -> tuple[Optional[Path], Optional[st
     Locate match video file and return (Path, relative_url).
     Checks direct RECORDINGS_DIR and any run-scoped subdirectories.
     """
+    from logic.replay.render_status import replay_video_is_ready
+    details = get_match_details(match_id)
+    if details:
+        video_url = details.get('video_url')
+        if video_url:
+            candidate = (RECORDINGS_DIR / video_url.removeprefix('/recordings/')).resolve()
+            candidate.relative_to(RECORDINGS_DIR.resolve())
+            if replay_video_is_ready(candidate):
+                trace = details.get('trace_file')
+                if trace and str(trace).endswith('.npz') and candidate.name.endswith('_3d.mp4'):
+                    try:
+                        timeline_data = json.loads(candidate.with_suffix('.timeline.json').read_text())
+                        source_id = Path(str(trace).replace('\\', '/')).stem.removeprefix('trace_')
+                        if not timeline_data.get('native_redraw') or timeline_data.get('match_id') != source_id:
+                            return None, None
+                    except (OSError, ValueError):
+                        return None, None
+                return candidate, video_url
+        return None, None
     mid_str = str(match_id)
     raw_num = mid_str.split("match_", 1)[1] if mid_str.startswith("match_") else mid_str
     candidates = [f"match_{mid_str}.mp4", f"match_{raw_num}.mp4", f"{mid_str}.mp4", f"{raw_num}.mp4"]
@@ -103,7 +122,7 @@ def find_match_video_and_url(match_id: Any) -> tuple[Optional[Path], Optional[st
 
     for c in unique_candidates:
         cand_p = RECORDINGS_DIR / c
-        if cand_p.is_file():
+        if replay_video_is_ready(cand_p):
             return cand_p, f"/recordings/{c}"
 
     if RECORDINGS_DIR.is_dir():
@@ -111,7 +130,7 @@ def find_match_video_and_url(match_id: Any) -> tuple[Optional[Path], Optional[st
             if sub.is_dir():
                 for c in unique_candidates:
                     cand_p = sub / c
-                    if cand_p.is_file():
+                    if replay_video_is_ready(cand_p):
                         return cand_p, f"/recordings/{sub.name}/{c}"
 
     return None, None
@@ -125,14 +144,14 @@ async def stream_recording(filename: str, request: Request):
         raise HTTPException(status_code=400, detail="Invalid path traversal")
 
     file_path = RECORDINGS_DIR / clean_rel
-    # Fallback to top-level basename if nested path doesn't exist
-    if not file_path.exists():
-        file_path = RECORDINGS_DIR / os.path.basename(filename)
-
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"Recording not found: {clean_rel}")
 
     clean_name = file_path.name
+    if clean_name.endswith('.mp4'):
+        from logic.replay.render_status import replay_video_is_ready
+        if not replay_video_is_ready(file_path):
+            raise HTTPException(status_code=409, detail='Replay video is still being finalized')
 
     try:
         stat_result = file_path.stat()
@@ -296,7 +315,7 @@ async def run_simulation_task():
     try:
         async with simulation_lock:
             logger.info("Starting background simulation task with run isolation")
-            from database.db_setup import init_simulation_run, clean_old_simulation_data
+            from database.db_setup import init_simulation_run
             settings_path = REPORTS_DIR / "simulation_settings.json"
             render_mode = "3d"
             if settings_path.exists():
@@ -308,7 +327,6 @@ async def run_simulation_task():
                     pass
 
             run_id = init_simulation_run(season_year=2026, render_mode=render_mode, total_matches=380)
-            clean_old_simulation_data(preserve_run_id=run_id)
             ensure_report_directories()
 
             await manager.broadcast_event(
@@ -479,6 +497,7 @@ async def get_players():
         return [
             PlayerRead(
                 id=p["player_id"],
+                jersey_number=p.get('jersey_number'),
                 name=p["name"],
                 age=p["age"],
                 position=p["position"],
@@ -593,7 +612,14 @@ def build_live_season_report_from_db(year: int) -> dict:
                 return {}
             team_map = {t.team_id: t.name for t in teams}
 
-            matches = db.query(Match).filter(Match.season_year == year).all()
+            latest_run = db.query(SimulationRun.run_id).filter(SimulationRun.season_year == year).order_by(SimulationRun.created_at.desc()).first()
+            match_query = db.query(Match).filter(Match.season_year == year)
+            if latest_run:
+                match_query = match_query.filter(Match.simulation_run_id == latest_run[0])
+            matches = match_query.order_by(Match.match_number).all()
+            from logic.recorded_player_stats import recorded_player_totals
+            event_rows = db.query(MatchEvent).filter(MatchEvent.match_id.in_([m.match_id for m in matches])).all()
+            recorded_totals = recorded_player_totals(matches, event_rows, team_map)
             table_dict = {}
             for t in teams:
                 table_dict[t.name] = {
@@ -647,10 +673,20 @@ def build_live_season_report_from_db(year: int) -> dict:
             all_db_players = db.query(Player).all()
             players_by_team = {}
             for p in all_db_players:
+                attributes = {}
+                for attribute in p.attributes:
+                    attributes.setdefault(attribute.attribute_type, {})[attribute.sub_attribute] = attribute.value
+                values = [v for category in attributes.values() for v in category.values()]
+                statistics = dict(recorded_totals.get(p.name, {
+                    'goals': 0, 'assists': 0, 'appearances': 0, 'clean_sheets': 0,
+                    'minutes_played': 0, 'assists_recorded': False, 'match_history': []}))
+                history = statistics.pop('match_history', [])
+                statistics['fitness'] = p.stats.fitness if p.stats else 100
                 if p.team_id not in players_by_team:
                     players_by_team[p.team_id] = []
                 players_by_team[p.team_id].append({
                     "name": p.name,
+                    "jersey_number": p.jersey_number,
                     "age": p.age,
                     "position": p.position,
                     "team": team_map.get(p.team_id, "Free Agent"),
@@ -659,10 +695,11 @@ def build_live_season_report_from_db(year: int) -> dict:
                     "contract_length": p.contract_length,
                     "squad_role": p.squad_role,
                     "market_value": p.potential * 150000,
-                    "overall_rating": round(p.potential * 0.8, 1),
-                    "form": [7, 7, 8, 7, 8],
-                    "attributes": {},
-                    "stats": {"goals": 0, "assists": 0, "appearances": 0, "clean_sheets": 0, "fitness": 100},
+                    "overall_rating": round(sum(values) / len(values), 1) if values else None,
+                    "form": [],
+                    "attributes": attributes,
+                    "stats": statistics,
+                    "match_history": history,
                 })
 
             all_teams_details = []
@@ -1101,19 +1138,35 @@ async def get_match_render_status(match_id: str):
     """Get live 3D replay rendering progress and stage details."""
     try:
         clean_id = str(match_id)
-        v1 = RECORDINGS_DIR / f"{clean_id}.mp4"
-        v2 = RECORDINGS_DIR / f"match_{clean_id}.mp4"
-        v_target = v1 if v1.exists() else (v2 if v2.exists() else None)
-
-        prog_file = RECORDINGS_DIR / f"progress_{clean_id}.json"
+        v_target, video_url = find_match_video_and_url(clean_id)
+        details = get_match_details(clean_id)
+        progress_id = details.get('fixture_id', clean_id) if details else clean_id
+        if details and details.get('trace_file'):
+            from logic.grf_native_runner import to_win_path
+            from logic.grf_trajectory import MatchTrajectory
+            source = Path(to_win_path(details['trace_file']))
+            if source.is_file() and source.resolve().is_relative_to(RECORDINGS_DIR.resolve()):
+                progress_id = MatchTrajectory.load_from_npz(source).match_id
+        prog_file = RECORDINGS_DIR / f"progress_{progress_id}.json"
         if prog_file.exists():
             # Robust read with micro-retry in case WSL is writing atomically
             for _ in range(3):
                 try:
                     with open(prog_file, "r", encoding="utf-8") as pf:
                         data = json.load(pf)
+                        import time
+                        if data.get('started_at'):
+                            data['elapsed_seconds'] = max(0, int(time.time() - data['started_at']))
+                        if data.get('completed') and data.get('status') not in ('failed', 'error') and not v_target:
+                            from logic.replay.render_status import replay_video_is_ready
+                            advertised = data.get('video_url')
+                            candidate = (RECORDINGS_DIR / advertised.removeprefix('/recordings/')).resolve() if advertised else None
+                            if not candidate or not candidate.is_relative_to(RECORDINGS_DIR.resolve()) or not replay_video_is_ready(candidate):
+                                data.update(status='rendering', completed=False, progress=98, stage='Finalizing playable video', video_url=None)
+                        if not data.get('completed'):
+                            data['video_url'] = None
                         if v_target and data.get("completed"):
-                            data["video_url"] = f"/recordings/{v_target.name}"
+                            data["video_url"] = video_url
                             try:
                                 prog_file.unlink()
                             except Exception:
@@ -1125,9 +1178,9 @@ async def get_match_render_status(match_id: str):
             # If prog_file exists but is temporarily locked, report in-progress rather than resetting to idle
             return JSONResponse(status_code=200, content={
                 "status": "rendering",
-                "progress": 50,
+                "progress": 0,
                 "stage": "Rendering 3D Match Broadcast...",
-                "video_url": f"/recordings/{v_target.name}" if v_target else None,
+                "video_url": None,
                 "completed": False
             })
 
@@ -1142,7 +1195,7 @@ async def get_match_render_status(match_id: str):
                 "progress": 100,
                 "match_minute": 90,
                 "stage": "3D Replay Available",
-                "video_url": f"/recordings/{v_target.name}",
+                "video_url": video_url,
                 "completed": True
             })
 
@@ -1168,49 +1221,46 @@ async def get_match_timeline(match_id: str):
     try:
         from logic.presentation_timeline import PresentationTimeline, build_canonical_timeline
         clean_id = str(match_id)
-        raw_num = clean_id.split("match_", 1)[1] if clean_id.startswith("match_") else clean_id
-
-        # 1. Check for pre-built timeline JSON companion files
-        timeline_candidates = [
-            RECORDINGS_DIR / f"match_{clean_id}.timeline.json",
-            RECORDINGS_DIR / f"match_{raw_num}.timeline.json",
-            RECORDINGS_DIR / f"{clean_id}.timeline.json",
-            RECORDINGS_DIR / f"{raw_num}.timeline.json",
-        ]
-
-        for cand in timeline_candidates:
-            if cand.is_file():
-                try:
-                    tl = PresentationTimeline.load_from_file(cand)
-                    return JSONResponse(status_code=200, content=tl.to_dict())
-                except Exception:
-                    pass
-
-        # Check subdirectories
-        if RECORDINGS_DIR.is_dir():
-            for sub in RECORDINGS_DIR.iterdir():
-                if sub.is_dir():
-                    for cand_name in [f"match_{clean_id}.timeline.json", f"match_{raw_num}.timeline.json", f"{clean_id}.timeline.json"]:
-                        cand_sub = sub / cand_name
-                        if cand_sub.is_file():
-                            try:
-                                tl = PresentationTimeline.load_from_file(cand_sub)
-                                return JSONResponse(status_code=200, content=tl.to_dict())
-                            except Exception:
-                                pass
-
-        # 2. If not on disk, construct canonical timeline from match details in database
-        match_details = get_match_details(clean_id)
-        if match_details:
-            events = match_details.get("events", [])
-            tl = build_canonical_timeline(
-                match_id=clean_id,
-                total_steps=1200,
-                events=events,
-            )
-            return JSONResponse(status_code=200, content=tl.to_dict())
-
-        return JSONResponse(status_code=404, content={"status": "error", "message": f"Match with ID {match_id} not found."})
+        details = get_match_details(clean_id)
+        from logic.grf_native_runner import to_win_path
+        from logic.grf_trajectory import MatchTrajectory
+        trajectory = None
+        if details and details.get('trace_file'):
+            source = Path(to_win_path(details['trace_file']))
+            if source.is_file() and source.resolve().is_relative_to(RECORDINGS_DIR.resolve()):
+                trajectory = MatchTrajectory.load_from_npz(source)
+                if (trajectory.manifest.home_team != details['home_team_name']
+                        or trajectory.manifest.away_team != details['away_team_name']
+                        or list(trajectory.manifest.score) != [details['home_goals'], details['away_goals']]):
+                    raise ValueError('Replay recording disagrees with the selected match')
+        video, _ = find_match_video_and_url(clean_id)
+        candidates = [video.with_suffix('.timeline.json')] if video else []
+        if not details:
+            candidates.extend([RECORDINGS_DIR / f'match_{clean_id}.timeline.json',
+                               RECORDINGS_DIR / f'{clean_id}.timeline.json'])
+        for candidate in candidates:
+            if candidate.is_file():
+                timeline = PresentationTimeline.load_from_file(candidate)
+                expected_id = trajectory.match_id if trajectory else clean_id
+                if timeline.match_id == expected_id:
+                    return JSONResponse(status_code=200, content=timeline.to_dict())
+        if trajectory:
+            from collections import Counter
+            goal_metadata = source.with_suffix('.goals.json')
+            goal_frames = {}
+            if goal_metadata.is_file():
+                metadata = json.loads(goal_metadata.read_text())
+                if metadata['match_id'] != trajectory.match_id:
+                    raise ValueError('Goal frames belong to a different match')
+                goal_frames = dict(Counter(int(item['step']) for item in metadata['frames']))
+            timeline = build_canonical_timeline(trajectory.match_id, trajectory.total_steps,
+                trajectory.manifest.events, fps=10, intro_frames=30, halftime_frames=30,
+                fulltime_frames=40, goal_hold_frames=0, goal_replay_frames=0,
+                native_duration=trajectory.manifest.engine_fingerprint.get('native_duration', 3000),
+                native_goal_frames=goal_frames)
+            return JSONResponse(status_code=200, content=timeline.to_dict())
+        return JSONResponse(status_code=404, content={'status': 'error',
+            'message': f'No verified replay timeline for match {match_id}.'})
     except Exception as e:
         logger.exception("Error getting timeline for match %s", match_id)
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
@@ -1246,27 +1296,32 @@ async def render_match_replay(match_id: str, req: Optional[MatchRenderRequest] =
         home_team = match_details.get("home_team_name", "Home Team")
         away_team = match_details.get("away_team_name", "Away Team")
 
-        # Find trace file
-        raw_num = clean_id.split("match_", 1)[1] if clean_id.startswith("match_") else clean_id
-        traj_candidates = [
-            RECORDINGS_DIR / f"trace_{clean_id}.npz",
-            RECORDINGS_DIR / f"trace_{raw_num}.npz",
-            RECORDINGS_DIR / f"match_{clean_id}.npz",
-        ]
-        traj_file = None
-        for cand in traj_candidates:
-            if cand.is_file():
-                traj_file = str(cand)
-                break
+        # Resolve the database's exact run-scoped recording. Database row IDs
+        # and engine fixture IDs are different identities.
+        from logic.grf_native_runner import to_win_path
+        traj_path = to_win_path(match_details.get('trace_file'))
+        if traj_path is None or not traj_path.is_file():
+            raise HTTPException(status_code=404, detail='Recorded trajectory is missing for this match.')
+        traj_path.resolve().relative_to(RECORDINGS_DIR.resolve())
+        from logic.grf_trajectory import MatchTrajectory
+        recorded = MatchTrajectory.load_from_npz(traj_path)
+        fixture_id = recorded.match_id
+        if (recorded.manifest.home_team != home_team or recorded.manifest.away_team != away_team
+                or list(recorded.manifest.score) != [match_details['home_goals'], match_details['away_goals']]):
+            raise HTTPException(status_code=409, detail='Recording identity or score does not match the stored fixture.')
+        output_path = traj_path.parent / f"match_{fixture_id}_{'2d' if req_mode == '2d' else '3d'}.mp4"
 
         runner = GRFNativeRunner()
         result = await asyncio.to_thread(
             runner.render_replay,
-            match_id=clean_id,
+            match_id=fixture_id,
             home_team=home_team,
             away_team=away_team,
-            trajectory_file=traj_file,
+            trajectory_file=str(traj_path),
+            states_file=str(traj_path.with_suffix('.grfstate')),
+            output_mp4=str(output_path),
             mode=req_mode,
+            force=force,
         )
 
         v_url = result.get("video_url")
@@ -1332,13 +1387,47 @@ async def simulate_grf_match(req: MatchSimulationRequest):
         h_color = team_color_from_name(h_team)
         a_color = team_color_from_name(a_team)
 
-        steps = min(max(req.max_steps, 100), 5000) if req.max_steps else 1200
+        steps = min(max(req.max_steps, 100), 5000) if req.max_steps else 3200
         should_render_video = bool(req.generate_video)
 
-        # Fast path: If match already has an existing recorded video, preserve it
+        # An existing fixture is replayed from its original recording. Never
+        # simulate it again with a seed derived from a database row number.
         v_cand, v_url_cand = find_match_video_and_url(match_id_str)
-        if existing_match and (existing_match.get("video_url") or v_url_cand) and existing_match.get("home_goals") is not None:
+        if existing_match:
+            from logic.grf_native_runner import to_win_path
+            from logic.grf_trajectory import MatchTrajectory
+            recorded_path = to_win_path(trace_file)
+            if recorded_path is None or not recorded_path.is_file():
+                legacy_url = existing_match.get('video_url') or v_url_cand
+                if legacy_url:
+                    # Older saved games can have only a video. Preserve their
+                    # known result without inventing xG or replaying the match.
+                    events = existing_match.get('events', [])
+                    return MatchSimulationResponse(
+                        match_id=match_id_str, home_team=h_team, away_team=a_team,
+                        home_score=int(existing_match['home_goals']), away_score=int(existing_match['away_goals']),
+                        possession={'home': float(existing_match.get('home_possession', 50)),
+                                    'away': float(existing_match.get('away_possession', 50))},
+                        shots={'home': len(existing_match.get('home_shots', [])),
+                               'away': len(existing_match.get('away_shots', []))},
+                        xg={side: sum(float(e.get('xg', 0)) for e in events if e.get('team') == side and e.get('type') == 'shot')
+                            for side in ('home', 'away')},
+                        timeline=events, video_url=legacy_url, render_mode_used='existing', render_source='legacy_video',
+                    )
+                raise HTTPException(status_code=409, detail='This fixture has no recording. Re-simulation would change the original match.')
+            recorded_path.resolve().relative_to(RECORDINGS_DIR.resolve())
+            original = MatchTrajectory.load_from_npz(recorded_path)
+            manifest = original.manifest
+            if (manifest.home_team != h_team or manifest.away_team != a_team
+                    or list(manifest.score) != [existing_match['home_goals'], existing_match['away_goals']]):
+                raise HTTPException(status_code=409, detail='Stored recording does not match this fixture.')
             resolved_url = existing_match.get("video_url") or v_url_cand
+            if should_render_video and not resolved_url:
+                rendered = await render_match_replay(match_id_str, MatchRenderRequest(render_mode=req.render_mode))
+                if isinstance(rendered, MatchRenderResponse):
+                    resolved_url = rendered.video_url
+                else:
+                    return rendered
             h_score = int(existing_match.get("home_goals", 0))
             a_score = int(existing_match.get("away_goals", 0))
             return MatchSimulationResponse(
@@ -1348,10 +1437,12 @@ async def simulate_grf_match(req: MatchSimulationRequest):
                 home_score=h_score,
                 away_score=a_score,
                 video_url=resolved_url,
-                timeline=existing_match.get("events", []),
-                possession={"home": float(existing_match.get("home_possession", 50.0)), "away": float(existing_match.get("away_possession", 50.0))},
-                shots={"home": len(existing_match.get("home_shots", [])), "away": len(existing_match.get("away_shots", []))},
-                xg={"home": round(h_score * 0.45, 2), "away": round(a_score * 0.45, 2)},
+                timeline=manifest.events,
+                possession={"home": manifest.possession[0], "away": manifest.possession[1]},
+                shots={"home": manifest.shots[0], "away": manifest.shots[1]},
+                xg={"home": manifest.xg[0], "away": manifest.xg[1]},
+                match_complete=manifest.engine_fingerprint.get('match_complete'),
+                native_steps_left=manifest.engine_fingerprint.get('native_steps_left'),
                 render_mode_used="existing",
             )
 
@@ -1374,7 +1465,10 @@ async def simulate_grf_match(req: MatchSimulationRequest):
             match_id=match_id_str,
             seed_val=seed_val,
             render_video=should_render_video,
-            record_grf_states=False,
+            # Preserve the established endpoint default (no state archive) while
+            # honouring an explicit caller request.  Presentation settings are
+            # intentionally not added to canonical simulation inputs.
+            record_grf_states=(False if req.record_grf_states is None else req.record_grf_states),
             record_dump=req.record_dump,
             render_mode=req.render_mode or "3d",
             run_id=effective_run_id,
@@ -1405,7 +1499,11 @@ async def simulate_grf_match(req: MatchSimulationRequest):
 
         # Fallback background rendering if video was requested but not generated during live sim
         elif should_render_video:
-            trace_npz = str(RECORDINGS_DIR / f"trace_{match_id_str}.npz")
+            from logic.grf_native_runner import to_win_path
+            trace_path = to_win_path(grf_out.get('trace_npz') or grf_out.get('trajectory_file'))
+            if trace_path is None:
+                raise RuntimeError('Simulator did not return the recorded trajectory path')
+            trace_npz = str(trace_path)
             prog_file = RECORDINGS_DIR / f"progress_{match_id_str}.json"
             try:
                 with open(prog_file, "w") as pf:
@@ -1430,6 +1528,8 @@ async def simulate_grf_match(req: MatchSimulationRequest):
                         home_team=h_team,
                         away_team=a_team,
                         trajectory_file=trace_npz,
+                        states_file=str(trace_path.with_suffix('.grfstate')),
+                        output_mp4=str(trace_path.parent / f"match_{match_id_str}_{'2d' if req.render_mode == '2d' else '3d'}.mp4"),
                         home_players=h_players if len(h_players) >= 11 else None,
                         away_players=a_players if len(a_players) >= 11 else None,
                         home_formation=req.home_formation or "4-3-3",
@@ -1447,7 +1547,8 @@ async def simulate_grf_match(req: MatchSimulationRequest):
                         pass
 
             asyncio.create_task(_bg_render())
-            video_url = f"/recordings/match_{match_id_str}.mp4"
+            pending_video = trace_path.parent / f"match_{match_id_str}_{'2d' if req.render_mode == '2d' else '3d'}.mp4"
+            video_url = '/recordings/' + pending_video.relative_to(RECORDINGS_DIR).as_posix()
 
         return MatchSimulationResponse(
             match_id=match_id_str,
@@ -1461,7 +1562,12 @@ async def simulate_grf_match(req: MatchSimulationRequest):
             timeline=real_events,
             video_url=video_url,
             render_mode_used=req.render_mode if should_render_video else None,
+            match_complete=grf_out.get('match_complete'),
+            native_steps_left=grf_out.get('native_steps_left'),
+            video_status='ready' if grf_out.get('video_url') else 'rendering' if should_render_video else None,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Error simulating GRF match")
         raise HTTPException(status_code=500, detail=f"Match simulation failed: {e}")

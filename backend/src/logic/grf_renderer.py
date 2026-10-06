@@ -67,7 +67,8 @@ def draw_hud(
     home_bgr: Tuple[int, int, int],
     away_bgr: Tuple[int, int, int],
     goal_banner: Optional[str] = None,
-    is_second_half: bool = False
+    is_second_half: bool = False,
+    match_seconds: Optional[float] = None,
 ) -> np.ndarray:
     annotated = frame  # In-place drawing on writable frame, avoid full-frame copy
     h_img, w_img = annotated.shape[:2]
@@ -101,7 +102,11 @@ def draw_hud(
 
     # Clock
     half_tag = "2ND" if is_second_half else "1ST"
-    clock_str = f"{half_tag}  {match_min:02d}:00"
+    if match_seconds is None:
+        clock_str = f"{half_tag}  {match_min:02d}:00"
+    else:
+        elapsed_seconds = max(0, int(match_seconds))
+        clock_str = f"{half_tag}  {elapsed_seconds // 60:02d}:{elapsed_seconds % 60:02d}"
     cv2.rectangle(annotated, (px + 208, py + 2), (px + pw - 2, py + ph - 2), (24, 30, 42), -1)
     cv2.putText(annotated, clock_str, (px + 222, py + 26), cv2.FONT_HERSHEY_DUPLEX, 0.55, (0, 220, 255), 1, cv2.LINE_AA)
 

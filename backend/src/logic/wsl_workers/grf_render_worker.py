@@ -34,10 +34,8 @@ from logic.grf_renderer import (
 
 
 def write_progress_atomic(progress_file: str, data: dict):
-    tmp_file = f"{progress_file}.tmp"
-    with open(tmp_file, "w", encoding="utf-8") as f:
-        json.dump(data, f)
-    os.replace(tmp_file, progress_file)
+    from logic.replay.render_status import write_render_status
+    write_render_status(progress_file, data)
 
 
 def render_from_trajectory_npz(payload: Dict[str, Any]):
@@ -291,17 +289,9 @@ def render_from_dump(payload: Dict[str, Any]):
     env.close()
     writer.close()
 
-    # Space Optimization: clean redundant dump file after 3D video is rendered
-    try:
-        if dump_file and os.path.exists(dump_file):
-            os.remove(dump_file)
-        dir_name = os.path.dirname(output_mp4)
-        for ext in [".grfstate", "_states.grfstate"]:
-            cand = os.path.join(dir_name, f"trace_{match_id}{ext}")
-            if os.path.exists(cand):
-                os.remove(cand)
-    except Exception:
-        pass
+    # Source trajectories, dumps, and state archives are immutable canonical
+    # inputs.  Rendering may clean only its own temporary/derived artifacts;
+    # it must never delete or rewrite a source replay artifact.
 
     out_norm = str(output_mp4).replace("\\", "/")
     if "recordings/" in out_norm:

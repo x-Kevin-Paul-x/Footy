@@ -8,6 +8,7 @@ Implements pluggable inference backends for TiKick Deep Reinforcement Learning m
 
 import os
 import sys
+import hashlib
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional
 import numpy as np
@@ -82,6 +83,7 @@ class CPUSinglePolicy(PolicyBackend):
         obs_space = gym.spaces.Box(low=-1e6, high=1e6, shape=(268,), dtype='float32')
         action_space = gym.spaces.Discrete(33)
         self.policy = PolicyNetwork(TiKickModelConfig(), obs_space, action_space, device=self.device)
+        self.checkpoint_sha256 = hashlib.sha256(open(ckpt_path, 'rb').read()).hexdigest()
         state_dict = torch.load(ckpt_path, map_location=self.device)
         self.policy.load_state_dict(state_dict)
         self.policy.eval()
@@ -89,6 +91,8 @@ class CPUSinglePolicy(PolicyBackend):
         self.rnn_states = torch.zeros((20, 1, 256), dtype=torch.float32, device=self.device)
         self.masks = torch.ones((20, 1), dtype=torch.float32, device=self.device)
         self.avail = torch.zeros((20, 33), dtype=torch.float32, device=self.device)
+        # TiKick's 11_vs_11_kaggle evaluation exposes actions 0 through 19.
+        # Keep action 19 available: masking it changes the trained policy.
         self.avail[:, :20] = 1.0
 
     def evaluate(
@@ -132,6 +136,7 @@ class CUDABatchPolicy(PolicyBackend):
         obs_space = gym.spaces.Box(low=-1e6, high=1e6, shape=(268,), dtype='float32')
         action_space = gym.spaces.Discrete(33)
         self.policy = PolicyNetwork(TiKickModelConfig(), obs_space, action_space, device=self.device)
+        self.checkpoint_sha256 = hashlib.sha256(open(ckpt_path, 'rb').read()).hexdigest()
         state_dict = torch.load(ckpt_path, map_location=self.device)
         self.policy.load_state_dict(state_dict)
         self.policy.eval()

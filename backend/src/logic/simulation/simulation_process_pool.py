@@ -114,6 +114,11 @@ def _dynamic_queue_worker_runner(
             try:
                 worker = SimulationWorker(fix, max_steps=max_steps, replay_mode=replay_mode)
                 policy.reset_match(worker.match_id, worker.seed_val)
+                worker.policy_provenance = {
+                    'name': 'TiKick actor', 'checkpoint_sha256': policy.checkpoint_sha256,
+                    'checkpoint': ckpt_path, 'direct_actions': 19, 'builtin_ai_allowed': True,
+                    'available_actions': 20, 'inference_profile': 'tikick_kaggle',
+                }
                 obs = worker.get_initial_observations()
                 done = False
                 while not done and worker.step_idx < max_steps:
@@ -233,7 +238,7 @@ class SimulationProcessPool:
         fixtures: List[Dict[str, Any]],
         ckpt_path: str,
         tikick_dir: str,
-        max_steps: int = 1200,
+        max_steps: int = 3200,
         replay_mode: ReplayMode = ReplayMode.FULL_STATE
     ) -> List[Dict[str, Any]]:
         if not fixtures:
@@ -311,7 +316,10 @@ class SimulationProcessPool:
                         pass
 
         try:
-            watchdog_timeout = 180.0 if replay_mode == ReplayMode.FULL_STATE else 90.0
+            # A full 3,000-tick recording is materially longer than the old
+            # 1,200-tick workload, especially when recording native states.
+            watchdog_timeout = max(180.0 if replay_mode == ReplayMode.FULL_STATE else 90.0,
+                                   max_steps * (0.15 if replay_mode == ReplayMode.FULL_STATE else 0.06))
 
             while len(results_by_id) < num_fixtures:
                 t_now = time.monotonic()

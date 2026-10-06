@@ -20,7 +20,8 @@ class League:
         self.standings = {}
         # Relative to backend/src/models/league.py
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-        self.match_reports_dir = os.path.join(BASE_DIR, "..", "..", "reports", "match_reports")
+        from config import MATCH_REPORTS_DIR
+        self.match_reports_dir = str(MATCH_REPORTS_DIR)
         self.historical_standings = []
         self.season_year = datetime.now().year
         self.schedule = []  # Store the match schedule
@@ -160,6 +161,10 @@ class League:
         m_id = match_id or f"match_{self.season_year}_{home_team.team_id}_{away_team.team_id}"
         s_val = seed_val if seed_val is not None else self.derive_match_seed(home_team, away_team)
         match_rng = random.Random(s_val)
+
+        from logic.squad_numbers import assign_squad_numbers
+        for team in (home_team, away_team):
+            assign_squad_numbers(team.players)
 
         h_lineup, h_pos = self.select_team_lineup(home_team, opponent=away_team, rng=match_rng)
         a_lineup, a_pos = self.select_team_lineup(away_team, opponent=home_team, rng=match_rng)
@@ -310,6 +315,25 @@ class League:
                         "forfeit": True,
                         "reward_override": forfeit_penalty
                     })
+    @staticmethod
+    def _validated_batch_results(prepared_matches, results):
+        expected = {str(p.match_id): p for p in prepared_matches}
+        by_id = {}
+        for result in results:
+            identity = str(result.get('match_id'))
+            if identity not in expected or identity in by_id:
+                raise RuntimeError(f"Unexpected or duplicate GRF match ID: {identity}")
+            prepared = expected[identity]
+            if (result.get('home_team') != prepared.home_team.name
+                    or result.get('away_team') != prepared.away_team.name):
+                raise RuntimeError(f"GRF team identity mismatch: {identity}")
+            if result.get('match_complete') is False:
+                raise RuntimeError(f"GRF fixture stopped before native full time: {identity}")
+            by_id[identity] = result
+        if set(by_id) != set(expected):
+            raise RuntimeError(f"Missing GRF match results: {sorted(set(expected) - set(by_id))}")
+        return [by_id[str(p.match_id)] for p in prepared_matches]
+
     def play_matchday(self, fixtures_batch):
         """
         Play a batch of matches (e.g. 10 fixtures of a matchday) concurrently
@@ -332,7 +356,7 @@ class League:
 
                     prepared_matches = [self.prepare_match(home_team, away_team) for home_team, away_team in fixtures_batch]
                     fixtures_payload = [p.to_fixture_dict() for p in prepared_matches]
-                    batch_results = runner.run_matchday(fixtures_payload)
+                    batch_results = self._validated_batch_results(prepared_matches, runner.run_matchday(fixtures_payload))
                     results = []
                     for idx, res in enumerate(batch_results):
                         home_team, away_team = fixtures_batch[idx]
@@ -346,8 +370,14 @@ class League:
                         self.update_standings(home_team, away_team, res)
                         res['home_team_id'] = home_team.team_id
                         res['away_team_id'] = away_team.team_id
-                        res['home_lineup'] = [{"name": p.name, "position": getattr(p, "position", "ST")} for p in prep.home_lineup]
-                        res['away_lineup'] = [{"name": p.name, "position": getattr(p, "position", "ST")} for p in prep.away_lineup]
+                        res['home_lineup'] = [{"name": p.name, "position": p.position, "number": p.jersey_number} for p in prep.home_lineup]
+                        res['away_lineup'] = [{"name": p.name, "position": p.position, "number": p.jersey_number} for p in prep.away_lineup]
+                        res['home_bench'] = [{"name": p.name, "position": p.position, "number": p.jersey_number} for p in prep.home_bench]
+                        res['away_bench'] = [{"name": p.name, "position": p.position, "number": p.jersey_number} for p in prep.away_bench]
+                        res['home_formation'] = prep.home_formation
+                        res['away_formation'] = prep.away_formation
+                        from logic.recorded_player_stats import apply_native_player_statistics
+                        apply_native_player_statistics(prep, res)
                         results.append(res)
                     return results
             except Exception as e:
@@ -393,11 +423,11 @@ class League:
                         prepared_matches = [self.prepare_match(home_team, away_team) for home_team, away_team in fixtures_batch]
                         fixtures_payload = [p.to_fixture_dict() for p in prepared_matches]
 
-                        batch_results = runner.run_matchday(
+                        batch_results = self._validated_batch_results(prepared_matches, runner.run_matchday(
                             fixtures_payload,
                             run_id=eff_run_id,
                             render_mode=eff_render_mode
-                        )
+                        ))
                         results = []
                         for idx, res in enumerate(batch_results):
                             home_team, away_team = fixtures_batch[idx]
@@ -411,8 +441,14 @@ class League:
                             self.update_standings(home_team, away_team, res)
                             res['home_team_id'] = home_team.team_id
                             res['away_team_id'] = away_team.team_id
-                            res['home_lineup'] = [{"name": p.name, "position": getattr(p, "position", "ST")} for p in prep.home_lineup]
-                            res['away_lineup'] = [{"name": p.name, "position": getattr(p, "position", "ST")} for p in prep.away_lineup]
+                            res['home_lineup'] = [{"name": p.name, "position": p.position, "number": p.jersey_number} for p in prep.home_lineup]
+                            res['away_lineup'] = [{"name": p.name, "position": p.position, "number": p.jersey_number} for p in prep.away_lineup]
+                            res['home_bench'] = [{"name": p.name, "position": p.position, "number": p.jersey_number} for p in prep.home_bench]
+                            res['away_bench'] = [{"name": p.name, "position": p.position, "number": p.jersey_number} for p in prep.away_bench]
+                            res['home_formation'] = prep.home_formation
+                            res['away_formation'] = prep.away_formation
+                            from logic.recorded_player_stats import apply_native_player_statistics
+                            apply_native_player_statistics(prep, res)
                             results.append(res)
                         all_matchdays_results.append(results)
 
@@ -433,7 +469,7 @@ class League:
         match_day = 1
 
         # Initialize the transfer log for the season
-        REPORTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "reports")
+        from config import REPORTS_DIR
         log_path = os.path.join(REPORTS_DIR, "transfer_logs", f"season_{self.season_year}_transfers.txt")
         with open(log_path, "w", encoding="utf-8") as f:
             f.write(f"Transfer Activity for Season {self.season_year}\n")
