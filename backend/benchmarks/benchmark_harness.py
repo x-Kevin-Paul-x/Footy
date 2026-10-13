@@ -109,8 +109,7 @@ class BenchmarkRunResult:
             self.p95_latency_sec = self.p50_latency_sec
         else:
             # 95th percentile
-            idx = int(0.95 * (len(times) - 1))
-            self.p95_latency_sec = round(times[idx], 4)
+            self.p95_latency_sec = round(statistics.quantiles(times, n=100, method='inclusive')[94], 4)
 
         total_fixtures = self.fixtures * self.repetitions
         total_time = sum(self.elapsed_times)
@@ -127,6 +126,7 @@ class BenchmarkRunResult:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "workers": self.workers,
+            "observed_workers": getattr(self, "observed_workers", 1),
             "fixtures": self.fixtures,
             "steps": self.steps,
             "replay_mode": self.replay_mode,
@@ -205,6 +205,52 @@ class BenchmarkRunner:
         digest = hashlib.sha256(json.dumps(res_dict, sort_keys=True, default=str).encode()).hexdigest()
         return res_dict, digest
 
+    def run_fixture_batch(self, workers, fixtures, steps, replay_mode, repetition):
+        if self.config.smoke:
+            from concurrent.futures import ThreadPoolExecutor
+            import threading
+            active, peak = 0, 0
+            lock = threading.Lock()
+            def run(index):
+                nonlocal active, peak
+                with lock:
+                    active += 1
+                    peak = max(peak, active)
+                try:
+                    return self.run_single_simulation(index, steps, replay_mode, 42000 + index)[1]
+                finally:
+                    with lock:
+                        active -= 1
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                hashes = list(pool.map(run, range(fixtures)))
+            return hashes, peak
+        from logic.grf_batch_runner import GRFBatchRunner
+        runner = GRFBatchRunner()
+        if not runner.is_available():
+            raise RuntimeError('Native GRF benchmark requires the configured WSL runtime')
+        corpus = [{'match_id': f'bench_fix_{index}', 'home_team': 'Benchmark Arsenal',
+                   'away_team': 'Benchmark Chelsea', 'home_team_id': 1, 'away_team_id': 2,
+                   'seed_val': 42000 + index} for index in range(fixtures)]
+        native = runner.run_matchday(corpus, max_steps=steps, worker_count=workers,
+                                    run_id=f'bench_{workers}_{fixtures}_{steps}_{replay_mode}_{repetition}',
+                                    output_root=self.output_dir / 'artifacts', render_mode='3d',
+                                    record_states=replay_mode == 'full_state')
+        hashes, edges = [], []
+        for result in native:
+            canonical = {key: result.get(key) for key in ('match_id', 'score', 'events', 'shots',
+                                                        'possession', 'xg', 'passes_attempted', 'passes_completed')}
+            hashes.append(hashlib.sha256(json.dumps(canonical, sort_keys=True, default=str).encode()).hexdigest())
+            timing = result.get('_execution', {})
+            if timing:
+                edges.extend([(timing['started'], 1), (timing['ended'], -1)])
+        active, peak = 0, 0
+        for _, delta in sorted(edges):
+            active += delta
+            peak = max(peak, active)
+        if peak == 0:
+            raise RuntimeError('Benchmark returned no observed worker timings')
+        return hashes, peak
+
     def run_suite(self) -> Dict[str, Any]:
         """Runs the entire benchmark matrix and records structured metrics."""
         results: List[BenchmarkRunResult] = []
@@ -224,21 +270,12 @@ class BenchmarkRunner:
 
                         for rep in range(self.config.repetitions):
                             t0 = time.perf_counter()
-                            rep_hashes = []
-
-                            for f_idx in range(fixtures):
-                                seed = 42000 + f_idx
-                                _, out_hash = self.run_single_simulation(
-                                    fixture_idx=f_idx,
-                                    steps=steps,
-                                    replay_mode=r_mode,
-                                    seed=seed,
-                                )
-                                rep_hashes.append(out_hash)
+                            hashes, observed = self.run_fixture_batch(workers, fixtures, steps, r_mode, rep)
+                            run_res.observed_workers = max(getattr(run_res, 'observed_workers', 0), observed)
 
                             elapsed = time.perf_counter() - t0
                             run_res.elapsed_times.append(elapsed)
-                            combined_hash = hashlib.sha256("".join(rep_hashes).encode()).hexdigest()
+                            combined_hash = hashlib.sha256("".join(hashes).encode()).hexdigest()
                             run_res.result_hashes.append(combined_hash)
 
                         run_res.compute_statistics()
@@ -251,10 +288,18 @@ class BenchmarkRunner:
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "machine_metadata": self.machine_meta,
             "benchmark_config": self.config.to_dict(),
+            "workload": "synthetic_concurrent" if self.config.smoke else "native_grf_pool",
             "suite_duration_seconds": suite_duration,
             "results": [r.to_dict() for r in results],
             "all_passed": all(r.correctness_pass for r in results),
         }
+        # Worker topology must not change outcomes for the same fixture corpus.
+        groups = {}
+        for result in results:
+            key = (result.fixtures, result.steps, result.replay_mode)
+            groups.setdefault(key, set()).update(result.result_hashes)
+        report['topology_invariance'] = all(len(hashes) == 1 for hashes in groups.values())
+        report['all_passed'] = report['all_passed'] and report['topology_invariance']
 
         # Persist report to isolated output directory
         report_file = self.output_dir / f"benchmark_report_{int(time.time())}.json"

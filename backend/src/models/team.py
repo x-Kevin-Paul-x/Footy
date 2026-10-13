@@ -7,7 +7,7 @@ class Team:
     def __init__(self, name, budget):
         """
         Initialize a team with comprehensive financial and operational attributes.
-        
+
         Args:
             name (str): Team name
             budget (float): Team's initial budget for the season
@@ -15,29 +15,32 @@ class Team:
         self.name = name
         self.budget = budget
         self.initial_budget = budget  # Track original budget
-        
+        self.season_opening_budget = budget
+
         # Enhanced financial structure
         self.weekly_budget = budget / 52
         self.transfer_budget = budget * 0.3  # 30% for transfers
         self.wage_budget = budget * 0.5  # 50% for wages
         self.operational_budget = budget * 0.2  # 20% for operations
-        
+
         # Stadium and infrastructure
         self.stadium_capacity = self._generate_stadium_capacity()
         self.stadium_name = f"{name} Stadium"
         self.average_attendance = 0
         self.ticket_prices = self._generate_ticket_prices()
-        
+
         # Revenue streams
         self.sponsorship_deals = []
         self.tv_revenue = 0
         self.commercial_revenue = 0
         self.matchday_revenue = 0
-        
+
         # Historical financial data
         self.revenue_history = []
         self.expense_history = []
-        
+        self.financial_ledger = []
+        self.loan_wage_obligations = {}
+
         self.players = []
         self.manager = None
         self.coaches = []
@@ -47,7 +50,7 @@ class Team:
             "YOUTH": 5
         }
         self.youth_academy = []
-        
+
         # Enhanced statistics
         self.statistics = {
             "wins": 0,
@@ -60,10 +63,10 @@ class Team:
             "league_position": None,
             "points": 0
         }
-        
+
         # Database attributes
         self.team_id = None
-        
+
         # Generate initial sponsorship deals and TV revenue
         self._generate_initial_revenue_streams()
 
@@ -93,11 +96,11 @@ class Team:
         # TV Revenue based on league status and budget
         base_tv = 30000000 + (self.budget / 20)  # £30M base + scaling
         self.tv_revenue = random.uniform(base_tv * 0.8, base_tv * 1.2)
-        
+
         # Sponsorship deals
         shirt_sponsor_value = self.budget * random.uniform(0.05, 0.15)
         stadium_naming_value = self.budget * random.uniform(0.02, 0.08)
-        
+
         self.sponsorship_deals = [
             {
                 "type": "shirt_sponsor",
@@ -114,7 +117,7 @@ class Team:
                 "remaining_years": random.randint(2, 8)
             }
         ]
-        
+
         # Commercial revenue (merchandise, etc.)
         self.commercial_revenue = self.budget * random.uniform(0.1, 0.25)
 
@@ -151,7 +154,7 @@ class Team:
         data = get_team(team_id)
         if not data:
             return None
-            
+
         if isinstance(data, (tuple, list)):
             team = cls(
                 name=data[1],
@@ -184,7 +187,7 @@ class Team:
 
     def generate_youth_players_weekly(self, count=10):
         """Generate multiple youth players each week to keep academy full."""
-        for _ in range(count):
+        for _ in range(min(count, max(0, 24 - len(self.youth_academy)))):
             self.generate_youth_player()
 
     def promote_youth_player(self, player):
@@ -198,60 +201,93 @@ class Team:
             return True
         return False
 
+    def record_cashflow(self, category, amount, description=''):
+        """One source of truth for cash changes and their explanation."""
+        import math
+        if not math.isfinite(amount):
+            raise ValueError('Cashflows must be finite')
+        self.budget += amount
+        self.financial_ledger.append({'entry_number': len(self.financial_ledger) + 1,
+                                     'category': category, 'amount': float(amount),
+                                     'balance': float(self.budget), 'description': description})
+        return self.budget
+
+    def update_broadcast_allocation(self, position, clubs=20, pool=2_000_000_000):
+        """Split a fixed annual league pool into equal and merit components."""
+        if not 1 <= position <= clubs or clubs < 2 or pool < 0:
+            raise ValueError('Invalid league broadcasting allocation')
+        self.tv_revenue = pool * 0.5 / clubs + pool * 0.5 * (clubs + 1 - position) / (clubs * (clubs + 1) / 2)
+        return self.tv_revenue
+
+    def settle_financial_year(self, max_cash_growth=0.15):
+        """Owners distribute surplus cash instead of compounding transfer funds indefinitely."""
+        if max_cash_growth < 0:
+            raise ValueError('Cash growth limit must be nonnegative')
+        ceiling = max(0, self.season_opening_budget) * (1 + max_cash_growth)
+        dividend = max(0, self.budget - ceiling)
+        if dividend:
+            self.record_cashflow('owner_distribution', -dividend, 'Annual surplus cash distribution')
+        self.season_opening_budget = self.budget
+        return dividend
+
     def calculate_matchday_revenue(self, attendance_factor=1.0, importance_multiplier=1.0):
         """Calculate revenue from a single match"""
         # Base attendance (affected by team performance, weather, opposition)
-        base_attendance = min(self.stadium_capacity, 
+        base_attendance = min(self.stadium_capacity,
                              self.stadium_capacity * random.uniform(0.6, 0.95) * attendance_factor)
-        
+
         # Calculate ticket revenue
         ticket_distribution = {
             "premium": 0.1,
             "standard": 0.7,
             "concession": 0.2
         }
-        
+
         revenue = 0
         for ticket_type, percentage in ticket_distribution.items():
             tickets_sold = base_attendance * percentage
             revenue += tickets_sold * self.ticket_prices[ticket_type]
-        
+
         # Add concessions, parking, merchandise (typically 25-30% of ticket revenue)
         additional_revenue = revenue * random.uniform(0.25, 0.35)
         total_revenue = (revenue + additional_revenue) * importance_multiplier
-        
+
         # Update average attendance
         if self.average_attendance == 0:
             self.average_attendance = base_attendance
         else:
             self.average_attendance = (self.average_attendance * 0.9) + (base_attendance * 0.1)
-        
+
         self.matchday_revenue += total_revenue
+        self.record_cashflow('attendance', total_revenue, f'{int(base_attendance)} attendees')
         return total_revenue
 
     def process_weekly_finances(self):
         """Process weekly financial operations"""
         # Calculate weekly revenue
         weekly_revenue = 0
-        
+
         # TV revenue (distributed weekly)
         weekly_revenue += self.tv_revenue / 52
-        
-        # Commercial revenue (distributed weekly) 
+
+        # Commercial revenue (distributed weekly)
         weekly_revenue += self.commercial_revenue / 52
-        
+
         # Sponsorship revenue (distributed weekly)
         for deal in self.sponsorship_deals:
             weekly_revenue += deal["value"] / 52
-        
+
         # Calculate weekly expenses
         expenses = self.calculate_weekly_expenses()
         weekly_expenses = expenses["total"]
-        
+
         # Update budget
         net_weekly = weekly_revenue - weekly_expenses
-        self.budget += net_weekly
-        
+        self.record_cashflow('broadcasting', self.tv_revenue / 52, 'Weekly broadcasting allocation')
+        self.record_cashflow('commercial', self.commercial_revenue / 52, 'Weekly commercial income')
+        self.record_cashflow('sponsorship', sum(d['value'] for d in self.sponsorship_deals) / 52, 'Weekly sponsorship income')
+        self.record_cashflow('expenses', -weekly_expenses, 'Weekly wages and operating expenses')
+
         # Update financial history
         self.statistics["financial_history"].append({
             "week": len(self.statistics["financial_history"]) + 1,
@@ -260,7 +296,7 @@ class Team:
             "net": net_weekly,
             "budget": self.budget
         })
-        
+
         return {
             "revenue": weekly_revenue,
             "expenses": weekly_expenses,
@@ -276,13 +312,13 @@ class Team:
             # Better league position = higher sponsorship value
             position_factor = max(0.5, (21 - self.statistics["league_position"]) / 20)
             current_performance_modifier = position_factor
-        
+
         min_acceptable = self._get_market_value_for_sponsorship(deal_type) * current_performance_modifier
-        
+
         if offer_value >= min_acceptable:
             # Remove existing deal of same type
             self.sponsorship_deals = [d for d in self.sponsorship_deals if d["type"] != deal_type]
-            
+
             # Add new deal
             new_deal = {
                 "type": deal_type,
@@ -293,7 +329,7 @@ class Team:
             }
             self.sponsorship_deals.append(new_deal)
             return True, f"Sponsorship deal signed: £{offer_value:,.0f} per year for {duration} years"
-        
+
         return False, f"Offer too low. Minimum acceptable: £{min_acceptable:,.0f}"
 
     def _get_market_value_for_sponsorship(self, deal_type):
@@ -322,28 +358,28 @@ class Team:
                 "effect": "attendance_boost"
             }
         }
-        
+
         if upgrade_type not in upgrades:
             return False, "Invalid upgrade type"
-        
+
         if cost > self.budget:
             return False, "Insufficient funds"
-        
+
         # Process upgrade
-        self.budget -= cost
-        
+        self.record_cashflow('stadium', -cost, upgrade_type)
+
         if upgrade_type == "capacity_expansion":
             new_seats = cost / upgrades[upgrade_type]["cost_multiplier"]
             self.stadium_capacity += int(new_seats)
-            
+
         elif upgrade_type == "premium_seating":
             # Increase premium ticket ratio and prices
             self.ticket_prices["premium"] *= 1.1
-            
+
         elif upgrade_type == "facilities":
             # Boost attendance by improving stadium experience
             self.average_attendance *= 1.05
-        
+
         return True, f"Stadium upgrade completed: {upgrade_type}"
 
     def get_players_by_position(self, position):
@@ -357,10 +393,10 @@ class Team:
             "BENCH": sum(1 for p in self.players if p.squad_role == "BENCH"),
             "YOUTH": sum(1 for p in self.players if p.squad_role == "YOUTH")
         }
-        
+
         # Calculate squad value
         total_value = sum(self._calculate_player_market_value(p) for p in self.players)
-        
+
         return {
             "total_players": len(self.players),
             "squad_value": total_value,
@@ -389,7 +425,7 @@ class Team:
         total_wages = sum(p.wage for p in self.players)
         manager_cost = self.weekly_budget * 0.10 * 52 if self.manager else 0
         coach_cost = len(self.coaches) * (self.weekly_budget * 0.05) * 52
-        
+
         # Calculate annual revenue
         annual_revenue = (
             self.tv_revenue +
@@ -397,7 +433,7 @@ class Team:
             sum(deal["value"] for deal in self.sponsorship_deals) +
             self.matchday_revenue
         )
-        
+
         return {
             "budget": self.budget,
             "transfer_budget": self.transfer_budget,
@@ -423,14 +459,14 @@ class Team:
                 pass
             else:
                 raise ValueError("Squad size cannot exceed 30 players")
-        
+
         # Check wage budget, but allow override if forced
         current_wages = sum(p.wage for p in self.players)
         weekly_wage_budget = (self.wage_budget / 52.0) if self.wage_budget > 0 else float('inf')
-        
+
         if not force and current_wages + player.wage > weekly_wage_budget:
             raise ValueError("Adding player would exceed wage budget")
-        
+
         self.players.append(player)
         player.team = self.name
 
@@ -445,7 +481,7 @@ class Team:
         """Assign a manager to the team with salary negotiation."""
         self.manager = manager
         manager.team = self
-        
+
         # Calculate manager salary based on team budget and experience
         base_salary = self.weekly_budget * 0.08  # 8-12% of weekly budget
         experience_multiplier = 1 + (manager.experience_level / 100)
@@ -455,10 +491,10 @@ class Team:
         """Add a coach to the team with salary calculation."""
         if len(self.coaches) >= 5:
             raise ValueError("Team cannot have more than 5 coaches")
-        
+
         # Calculate coach salary
         coach.salary = self.weekly_budget * 0.03  # 3% of weekly budget per coach
-        
+
         self.coaches.append(coach)
         coach.team = self
 
@@ -484,14 +520,14 @@ class Team:
         """Calculate overall team strength based on player attributes and fitness."""
         if not self.players:
             return 0
-        
+
         total_rating = 0
         active_players = 0
-        
+
         for player in self.players:
             if not player.is_available_for_selection():
                 continue  # Skip injured/suspended players
-                
+
             attrs = getattr(player, "attributes", {})
             # Calculate position-specific rating safely
             if player.position == "GK":
@@ -512,45 +548,45 @@ class Team:
                 pace_dict = attrs.get("pace", {})
                 num_keys = len(shoot_dict) + len(pace_dict)
                 rating = (sum(shoot_dict.values()) + sum(pace_dict.values())) / max(1, num_keys) if num_keys > 0 else player.potential
-            
+
             # Apply fitness and form factors
             fitness_factor = player.stats.get("fitness", 100) / 100
             form_factor = player.get_form_rating() if hasattr(player, "get_form_rating") else 0.7
-            
+
             total_rating += rating * fitness_factor * form_factor
             active_players += 1
-        
+
         return round(total_rating / active_players, 2) if active_players > 0 else 0
 
     def handle_transfer(self, player, fee, is_selling=True, day_of_window=None):
         """
         Enhanced transfer processing with financial validation.
-        
+
         Args:
             player: Player being transferred
             fee: Transfer fee
             is_selling: True if selling, False if buying
             day_of_window: Day of transfer window
-            
+
         Returns:
             bool: Whether transfer was successful
         """
         if is_selling:
             if player in self.players:
                 self.players.remove(player)
-                
+
                 # Add transfer fee to budget
-                self.budget += fee
-                
+                self.record_cashflow('transfer_sale', fee, player.name)
+
                 # Distribute fee across budgets
                 transfer_portion = fee * 0.4
                 wage_portion = fee * 0.3
                 operational_portion = fee * 0.3
-                
+
                 self.transfer_budget += transfer_portion
                 self.wage_budget += wage_portion
                 self.operational_budget += operational_portion
-                
+
                 # Record transaction
                 self.statistics["transfer_history"].append({
                     "type": "sale",
@@ -567,16 +603,16 @@ class Team:
             # Check if can afford transfer fee and wages
             if fee > self.transfer_budget:
                 return False
-            
+
             annual_wage_cost = player.wage * 52
             if annual_wage_cost > (self.wage_budget - sum(p.wage * 52 for p in self.players)):
                 return False
-            
+
             # Process purchase
             self.players.append(player)
-            self.budget -= fee
+            self.record_cashflow('transfer_purchase', -fee, player.name)
             self.transfer_budget -= fee
-            
+
             # Record transaction
             self.statistics["transfer_history"].append({
                 "type": "purchase",
@@ -593,14 +629,14 @@ class Team:
         """Enhanced affordability check including long-term wage implications."""
         if fee > self.transfer_budget:
             return False
-        
+
         if include_wages and player_wage:
             current_annual_wages = sum(p.wage * 52 for p in self.players)
             new_annual_wage = player_wage * 52
-            
+
             if current_annual_wages + new_annual_wage > self.wage_budget:
                 return False
-        
+
         return True
 
     def get_transfer_budget_info(self):
@@ -722,7 +758,7 @@ class Team:
             else:
                 # If there's no team, set a low baseline to start building
                 quality_threshold = 40
-        
+
         # 3. Identify needs
         needs = []
         position_analysis = {}
@@ -796,7 +832,7 @@ class Team:
     def calculate_weekly_expenses(self):
         """Calculate comprehensive weekly expenses."""
         expenses = {
-            "player_wages": sum(p.wage for p in self.players),
+            "player_wages": sum(p.wage for p in self.players) + sum(self.loan_wage_obligations.values()),
             "manager_salary": self.weekly_budget * 0.10 if self.manager else 0,
             "coach_salaries": len(self.coaches) * (self.weekly_budget * 0.03),
             "youth_academy": len(self.youth_academy) * 200,  # £200 per youth player
@@ -806,9 +842,9 @@ class Team:
             "travel_accommodation": self.weekly_budget * 0.02,  # 2% for travel
             "other_operational": self.weekly_budget * 0.05  # 5% other costs
         }
-        
+
         total = sum(expenses.values())
-        
+
         return {
             "total": round(total, 2),
             "breakdown": {k: round(v, 2) for k, v in expenses.items()},

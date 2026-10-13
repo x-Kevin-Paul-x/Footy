@@ -1,0 +1,44 @@
+[
+  {
+    "model_id": "dqn_seed_42.pt",
+    "sha256": "aa0a4e2e11b4a07aa6d3f4ec03d930c20bd81d40feabd2be0ef44517f8882f87",
+    "training_seed": 42,
+    "episodes": 100,
+    "teams": 6,
+    "season_length": 20,
+    "observation_dim": 24,
+    "action_dim": 5,
+    "environment": "synthetic_management_v1",
+    "training_log": "docs/evidence/training/seed_42/training_curve.json",
+    "license": "MIT",
+    "provenance": "Generated from Footy synthetic management environment on 13 October 2026"
+  },
+  {
+    "model_id": "dqn_seed_43.pt",
+    "sha256": "4084f231c8fc25e361c26240a87b1e1b4c1211ba244f230e972a43405eb12349",
+    "training_seed": 43,
+    "episodes": 100,
+    "teams": 6,
+    "season_length": 20,
+    "observation_dim": 24,
+    "action_dim": 5,
+    "environment": "synthetic_management_v1",
+    "training_log": "docs/evidence/training/seed_43/training_curve.json",
+    "license": "MIT",
+    "provenance": "Generated from Footy synthetic management environment on 13 October 2026"
+  },
+  {
+    "model_id": "dqn_seed_44.pt",
+    "sha256": "ea112368a09b31c0d9026eae8d8ff8854aca33f78eee079061ac0b7aa603321c",
+    "training_seed": 44,
+    "episodes": 100,
+    "teams": 6,
+    "season_length": 20,
+    "observation_dim": 24,
+    "action_dim": 5,
+    "environment": "synthetic_management_v1",
+    "training_log": "docs/evidence/training/seed_44/training_curve.json",
+    "license": "MIT",
+    "provenance": "Generated from Footy synthetic management environment on 13 October 2026"
+  }
+]

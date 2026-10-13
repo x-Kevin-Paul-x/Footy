@@ -3,7 +3,7 @@ import os
 from typing import List, Dict, Optional
 import random
 from datetime import datetime
-from database.session import DB_FILE, get_raw_conn
+from database.session import DB_FILE
 from models.player import FootballPlayer
 from models.team import Team
 
@@ -67,6 +67,8 @@ class TransferMarket:
         self.current_day = 0
         self.transfer_history: List[Dict] = []
         self.loan_history: List[Dict] = []
+        self.active_loans = []
+        self.registered_teams = []
         self.season_year = datetime.now().year
 
         # Enhanced transfer windows
@@ -74,7 +76,7 @@ class TransferMarket:
             "summer": {"start": 1, "end": 61, "active": True},  # 61 days (2 months)
             "january": {"start": 183, "end": 214, "active": False}  # 31 days (1 month)
         }
-        
+
         self.current_window = None
         self.free_agents: List[FootballPlayer] = []  # Players with expired contracts
 
@@ -133,21 +135,21 @@ class TransferMarket:
                 if getattr(player, "transfer_interest", False) and random.random() < 0.3:
                     rumor = f"Rumor: {player.name} ({team.name}) is seeking a move this window."
                     rumors.append(rumor)
-                    
+
                 # Contract expiry rumors
                 if player.contract_length <= 1 and random.random() < 0.4:
                     rumors.append(f"Contract Watch: {player.name}'s deal with {team.name} expires soon.")
-                    
+
                 # Loan rumors for young players
                 if player.age < 23 and player.squad_role in ["RESERVE", "YOUTH"] and random.random() < 0.2:
                     rumors.append(f"Loan Watch: {player.name} could be available on loan from {team.name}.")
-        
+
         # Add some general market rumors
         if random.random() < 0.15:
             rumors.append("Market News: Several clubs are reportedly preparing significant bids.")
         if random.random() < 0.1:
             rumors.append("Loan Market: Expect increased loan activity as clubs look to develop young talent.")
-            
+
         return rumors
 
     def _init_transfer_log(self):
@@ -172,11 +174,11 @@ class TransferMarket:
         details["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         details["day"] = self.current_day
         details["window"] = self.get_current_window()
-        
+
         if "player" in details and isinstance(details["player"], FootballPlayer):
             details["value"] = self.calculate_player_value(details["player"])
             details["player"] = details["player"].name
-            
+
         self.current_log.write(f"{action}: {str(details)}\n")
         self.current_log.flush()
 
@@ -233,8 +235,8 @@ class TransferMarket:
         injury_factor = max(0.7, 1.0 - (recent_injuries * 0.1))
 
         # Calculate final value
-        final_value = (base_value * age_factor * potential_factor * 
-                      form_factor * contract_factor * position_mod * 
+        final_value = (base_value * age_factor * potential_factor *
+                      form_factor * contract_factor * position_mod *
                       role_modifier * injury_factor)
 
         # Set minimum value to £500k for realism
@@ -300,17 +302,11 @@ class TransferMarket:
         )
         self.transfer_list.append(listing)
 
-        # Persist listing to DB if we have reliable IDs
+        # Persist listings through the shared ORM repository.
         try:
-            if hasattr(player, "player_id") and getattr(player, "player_id", None) is not None and hasattr(team, "team_id") and getattr(team, "team_id", None) is not None:
-                conn = get_raw_conn()
-                cur = conn.cursor()
-                cur.execute(
-                    "INSERT OR IGNORE INTO TransferListing (listing_id, player_id, asking_price, selling_team_id, listed_date, expires_in) VALUES (?, ?, ?, ?, ?, ?)",
-                    (listing.listing_id, int(player.player_id), float(listing.asking_price), int(team.team_id), int(listing.listed_date), int(listing.expires_in))
-                )
-                conn.commit()
-                conn.close()
+            if getattr(player, 'player_id', None) is not None and getattr(team, 'team_id', None) is not None:
+                from database.transfer_repository import record_listing
+                record_listing(listing)
         except Exception as e:
             # log DB write failure but allow listing to continue in memory
             try:
@@ -320,7 +316,7 @@ class TransferMarket:
 
         return listing, "Player listed successfully"
 
-    def list_player_for_loan(self, player, team, loan_fee=None, wage_contribution=0.5, 
+    def list_player_for_loan(self, player, team, loan_fee=None, wage_contribution=0.5,
                            duration=6, buy_back_clause=None):
         """List a player for loan"""
         if not self.is_transfer_window_open():
@@ -339,7 +335,7 @@ class TransferMarket:
             listed_date=self.current_day
         )
         self.loan_list.append(listing)
-        
+
         self._log_transfer_attempt("LOAN_LIST", {
             "player": player.name,
             "team": team.name,
@@ -347,7 +343,7 @@ class TransferMarket:
             "duration": duration,
             "wage_contribution": wage_contribution
         })
-        
+
         return listing, "Player listed for loan"
 
     def get_available_players(self, max_price=None, position=None, max_age=None, min_potential=None):
@@ -406,12 +402,18 @@ class TransferMarket:
                 return listing
         return None
 
-    def make_transfer_offer(self, buying_team, listing, offer_amount):
+    def make_transfer_offer(self, buying_team, listing, offer_amount, sell_on_percentage=0.0):
         """Enhanced transfer system with agent fees and installments"""
         if not self.is_transfer_window_open():
             return False, "Transfer window is closed"
 
         player = listing.player
+        if buying_team is listing.selling_team or player not in listing.selling_team.players:
+            return False, 'Invalid player ownership'
+        if getattr(player, 'loan_contract', None):
+            return False, 'Player is currently on loan'
+        if offer_amount < 0 or not 0 <= sell_on_percentage <= 0.5:
+            return False, 'Invalid fee or sell-on percentage'
 
         if buying_team.budget < offer_amount:
             return False, "Insufficient funds"
@@ -431,14 +433,15 @@ class TransferMarket:
             reference_teams=reference_teams,
         )
         min_acceptable = max(listing.asking_price * 0.75, market_value * 0.85)
-        if offer_amount < min_acceptable:
+        release_triggered = player.release_clause is not None and offer_amount >= player.release_clause
+        if offer_amount < min_acceptable and not release_triggered:
             return False, "Offer too low"
 
         # Enhanced contract negotiation
-        
+
         # Player wage demands based on new club and performance
         base_wage_demand = player.desired_wage
-        
+
         # Adjust based on buying team's budget and league status
         team_wage_factor = min(2.0, buying_team.budget / 100000000)  # Up to 2x for rich clubs
         wage_demand = base_wage_demand * team_wage_factor * random.uniform(0.9, 1.3)
@@ -455,21 +458,31 @@ class TransferMarket:
         else:
             contract_length = random.randint(1, 3)  # Older players shorter
 
-        # Complete transfer
+        # Validate both sides before mutating player ownership or budgets.
+        if len(buying_team.players) >= 30 or not buying_team.can_afford_transfer(total_cost, wage_demand):
+            return False, 'Buying team financial or squad limits'
+        prior_clause = getattr(player, 'sell_on_clause', None)
+        beneficiary = None
+        sell_on_fee = 0.0
+        if prior_clause:
+            beneficiary = next((team for team in getattr(self, 'registered_teams', [])
+                                if team.name == prior_clause['beneficiary']), None)
+            if beneficiary is None:
+                return False, 'Sell-on beneficiary is unavailable'
+            sell_on_fee = offer_amount * prior_clause['percentage']
         player.wage = wage_demand
         player.contract_length = contract_length
         player.transfer_interest = False
-        player.team = buying_team.name
         player.recently_transferred = True
-
-        # Handle team finances
-        if not buying_team.handle_transfer(player, total_cost, is_selling=False, day_of_window=self.current_day):
-            return False, "Buying team financial failure"
-
-        if not listing.selling_team.handle_transfer(player, offer_amount, is_selling=True, day_of_window=self.current_day):
-            # Rollback if selling team transaction fails
-            buying_team.handle_transfer(player, total_cost, is_selling=True, day_of_window=self.current_day)
-            return False, "Selling team financial failure"
+        # Removing the seller first avoids temporary duplicate ownership.
+        listing.selling_team.handle_transfer(player, offer_amount - sell_on_fee,
+                                           is_selling=True, day_of_window=self.current_day)
+        buying_team.handle_transfer(player, total_cost, is_selling=False, day_of_window=self.current_day)
+        player.team = buying_team.name
+        if beneficiary:
+            beneficiary.record_cashflow('sell_on', sell_on_fee, player.name)
+        player.sell_on_clause = {'beneficiary': listing.selling_team.name, 'percentage': sell_on_percentage} if sell_on_percentage else None
+        player.release_clause = None
 
         # Record transfer
         transfer_record = {
@@ -488,34 +501,13 @@ class TransferMarket:
 
         self._log_transfer_attempt("COMPLETED", transfer_record)
 
-        # Persist transfer to DB and remove listing row if possible
-        try:
-            conn = get_raw_conn()
-            cur = conn.cursor()
-            player_id = getattr(player, "player_id", None)
-            from_team_id = getattr(listing.selling_team, "team_id", None)
-            to_team_id = getattr(buying_team, "team_id", None)
-            season_year = getattr(self, "season_year", None) or datetime.now().year
-
-            # Only insert if we have at least player_id and team ids
-            if player_id is not None and from_team_id is not None and to_team_id is not None:
-                cur.execute(
-                    "INSERT INTO TransferHistory (player_id, from_team_id, to_team_id, amount, day, season_year) VALUES (?, ?, ?, ?, ?, ?)",
-                    (int(player_id), int(from_team_id), int(to_team_id), float(offer_amount), int(self.current_day), int(season_year))
-                )
-                # Remove corresponding TransferListing row if it exists in DB
-                try:
-                    cur.execute("DELETE FROM TransferListing WHERE listing_id = ?", (int(listing.listing_id),))
-                except Exception:
-                    # non-fatal if delete fails
-                    pass
-                conn.commit()
-            conn.close()
-        except Exception as e:
-            try:
-                self._log_transfer_attempt("DB_WRITE_ERROR_TRANSFER", {"error": str(e), "player": player.name, "listing_id": listing.listing_id})
-            except Exception:
-                pass
+        from database.transfer_repository import record_transfer
+        player_id = getattr(player, 'player_id', None)
+        from_id, to_id = getattr(listing.selling_team, 'team_id', None), getattr(buying_team, 'team_id', None)
+        if player_id is not None and from_id is not None and to_id is not None:
+            record_transfer(player_id, from_id, to_id, offer_amount, self.current_day,
+                            getattr(self, 'season_year', None) or datetime.now().year,
+                            listing.listing_id, getattr(self, 'simulation_run_id', None))
 
         # Remove listing from in-memory list
         try:
@@ -526,6 +518,11 @@ class TransferMarket:
 
         return True, f"Transfer completed! {player.name} signs {contract_length}-year deal worth £{wage_demand:,.0f}/week"
 
+    def set_release_clause(self, player, amount):
+        if amount is not None and amount <= 0:
+            raise ValueError('Release clause must be positive')
+        player.release_clause = amount
+
     def make_loan_offer(self, borrowing_team, listing):
         """Handle loan transfers"""
         if not self.is_transfer_window_open():
@@ -533,22 +530,31 @@ class TransferMarket:
 
         player = listing.player
         loan_fee = listing.loan_fee
-        
+
         if borrowing_team.budget < loan_fee:
             return False, "Cannot afford loan fee"
 
         # Calculate wage split
         weekly_wage_cost = player.wage * (1 - listing.wage_contribution)
-        
+
         if weekly_wage_cost * 4 > borrowing_team.wage_budget / max(1, len(borrowing_team.players)):
             return False, "Cannot afford wage contribution"
 
-        # Complete loan
-        player.team = f"{borrowing_team.name} (on loan)"
-        
-        # Handle finances
-        borrowing_team.budget -= loan_fee
-        listing.selling_team.budget += loan_fee
+        if player not in listing.selling_team.players or borrowing_team is listing.selling_team or player.loan_contract:
+            return False, 'Invalid loan ownership'
+        if len(borrowing_team.players) >= 30:
+            return False, 'Borrowing squad is full'
+        original_wage = player.wage
+        listing.selling_team.remove_player(player)
+        borrowing_team.add_player(player, force=True)
+        player.wage = weekly_wage_cost
+        player.loan_contract = {'owner': listing.selling_team.name, 'borrower': borrowing_team.name,
+                                'expires_day': self.current_day + listing.duration * 30,
+                                'original_wage': original_wage, 'wage_contribution': listing.wage_contribution}
+        listing.selling_team.loan_wage_obligations[player.name] = original_wage - weekly_wage_cost
+        self.active_loans.append((player, listing.selling_team, borrowing_team))
+        borrowing_team.record_cashflow('loan_fee', -loan_fee, player.name)
+        listing.selling_team.record_cashflow('loan_income', loan_fee, player.name)
 
         # Record loan
         loan_record = {
@@ -564,10 +570,10 @@ class TransferMarket:
         self.loan_history.append(loan_record)
 
         self._log_transfer_attempt("LOAN_COMPLETED", loan_record)
-        
+
         # Remove listing
         self.loan_list.remove(listing)
-        
+
         return True, f"Loan completed! {player.name} joins on {listing.duration}-month loan"
 
     def sign_free_agent(self, team, player):
@@ -632,14 +638,14 @@ class TransferMarket:
             # Renew contracts for key players first
             for player in team.players[:]:
                 player.contract_length -= 1
-                
+
                 # Attempt to renew contracts for important players
                 if 0 < player.contract_length <= 1:
                     if self._should_renew_contract(player, team):
                         # Renew contract for 2-5 years (longer renewals)
                         player.contract_length += random.randint(2, 5)
                         renewed_count += 1
-                        
+
                         self._log_transfer_attempt("CONTRACT_RENEWED", {
                             "player": player.name,
                             "team": team.name,
@@ -653,13 +659,13 @@ class TransferMarket:
                     player.team = None
                     self.free_agents.append(player)
                     expired_count += 1
-                    
+
                     self._log_transfer_attempt("CONTRACT_EXPIRED", {
                         "player": player.name,
                         "team": team.name,
                         "age": player.age
                     })
-        
+
         print(f"\n{renewed_count} players had their contracts renewed.")
         return expired_count
 
@@ -668,23 +674,23 @@ class TransferMarket:
         # High-rated players are always renewed
         if player.get_overall_rating() > 80:
             return True
-        
+
         # Young, high-potential players are renewed
         if player.age < 25 and player.potential > 85:
             return True
-            
+
         # Key starters are usually renewed
         if player.squad_role == "STARTER" and player.age < 32:
             return True
-            
+
         # Don't renew if squad is bloated
         if len(team.players) > 25:
             return False
-            
+
         # Renew if player is still valuable and not too old
         if player.age < 34 and player.get_overall_rating() > 75:
             return True
-            
+
         return False
 
     def simulate_ai_transfers(self, all_teams):
@@ -698,7 +704,7 @@ class TransferMarket:
 
             # Get manager's transfer decisions
             actions = team.manager.make_transfer_decision(self)
-            
+
             for action_type, *params in actions:
                 if action_type == "list":
                     player, price = params
@@ -754,13 +760,22 @@ class TransferMarket:
     def advance_day(self, all_teams):
         """Advance transfer market by one day"""
         self.current_day += 1
+        for player, owner, borrower in list(self.active_loans):
+            if player.loan_contract and self.current_day >= player.loan_contract['expires_day']:
+                contract = player.loan_contract
+                borrower.remove_player(player)
+                owner.add_player(player, force=True)
+                player.wage = contract['original_wage']
+                owner.loan_wage_obligations.pop(player.name, None)
+                player.loan_contract = None
+                self.active_loans.remove((player, owner, borrower))
 
         # Remove expired listings
         self.transfer_list = [
             listing for listing in self.transfer_list
             if (self.current_day - listing.listed_date) <= listing.expires_in
         ]
-        
+
         self.loan_list = [
             listing for listing in self.loan_list
             if (self.current_day - listing.listed_date) <= listing.expires_in
@@ -787,7 +802,7 @@ class TransferMarket:
         total_listings = len(self.transfer_list)
         loan_listings = len(self.loan_list)
         free_agents_count = len(self.free_agents)
-        
+
         total_value = sum(listing.asking_price for listing in self.transfer_list)
         avg_value = total_value / total_listings if total_listings > 0 else 0
 

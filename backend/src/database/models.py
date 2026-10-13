@@ -21,16 +21,16 @@ team_coaches_association = Table(
 
 class League(Base):
     __tablename__ = 'League'
-    
+
     league_id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)
     season_year = Column(Integer, nullable=False)
-    
+
     teams = relationship("Team", secondary=league_teams_association, back_populates="leagues")
 
 class Team(Base):
     __tablename__ = 'Team'
-    
+
     team_id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False, unique=True)
     budget = Column(Float, nullable=False)
@@ -47,19 +47,19 @@ class Team(Base):
 
 class TeamStatistics(Base):
     __tablename__ = 'TeamStatistics'
-    
+
     team_id = Column(Integer, ForeignKey('Team.team_id'), primary_key=True)
     wins = Column(Integer, nullable=False, default=0)
     draws = Column(Integer, nullable=False, default=0)
     losses = Column(Integer, nullable=False, default=0)
     goals_for = Column(Integer, nullable=False, default=0)
     goals_against = Column(Integer, nullable=False, default=0)
-    
+
     team = relationship("Team", back_populates="statistics")
 
 class Manager(Base):
     __tablename__ = 'Manager'
-    
+
     manager_id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False, unique=True)
     experience_level = Column(Integer, nullable=False)
@@ -73,24 +73,24 @@ class Manager(Base):
     draws = Column(Integer, nullable=False, default=0)
     losses = Column(Integer, nullable=False, default=0)
     total_rewards = Column(Float, nullable=False, default=0.0)
-    
+
     team = relationship("Team", foreign_keys=[team_id], overlaps="manager")
     tactics = relationship("ManagerTactics", back_populates="manager", uselist=False)
     profile = relationship("ManagerProfile")
 
 class ManagerTactics(Base):
     __tablename__ = 'ManagerTactics'
-    
+
     manager_id = Column(Integer, ForeignKey('Manager.manager_id'), primary_key=True)
     offensive = Column(Integer, nullable=False)
     defensive = Column(Integer, nullable=False)
     pressure = Column(Integer, nullable=False)
-    
+
     manager = relationship("Manager", back_populates="tactics")
 
 class ManagerProfile(Base):
     __tablename__ = 'ManagerProfile'
-    
+
     profile_id = Column(Integer, primary_key=True, autoincrement=True)
     risk_aversion = Column(Float, nullable=False)
     financial_preference = Column(Float, nullable=False)
@@ -100,7 +100,7 @@ class ManagerProfile(Base):
 
 class Coach(Base):
     __tablename__ = 'Coach'
-    
+
     coach_id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)
     specialty = Column(String, nullable=False)
@@ -108,12 +108,14 @@ class Coach(Base):
     team_id = Column(Integer, ForeignKey('Team.team_id'))
     learning_rate = Column(Float, nullable=False)
     exploration_rate = Column(Float, nullable=False)
-    
+
     teams = relationship("Team", secondary=team_coaches_association, back_populates="coaches")
 
 class Player(Base):
     __tablename__ = 'Player'
-    
+    availability_json = Column(String, nullable=True)
+    contract_json = Column(String, nullable=True)
+
     player_id = Column(Integer, primary_key=True, autoincrement=True)
     jersey_number = Column(Integer, nullable=True)
     name = Column(String, nullable=False, unique=True)
@@ -124,24 +126,24 @@ class Player(Base):
     wage = Column(Float, nullable=False)
     contract_length = Column(Integer, nullable=False)
     squad_role = Column(String, nullable=False)
-    
+
     team = relationship("Team", back_populates="players")
     attributes = relationship("PlayerAttribute", back_populates="player")
     stats = relationship("PlayerStat", back_populates="player", uselist=False)
 
 class PlayerAttribute(Base):
     __tablename__ = 'PlayerAttributes'
-    
+
     player_id = Column(Integer, ForeignKey('Player.player_id'), primary_key=True)
     attribute_type = Column(String, nullable=False, primary_key=True)
     sub_attribute = Column(String, nullable=False, primary_key=True)
     value = Column(Float, nullable=False)
-    
+
     player = relationship("Player", back_populates="attributes")
 
 class PlayerStat(Base):
     __tablename__ = 'PlayerStats'
-    
+
     player_id = Column(Integer, ForeignKey('Player.player_id'), primary_key=True)
     goals = Column(Integer, nullable=False, default=0)
     assists = Column(Integer, nullable=False, default=0)
@@ -150,7 +152,7 @@ class PlayerStat(Base):
     clean_sheets = Column(Integer, nullable=False, default=0)
     yellow_cards = Column(Integer, nullable=False, default=0)
     red_cards = Column(Integer, nullable=False, default=0)
-    
+
     player = relationship("Player", back_populates="stats")
 
 class SimulationRun(Base):
@@ -173,6 +175,26 @@ class SimulationRun(Base):
 
     matches = relationship("Match", back_populates="simulation_run")
 
+class WorkJob(Base):
+    __tablename__ = 'WorkJob'
+    __table_args__ = (UniqueConstraint('kind', 'request_key', name='uq_job_request'),)
+    job_id = Column(String, primary_key=True)
+    kind = Column(String, nullable=False)
+    active_key = Column(String, nullable=True, unique=True)
+    request_key = Column(String, nullable=True)
+    run_id = Column(String, ForeignKey('SimulationRun.run_id'), nullable=True)
+    status = Column(String, nullable=False, default='queued')
+    created_at = Column(String, nullable=False)
+    started_at = Column(String, nullable=True)
+    finished_at = Column(String, nullable=True)
+    lease_owner = Column(String, nullable=True)
+    lease_until = Column(Float, nullable=True)
+    cancel_requested = Column(Boolean, nullable=False, default=False)
+    payload_json = Column(String, nullable=False)
+    result_json = Column(String, nullable=True)
+    error_message = Column(String, nullable=True)
+
+
 class Match(Base):
     __tablename__ = 'Match'
     __table_args__ = (
@@ -182,7 +204,7 @@ class Match(Base):
             name='uq_match_run_season_number',
         ),
     )
-    
+
     match_id = Column(Integer, primary_key=True, autoincrement=True)
     simulation_run_id = Column(String, ForeignKey('SimulationRun.run_id'), nullable=True, index=True)
     match_number = Column(Integer, nullable=False)
@@ -219,20 +241,47 @@ class Match(Base):
 
 class SeasonReport(Base):
     __tablename__ = 'SeasonReport'
-    
+    __table_args__ = (UniqueConstraint('simulation_run_id', 'season_year', name='uq_season_report_run_year'),)
+
     report_id = Column(Integer, primary_key=True, autoincrement=True)
-    season_year = Column(Integer, nullable=False, unique=True)
+    season_year = Column(Integer, nullable=False)
+    simulation_run_id = Column(String, ForeignKey('SimulationRun.run_id'), nullable=True)
     champion_team = Column(String, nullable=False)
     report_data = Column(String, nullable=False) # JSON encoded data for easy historical querying
     created_at = Column(String, nullable=False)
 
 class TransferReport(Base):
     __tablename__ = 'TransferReport'
-    
+    __table_args__ = (UniqueConstraint('simulation_run_id', 'season_year', name='uq_transfer_report_run_year'),)
+
     report_id = Column(Integer, primary_key=True, autoincrement=True)
-    season_year = Column(Integer, nullable=False, unique=True)
+    season_year = Column(Integer, nullable=False)
+    simulation_run_id = Column(String, ForeignKey('SimulationRun.run_id'), nullable=True)
     report_data = Column(String, nullable=False) # JSON encoded data
     created_at = Column(String, nullable=False)
+
+class FinancialEntry(Base):
+    __tablename__ = 'FinancialEntry'
+    __table_args__ = (UniqueConstraint('run_id', 'team_name', 'entry_number', name='uq_finance_entry'),)
+    entry_id = Column(Integer, primary_key=True)
+    run_id = Column(String, ForeignKey('SimulationRun.run_id'), nullable=False)
+    team_name = Column(String, nullable=False)
+    season_year = Column(Integer, nullable=False)
+    entry_number = Column(Integer, nullable=False)
+    category = Column(String, nullable=False)
+    amount = Column(Float, nullable=False)
+    balance = Column(Float, nullable=False)
+    description = Column(String, nullable=False)
+
+
+class CampaignSnapshot(Base):
+    __tablename__ = 'CampaignSnapshot'
+    run_id = Column(String, ForeignKey('SimulationRun.run_id'), primary_key=True)
+    season_year = Column(Integer, primary_key=True)
+    matches_played = Column(Integer, nullable=False)
+    state_json = Column(String, nullable=False)
+    created_at = Column(String, nullable=False)
+
 
 class MatchShots(Base):
     __tablename__ = 'MatchShots'
@@ -264,6 +313,7 @@ class TransferHistory(Base):
     __tablename__ = 'TransferHistory'
     __table_args__ = (Index('ix_transfer_season_year', 'season_year'),)
     transfer_id = Column(Integer, primary_key=True, autoincrement=True)
+    simulation_run_id = Column(String, ForeignKey('SimulationRun.run_id'), nullable=True)
     player_id = Column(Integer, ForeignKey('Player.player_id'), nullable=False)
     from_team_id = Column(Integer, ForeignKey('Team.team_id'), nullable=False)
     to_team_id = Column(Integer, ForeignKey('Team.team_id'), nullable=False)

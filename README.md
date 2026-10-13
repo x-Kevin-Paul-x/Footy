@@ -9,7 +9,7 @@ Footy runs 11v11 matches inside Google Research Football, manages entire multi-t
 Built with **FastAPI, React 19, SQLAlchemy, Google Research Football, TiKick, FFmpeg, and PyTorch**.
 
 [![CI](https://github.com/x-Kevin-Paul-x/Footy/actions/workflows/ci.yml/badge.svg)](https://github.com/x-Kevin-Paul-x/Footy/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/Tests-128%20passed%2C%209%20skipped-2ea44f?logo=pytest&logoColor=white)](backend/tests)
+[![Tests](https://img.shields.io/badge/Tests-see%20dated%20verification-2ea44f?logo=pytest)](docs/verification_2026_10_13.md)
 [![Replay Frames](https://img.shields.io/badge/Replay%20Frames-1%2C634%20Validated-8A2BE2)](assets/readme/showcase-match.mp4)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Database](https://img.shields.io/badge/SQLite-WAL%20OK-003B57?logo=sqlite&logoColor=white)](#tests-and-verification)
@@ -26,7 +26,7 @@ Built with **FastAPI, React 19, SQLAlchemy, Google Research Football, TiKick, FF
 
 [Watch the full match recording](assets/matches/full-match-recordings/burnley-2-4-bournemouth.mp4) · [Recorded replay timeline](assets/matches/full-match-recordings/burnley-2-4-bournemouth.timeline.json)
 
-**11v11 Multi-Agent Physics** · **SHA-256 Verified Determinism** · **~10× Real-Time Sim** · **14 Interactive Surfaces**
+**11v11 Multi-Agent Physics** · **Seeded Replay Verification** · **Recorded Match Replays** · **15 Interactive Surfaces**
 
 [Why Footy](#why-footy) · [One Match Flow](#one-match-through-footy) · [Engineering Snapshot](#engineering-snapshot) · [Performance](#simulation-performance) · [Showcase Match](#a-real-generated-match) · [The Platform](#the-platform) · [How It Works](#how-it-works) · [Footy vs GRF](#footy-vs-google-research-football) · [Quick Start](#quick-start)
 
@@ -51,7 +51,7 @@ Manager Decisions (Arsenal vs Chelsea)
 SimulationSpec
       │  Seeded RNG, duration (1,200 steps), and render mode
       ▼
-22-Agent TiKick MARL Policy
+20-Outfield-Agent TiKick MARL Policy
       │  Multi-agent decentralized execution with tactical mirroring
       ▼
 Google Research Football
@@ -82,45 +82,66 @@ React 19 Analytics & Tables    Broadcast-Style 3D Replay (.mp4)
 
 | Engineering Surface | Metric / Evidence | Verification Standard |
 | :--- | :---: | :--- |
-| **Automated Backend Tests** | **128 passed, 9 skipped** | Full backend suite (137 collected cases) |
+| **Automated Backend Tests** | [Dated verification](docs/verification_2026_10_13.md) | Dated backend, frontend and native verification |
 | **Targeted Regression Suites** | **33 passed** | Season contracts, replay loading, squad data, and recording retention |
-| **API Surface** | **63 routes** | FastAPI REST endpoints, WebSocket channels, and media streaming |
-| **Relational Schema** | **41 ORM models** | SQLAlchemy 2.0 entities, SQLite WAL persistence, 5 Alembic revisions |
+| **API Surface** | **74 routes** | FastAPI REST endpoints, WebSocket channels, and media streaming |
+| **Relational Schema** | **Versioned ORM schema** | SQLAlchemy 2.0 entities, SQLite WAL persistence, tested fresh/legacy Alembic upgrades |
 | **Replay Validation** | **1,634 decoded frames** | H.264 High Profile @ 720p 15fps, verified against canonical score |
-| **Product Surfaces** | **14 React pages** | React 19, TypeScript, MUI, Recharts, TanStack Query, and Zustand |
+| **Product Surfaces** | **15 React pages** | React 19, TypeScript, MUI, Recharts, TanStack Query, and Zustand |
 | **Simulation Core** | **11v11 Multi-Agent** | Native Google Research Football environment + TiKick neural policy |
-| **Codebase Scale** | **33.2k LOC** | 21,681 lines Python (`backend/src` + `backend/tests`), 11,561 lines TS/TSX |
+| **Codebase Scale** | **40.4k LOC** | 27,637 lines Python (`backend/src` + `backend/tests`), 12,714 lines TS/TSX |
 
 ---
 
-## Simulation Performance
+## Simulation performance
 
-Footy incorporates a dedicated benchmark harness (`backend/benchmarks/`) measuring environment throughput, worker scaling, latency distributions, and deterministic execution invariance across both real physics simulation and high-concurrency worker orchestration.
+The current benchmark dispatches the actual GRF worker pool and records observed concurrency. This diagnostic uses two fixtures, 200 steps each, trajectory capture, and two repetitions. Cold batch time includes WSL startup and checkpoint loading; it is not a full-season throughput estimate.
 
-### Real 11v11 GRF Physics Stepping
-A full 90-minute football match corresponds to 1,200 to 3,000 environment steps (100 ms per step). Headless GRF simulation with neural policy inference achieves:
+| Requested / observed workers | Batch latency p50 | Steps/second including startup | Canonical hashes |
+| --- | ---: | ---: | --- |
+| 1 / 1 | 18.77 s | 21.32 | Repeatable |
+| 2 / 2 | 9.90 s | 40.41 | Repeatable and equal to one worker |
 
-| Concurrent Workers | Workload | Steps/sec | Real-Time Multiplier |
-| :---: | :---: | :---: | :---: |
-| **1** | Single Match (Headless) | **78.1 steps/s** | **7.81×** real-time |
-| **4** | Matchday Pool (4 fixtures) | **92.4 steps/s** | **9.24×** real-time |
-| **8** | Matchday Pool (8 fixtures) | **101.8 steps/s** | **10.18×** real-time |
-| **16** | Multiprocess Fixture Pool | **106.9 steps/s** | **10.69×** real-time |
+See [raw native benchmark](docs/evidence/native_benchmark.json). Synthetic concurrency checks are labelled separately and are not GRF performance results. Historical full-season timing is described below with its original workload.
 
-### Orchestration & Fixture Dispatch Benchmark (Synthetic Concurrency Harness)
-To evaluate the multiprocess worker pool, inter-process communication (IPC), and serialization overhead independently from C++ physics computation, Footy includes an isolated synthetic stress-harness:
+## Manager AI evidence
 
-| Workers | Batch Fixtures | Step Target | Replay Mode | Latency (p50) | Throughput | Determinism Check |
-| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **1** | 1 match | 100 steps | Headless | 20.3 ms | **4,931 steps/s** (49.3 fix/s) | ✅ SHA-256 Verified |
-| **1** | 1 match | 200 steps | Headless | 20.1 ms | **9,931 steps/s** (49.6 fix/s) | ✅ SHA-256 Verified |
-| **1** | 5 matches | 100 steps | Headless | 101.1 ms | **4,944 steps/s** (49.4 fix/s) | ✅ SHA-256 Verified |
-| **1** | 5 matches | 200 steps | Headless | 101.3 ms | **9,870 steps/s** (49.3 fix/s) | ✅ SHA-256 Verified |
-| **2** | 1 match | 100 steps | Headless | 20.5 ms | **4,872 steps/s** (48.7 fix/s) | ✅ SHA-256 Verified |
+The management DQN has 24 observation values and five scouting/transfer actions. It is separate from the TiKick policy controlling players. These measurements use the synthetic management environment, six clubs, twenty decisions per episode, and 30 held-out seeds (1000–1029).
 
-> [!NOTE]
-> **Key Profiling Insight:**
-> Profiling demonstrated that simulation throughput is primarily constrained by Python-side environment stepping and worker IPC rather than neural policy inference. GPU utilization remained low across scaling runs, which redirected core optimization work toward multiprocess worker isolation, zero-copy trajectory serialization, and bounded FFmpeg encoding pipelines rather than neural acceleration.
+| Policy | Mean reward ± standard deviation | Mean points | Mean rank |
+| --- | ---: | ---: | ---: |
+| DQN, training seed 42 | 78.10 ± 22.30 | 27.03 | 3.93 |
+| DQN, training seed 43 | 76.90 ± 20.93 | 26.43 | 3.90 |
+| DQN, training seed 44 | 79.20 ± 22.82 | 28.63 | 3.70 |
+| Existing DQN checkpoint | 78.30 ± 21.52 | 27.47 | 3.77 |
+| Random valid action | 80.87 ± 19.91 | 28.87 | 3.70 |
+| Do nothing | 70.97 ± 22.56 | 24.07 | 4.13 |
+| Youth focused | 80.47 ± 21.21 | 27.17 | 3.83 |
+| Rule based | 85.23 ± 20.62 | 30.33 | 3.57 |
+
+The DQN runs do not establish an advantage over random actions in this sample. The rule-based policy has the highest mean reward. [Raw episodes, seeds, model hashes and uncertainty](docs/evidence/manager_evaluation.json) and [reproduction commands](CONTRIBUTING.md) make that finding inspectable.
+
+![Seed 42 training reward curve](docs/evidence/training/seed_42/training_curve.svg)
+
+## Reliability and management updates
+
+- Accepted simulation and evaluation jobs have persisted IDs, exclusive database ownership, renewable leases, cancellation, and restart reconciliation.
+- Saves use SQLite's WAL-safe backup API. Their manifests retain referenced runtime recordings. Restoring a database snapshot invalidates previous job ownership.
+- Versioned migrations support fresh databases and existing installations, with consistent pre-migration backups and integrity checks.
+- Campaign reports, frozen squad/finance snapshots, and financial ledgers have explicit run identities. The Saved campaigns page exposes retained history.
+- Attendance credits cash; broadcasting allocations share a fixed pool; loans move players, split wages and return on expiry. Release clauses and sell-on fees have domain validation and regression coverage.
+- Owners distribute surplus cash above the configured annual retention cap to limit runaway transfer funds; the ledger shows those distributions.
+- Replay timelines record emitted frames, and publication checks fully decoded frame counts.
+
+## Known limitations
+
+- Native GRF substitutions remain unsupported; the legacy engine's substitutions and stored benches do not prove native substitution support.
+- Manager evaluation is synthetic. The tabular manager fallback remains active for decisions outside the five-action DQN path.
+- Scoring realism remains under investigation: the retained 380-fixture GRF season averaged 4.93 goals per match, versus 3.28 in the 2023/24 reference. [Calibration report and sources](docs/evidence/calibration.json).
+- `FOOTY_DYNAMIC_TACTICS=1` enables deterministic, conditional in-match changes and venue-dependent policy modulation. This experimental profile is opt-in and needs statistical calibration before becoming the default.
+- Saves preserve the database and retained artifacts. They do not resume an interrupted in-memory match or automatically reconstruct a live campaign from a snapshot.
+- The [read-only demo package](docs/demo/index.html) plays precomputed assets. Public hosting requires enabling GitHub Pages and running its deployment workflow.
+- Native Linux tests and the Windows/WSL integration checks have distinct runtime requirements. Skips and actual checks are recorded in [dated verification](docs/verification_2026_10_13.md).
 
 ---
 
@@ -211,8 +232,8 @@ Invoke-RestMethod `
 ## What Makes Footy Technically Interesting
 
 * **Real 11v11 Physics Simulation:** Matches run inside Google Research Football's native C++ simulation environment rather than resolving via statistical RNG.
-* **Multi-Agent Policy Integration:** TiKick neural policies drive 22 autonomous agents simultaneously with tactical formations and dynamic behavioral transforms.
-* **Deterministic Artifact Pipeline:** Seeded execution produces identical trajectory `.npz` files, state archives, and SHA-256 fingerprint verification across replay runs.
+* **Multi-Agent Policy Integration:** TiKick neural policies drive 20 outfield agents, alongside GRF goalkeepers, with tactical formations and dynamic behavioral transforms.
+* **Deterministic Artifact Pipeline:** Seeded canonical results are checked across repeated execution and worker counts. Replay restores authoritative native states; the scope and limitations of each check are recorded with its evidence.
 * **Failure-Aware Media Publication:** Replay video is encoded to isolated staging paths, drained for FFmpeg errors, verified for decoded frame counts, and atomically published.
 * **Full-Stack Simulation Observability:** Output flows directly from physics engine → typed canonical domain result → SQLite WAL → FastAPI WebSocket → React 19 visual analytics & 3D playback.
 
@@ -311,7 +332,7 @@ flowchart TB
 ### 2. Single Canonical Match Result
 * **Problem:** Having renderers re-parse scores from video frames or having the database calculate match stats independently causes data desyncs between UI tables and video cards.
 * **Decision:** `GRFMatchExecutor` emits a single typed `CanonicalMatchResult` contract owning the score, event stream, and statistical attribution.
-* **Why:** Renderers, SQLite repositories, and analytics consumers strictly ingest the canonical result, guaranteeing 100% agreement across all product surfaces.
+* **Why:** Renderers, SQLite repositories, and analytics consumers strictly ingest the canonical result, so covered tests can assert agreement across scores, events and replay presentation.
 
 ### 3. Run-Scoped Persistence
 * **Problem:** Re-running simulation seasons or executing concurrent benchmarks risks clobbering existing match records and media files on disk.
@@ -365,7 +386,7 @@ git clone https://github.com/x-Kevin-Paul-x/Footy.git
 cd Footy
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -e ".[dev,ml,media]"
 
 # 2. Launch full stack concurrently (FastAPI on :5001 + React on :5173)
 npm install
@@ -381,7 +402,7 @@ npm run dev
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -e ".[dev,ml,media]"
 pip install -r requirements-dev.txt
 Copy-Item .env.example .env
 

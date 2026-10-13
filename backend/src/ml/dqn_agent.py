@@ -44,7 +44,7 @@ if TORCH_AVAILABLE:
             features = self.feature_net(x)
             values = self.value_head(features)
             advantages = self.advantage_head(features)
-            
+
             # Dueling architecture aggregation
             q_values = values + (advantages - advantages.mean(dim=-1, keepdim=True))
 
@@ -249,9 +249,10 @@ class DQNAgent:
             return
         path = Path(path)
         if not path.exists():
-            print(f"Warning: Model file not found at {path}")
-            return
-        checkpoint = torch.load(str(path), map_location=self.device)
+            raise FileNotFoundError(f'Model weights not found: {path}')
+        checkpoint = torch.load(str(path), map_location=self.device, weights_only=True)
+        if checkpoint.get('obs_dim', self.obs_dim) != self.obs_dim or checkpoint.get('action_dim', self.action_dim) != self.action_dim:
+            raise ValueError('Model observation/action space is incompatible')
         self.policy_net.load_state_dict(checkpoint["policy_state_dict"])
         self.target_net.load_state_dict(checkpoint.get("target_state_dict", checkpoint["policy_state_dict"]))
         self.training_steps = checkpoint.get("training_steps", 0)

@@ -56,6 +56,7 @@ import {
   getMlReports,
   getMlModels,
   runMlEvaluation,
+  resumeMlEvaluation,
   type MlReport,
   type MlReportListItem,
   type MlModelItem,
@@ -156,7 +157,7 @@ const MlBenchmarks: React.FC = () => {
   // Evaluation Runner Modal state
   const [runnerOpen, setRunnerOpen] = useState(false);
   const [availableModels, setAvailableModels] = useState<MlModelItem[]>([]);
-  const [selectedModelForEval, setSelectedModelForEval] = useState<string>("backend/src/ml/models/dqn_best.pt");
+  const [selectedModelForEval, setSelectedModelForEval] = useState<string>("dqn_best.pt");
   const [evalEpisodes, setEvalEpisodes] = useState<number>(10);
   const [evalTeams, setEvalTeams] = useState<number>(6);
   const [evalSeasonLength, setEvalSeasonLength] = useState<number>(20);
@@ -187,12 +188,29 @@ const MlBenchmarks: React.FC = () => {
   }, [selectedReportName]);
 
   useEffect(() => {
+    if (!window.sessionStorage.getItem('footy_ml_job')) return;
+    const controller = new AbortController();
+    setIsRunningEval(true);
+    resumeMlEvaluation(status => setEvalSuccessMsg(`Benchmark ${status}…`), controller.signal)
+      .then(report => {
+        if (report && !controller.signal.aborted) {
+          setEvalSuccessMsg(`Benchmark completed in ${report.runtime?.elapsed_seconds ?? 'a few'}s!`);
+          fetchReports(true);
+        }
+      })
+      .catch(error => { if (!controller.signal.aborted) setError(String(error)); })
+      .finally(() => { if (!controller.signal.aborted) setIsRunningEval(false); });
+    return () => controller.abort();
+  }, [fetchReports]);
+
+
+  useEffect(() => {
     fetchReports();
     getMlModels()
       .then((models) => {
         setAvailableModels(models);
         if (models.length > 0) {
-          setSelectedModelForEval(models[0].path);
+          setSelectedModelForEval(models[0].name);
         }
       })
       .catch(() => {});
@@ -223,7 +241,7 @@ const MlBenchmarks: React.FC = () => {
         teams: evalTeams,
         season_length: evalSeasonLength,
         fast_mode: true,
-      });
+      }, (status) => setEvalSuccessMsg(`Benchmark ${status}…`));
       setEvalSuccessMsg(`Benchmark completed in ${report.runtime?.elapsed_seconds ?? 'a few'}s!`);
       await fetchReports(true);
       setRunnerOpen(false);
@@ -852,12 +870,12 @@ const MlBenchmarks: React.FC = () => {
             >
               {availableModels.length > 0 ? (
                 availableModels.map((m) => (
-                  <MenuItem key={m.path} value={m.path}>
+                  <MenuItem key={m.name} value={m.name}>
                     {m.name} (PyTorch Checkpoint)
                   </MenuItem>
                 ))
               ) : (
-                <MenuItem value="backend/src/ml/models/dqn_best.pt">dqn_best.pt</MenuItem>
+                <MenuItem value="dqn_best.pt">dqn_best.pt</MenuItem>
               )}
             </Select>
           </FormControl>

@@ -1,0 +1,813 @@
+{
+  "config": {
+    "command": "train",
+    "episodes": 100,
+    "seed": 42,
+    "teams": 6,
+    "season_length": 20,
+    "fast_mode": true,
+    "output_dir": "docs/evidence/training/seed_42"
+  },
+  "episodes": [
+    {
+      "episode": 1,
+      "seed": 43,
+      "reward": 65.0,
+      "points": 24,
+      "position": 4,
+      "epsilon": 0.9873333333333333
+    },
+    {
+      "episode": 2,
+      "seed": 44,
+      "reward": 94.0,
+      "points": 33,
+      "position": 3,
+      "epsilon": 0.9746666666666667
+    },
+    {
+      "episode": 3,
+      "seed": 45,
+      "reward": 81.0,
+      "points": 28,
+      "position": 4,
+      "epsilon": 0.962
+    },
+    {
+      "episode": 4,
+      "seed": 46,
+      "reward": 35.0,
+      "points": 15,
+      "position": 5,
+      "epsilon": 0.9493333333333334
+    },
+    {
+      "episode": 5,
+      "seed": 47,
+      "reward": 76.0,
+      "points": 25,
+      "position": 4,
+      "epsilon": 0.9366666666666666
+    },
+    {
+      "episode": 6,
+      "seed": 48,
+      "reward": 98.0,
+      "points": 36,
+      "position": 3,
+      "epsilon": 0.924
+    },
+    {
+      "episode": 7,
+      "seed": 49,
+      "reward": 78.0,
+      "points": 28,
+      "position": 4,
+      "epsilon": 0.9113333333333333
+    },
+    {
+      "episode": 8,
+      "seed": 50,
+      "reward": 90.0,
+      "points": 31,
+      "position": 3,
+      "epsilon": 0.8986666666666667
+    },
+    {
+      "episode": 9,
+      "seed": 51,
+      "reward": 98.0,
+      "points": 35,
+      "position": 3,
+      "epsilon": 0.886
+    },
+    {
+      "episode": 10,
+      "seed": 52,
+      "reward": 96.0,
+      "points": 33,
+      "position": 3,
+      "epsilon": 0.8733333333333333
+    },
+    {
+      "episode": 11,
+      "seed": 53,
+      "reward": 68.0,
+      "points": 23,
+      "position": 4,
+      "epsilon": 0.8606666666666667
+    },
+    {
+      "episode": 12,
+      "seed": 54,
+      "reward": 68.0,
+      "points": 23,
+      "position": 4,
+      "epsilon": 0.848
+    },
+    {
+      "episode": 13,
+      "seed": 55,
+      "reward": 29.0,
+      "points": 13,
+      "position": 5,
+      "epsilon": 0.8353333333333334
+    },
+    {
+      "episode": 14,
+      "seed": 56,
+      "reward": 66.0,
+      "points": 24,
+      "position": 4,
+      "epsilon": 0.8226666666666667
+    },
+    {
+      "episode": 15,
+      "seed": 57,
+      "reward": 70.0,
+      "points": 21,
+      "position": 4,
+      "epsilon": 0.81
+    },
+    {
+      "episode": 16,
+      "seed": 58,
+      "reward": 76.0,
+      "points": 26,
+      "position": 4,
+      "epsilon": 0.7973333333333333
+    },
+    {
+      "episode": 17,
+      "seed": 59,
+      "reward": 87.0,
+      "points": 29,
+      "position": 4,
+      "epsilon": 0.7846666666666666
+    },
+    {
+      "episode": 18,
+      "seed": 60,
+      "reward": 78.0,
+      "points": 24,
+      "position": 4,
+      "epsilon": 0.772
+    },
+    {
+      "episode": 19,
+      "seed": 61,
+      "reward": 79.0,
+      "points": 27,
+      "position": 4,
+      "epsilon": 0.7593333333333333
+    },
+    {
+      "episode": 20,
+      "seed": 62,
+      "reward": 76.0,
+      "points": 24,
+      "position": 4,
+      "epsilon": 0.7466666666666667
+    },
+    {
+      "episode": 21,
+      "seed": 63,
+      "reward": 60.0,
+      "points": 23,
+      "position": 4,
+      "epsilon": 0.734
+    },
+    {
+      "episode": 22,
+      "seed": 64,
+      "reward": 98.0,
+      "points": 34,
+      "position": 3,
+      "epsilon": 0.7213333333333334
+    },
+    {
+      "episode": 23,
+      "seed": 65,
+      "reward": 33.0,
+      "points": 16,
+      "position": 5,
+      "epsilon": 0.7086666666666668
+    },
+    {
+      "episode": 24,
+      "seed": 66,
+      "reward": 61.0,
+      "points": 26,
+      "position": 4,
+      "epsilon": 0.696
+    },
+    {
+      "episode": 25,
+      "seed": 67,
+      "reward": 108.0,
+      "points": 41,
+      "position": 2,
+      "epsilon": 0.6833333333333333
+    },
+    {
+      "episode": 26,
+      "seed": 68,
+      "reward": 104.0,
+      "points": 35,
+      "position": 3,
+      "epsilon": 0.6706666666666667
+    },
+    {
+      "episode": 27,
+      "seed": 69,
+      "reward": 76.0,
+      "points": 31,
+      "position": 3,
+      "epsilon": 0.658
+    },
+    {
+      "episode": 28,
+      "seed": 70,
+      "reward": 116.0,
+      "points": 43,
+      "position": 2,
+      "epsilon": 0.6453333333333333
+    },
+    {
+      "episode": 29,
+      "seed": 71,
+      "reward": 84.0,
+      "points": 29,
+      "position": 4,
+      "epsilon": 0.6326666666666667
+    },
+    {
+      "episode": 30,
+      "seed": 72,
+      "reward": 104.0,
+      "points": 37,
+      "position": 3,
+      "epsilon": 0.62
+    },
+    {
+      "episode": 31,
+      "seed": 73,
+      "reward": 92.0,
+      "points": 34,
+      "position": 3,
+      "epsilon": 0.6073333333333333
+    },
+    {
+      "episode": 32,
+      "seed": 74,
+      "reward": 76.0,
+      "points": 26,
+      "position": 4,
+      "epsilon": 0.5946666666666667
+    },
+    {
+      "episode": 33,
+      "seed": 75,
+      "reward": 84.0,
+      "points": 28,
+      "position": 4,
+      "epsilon": 0.5820000000000001
+    },
+    {
+      "episode": 34,
+      "seed": 76,
+      "reward": 100.0,
+      "points": 35,
+      "position": 3,
+      "epsilon": 0.5693333333333334
+    },
+    {
+      "episode": 35,
+      "seed": 77,
+      "reward": 78.0,
+      "points": 27,
+      "position": 4,
+      "epsilon": 0.5566666666666666
+    },
+    {
+      "episode": 36,
+      "seed": 78,
+      "reward": 84.0,
+      "points": 27,
+      "position": 4,
+      "epsilon": 0.544
+    },
+    {
+      "episode": 37,
+      "seed": 79,
+      "reward": 36.0,
+      "points": 15,
+      "position": 5,
+      "epsilon": 0.5313333333333333
+    },
+    {
+      "episode": 38,
+      "seed": 80,
+      "reward": 76.0,
+      "points": 24,
+      "position": 4,
+      "epsilon": 0.5186666666666666
+    },
+    {
+      "episode": 39,
+      "seed": 81,
+      "reward": 105.0,
+      "points": 40,
+      "position": 3,
+      "epsilon": 0.506
+    },
+    {
+      "episode": 40,
+      "seed": 82,
+      "reward": 87.0,
+      "points": 29,
+      "position": 4,
+      "epsilon": 0.4933333333333334
+    },
+    {
+      "episode": 41,
+      "seed": 83,
+      "reward": 99.0,
+      "points": 33,
+      "position": 3,
+      "epsilon": 0.4806666666666667
+    },
+    {
+      "episode": 42,
+      "seed": 84,
+      "reward": 43.0,
+      "points": 17,
+      "position": 5,
+      "epsilon": 0.46799999999999997
+    },
+    {
+      "episode": 43,
+      "seed": 85,
+      "reward": 92.0,
+      "points": 34,
+      "position": 3,
+      "epsilon": 0.45533333333333337
+    },
+    {
+      "episode": 44,
+      "seed": 86,
+      "reward": 96.0,
+      "points": 33,
+      "position": 3,
+      "epsilon": 0.44266666666666665
+    },
+    {
+      "episode": 45,
+      "seed": 87,
+      "reward": 77.0,
+      "points": 25,
+      "position": 4,
+      "epsilon": 0.43000000000000005
+    },
+    {
+      "episode": 46,
+      "seed": 88,
+      "reward": 75.0,
+      "points": 23,
+      "position": 4,
+      "epsilon": 0.41733333333333344
+    },
+    {
+      "episode": 47,
+      "seed": 89,
+      "reward": 89.0,
+      "points": 31,
+      "position": 3,
+      "epsilon": 0.4046666666666666
+    },
+    {
+      "episode": 48,
+      "seed": 90,
+      "reward": 73.0,
+      "points": 23,
+      "position": 4,
+      "epsilon": 0.392
+    },
+    {
+      "episode": 49,
+      "seed": 91,
+      "reward": 25.0,
+      "points": 15,
+      "position": 5,
+      "epsilon": 0.3793333333333334
+    },
+    {
+      "episode": 50,
+      "seed": 92,
+      "reward": 115.0,
+      "points": 43,
+      "position": 2,
+      "epsilon": 0.3666666666666667
+    },
+    {
+      "episode": 51,
+      "seed": 93,
+      "reward": 84.0,
+      "points": 25,
+      "position": 4,
+      "epsilon": 0.354
+    },
+    {
+      "episode": 52,
+      "seed": 94,
+      "reward": 43.0,
+      "points": 18,
+      "position": 5,
+      "epsilon": 0.3413333333333334
+    },
+    {
+      "episode": 53,
+      "seed": 95,
+      "reward": 97.0,
+      "points": 34,
+      "position": 3,
+      "epsilon": 0.32866666666666666
+    },
+    {
+      "episode": 54,
+      "seed": 96,
+      "reward": 82.0,
+      "points": 27,
+      "position": 4,
+      "epsilon": 0.31600000000000006
+    },
+    {
+      "episode": 55,
+      "seed": 97,
+      "reward": 94.0,
+      "points": 37,
+      "position": 3,
+      "epsilon": 0.30333333333333345
+    },
+    {
+      "episode": 56,
+      "seed": 98,
+      "reward": 75.0,
+      "points": 28,
+      "position": 4,
+      "epsilon": 0.29066666666666663
+    },
+    {
+      "episode": 57,
+      "seed": 99,
+      "reward": 84.0,
+      "points": 27,
+      "position": 4,
+      "epsilon": 0.278
+    },
+    {
+      "episode": 58,
+      "seed": 100,
+      "reward": 98.0,
+      "points": 35,
+      "position": 3,
+      "epsilon": 0.2653333333333334
+    },
+    {
+      "episode": 59,
+      "seed": 101,
+      "reward": 79.0,
+      "points": 22,
+      "position": 4,
+      "epsilon": 0.2526666666666667
+    },
+    {
+      "episode": 60,
+      "seed": 102,
+      "reward": 84.0,
+      "points": 27,
+      "position": 4,
+      "epsilon": 0.24
+    },
+    {
+      "episode": 61,
+      "seed": 103,
+      "reward": 107.0,
+      "points": 39,
+      "position": 3,
+      "epsilon": 0.2273333333333334
+    },
+    {
+      "episode": 62,
+      "seed": 104,
+      "reward": 91.0,
+      "points": 31,
+      "position": 3,
+      "epsilon": 0.21466666666666667
+    },
+    {
+      "episode": 63,
+      "seed": 105,
+      "reward": 98.0,
+      "points": 34,
+      "position": 3,
+      "epsilon": 0.20200000000000007
+    },
+    {
+      "episode": 64,
+      "seed": 106,
+      "reward": 85.0,
+      "points": 28,
+      "position": 4,
+      "epsilon": 0.18933333333333335
+    },
+    {
+      "episode": 65,
+      "seed": 107,
+      "reward": 103.0,
+      "points": 37,
+      "position": 3,
+      "epsilon": 0.17666666666666664
+    },
+    {
+      "episode": 66,
+      "seed": 108,
+      "reward": 97.0,
+      "points": 35,
+      "position": 3,
+      "epsilon": 0.16400000000000003
+    },
+    {
+      "episode": 67,
+      "seed": 109,
+      "reward": 92.0,
+      "points": 31,
+      "position": 3,
+      "epsilon": 0.15133333333333343
+    },
+    {
+      "episode": 68,
+      "seed": 110,
+      "reward": 100.0,
+      "points": 35,
+      "position": 3,
+      "epsilon": 0.13866666666666672
+    },
+    {
+      "episode": 69,
+      "seed": 111,
+      "reward": 88.0,
+      "points": 29,
+      "position": 4,
+      "epsilon": 0.126
+    },
+    {
+      "episode": 70,
+      "seed": 112,
+      "reward": 102.0,
+      "points": 37,
+      "position": 3,
+      "epsilon": 0.1133333333333334
+    },
+    {
+      "episode": 71,
+      "seed": 113,
+      "reward": 122.0,
+      "points": 46,
+      "position": 2,
+      "epsilon": 0.10066666666666668
+    },
+    {
+      "episode": 72,
+      "seed": 114,
+      "reward": 70.0,
+      "points": 21,
+      "position": 4,
+      "epsilon": 0.08800000000000008
+    },
+    {
+      "episode": 73,
+      "seed": 115,
+      "reward": 108.0,
+      "points": 37,
+      "position": 3,
+      "epsilon": 0.07533333333333336
+    },
+    {
+      "episode": 74,
+      "seed": 116,
+      "reward": 100.0,
+      "points": 33,
+      "position": 3,
+      "epsilon": 0.06266666666666665
+    },
+    {
+      "episode": 75,
+      "seed": 117,
+      "reward": 102.0,
+      "points": 36,
+      "position": 3,
+      "epsilon": 0.050000000000000044
+    },
+    {
+      "episode": 76,
+      "seed": 118,
+      "reward": 105.0,
+      "points": 35,
+      "position": 3,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 77,
+      "seed": 119,
+      "reward": 106.0,
+      "points": 38,
+      "position": 3,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 78,
+      "seed": 120,
+      "reward": 101.0,
+      "points": 33,
+      "position": 3,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 79,
+      "seed": 121,
+      "reward": 110.0,
+      "points": 41,
+      "position": 2,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 80,
+      "seed": 122,
+      "reward": 86.0,
+      "points": 26,
+      "position": 4,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 81,
+      "seed": 123,
+      "reward": 63.0,
+      "points": 21,
+      "position": 4,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 82,
+      "seed": 124,
+      "reward": 69.0,
+      "points": 23,
+      "position": 4,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 83,
+      "seed": 125,
+      "reward": 90.0,
+      "points": 30,
+      "position": 4,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 84,
+      "seed": 126,
+      "reward": 95.0,
+      "points": 32,
+      "position": 3,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 85,
+      "seed": 127,
+      "reward": 69.0,
+      "points": 25,
+      "position": 4,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 86,
+      "seed": 128,
+      "reward": 100.0,
+      "points": 35,
+      "position": 3,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 87,
+      "seed": 129,
+      "reward": 74.0,
+      "points": 25,
+      "position": 4,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 88,
+      "seed": 130,
+      "reward": 103.0,
+      "points": 34,
+      "position": 3,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 89,
+      "seed": 131,
+      "reward": 107.0,
+      "points": 39,
+      "position": 3,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 90,
+      "seed": 132,
+      "reward": 67.0,
+      "points": 21,
+      "position": 4,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 91,
+      "seed": 133,
+      "reward": 79.0,
+      "points": 26,
+      "position": 4,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 92,
+      "seed": 134,
+      "reward": 88.0,
+      "points": 29,
+      "position": 4,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 93,
+      "seed": 135,
+      "reward": 84.0,
+      "points": 26,
+      "position": 4,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 94,
+      "seed": 136,
+      "reward": 101.0,
+      "points": 34,
+      "position": 3,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 95,
+      "seed": 137,
+      "reward": 87.0,
+      "points": 27,
+      "position": 4,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 96,
+      "seed": 138,
+      "reward": 86.0,
+      "points": 27,
+      "position": 4,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 97,
+      "seed": 139,
+      "reward": 98.0,
+      "points": 33,
+      "position": 3,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 98,
+      "seed": 140,
+      "reward": 94.0,
+      "points": 32,
+      "position": 3,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 99,
+      "seed": 141,
+      "reward": 36.0,
+      "points": 17,
+      "position": 5,
+      "epsilon": 0.05
+    },
+    {
+      "episode": 100,
+      "seed": 142,
+      "reward": 124.0,
+      "points": 45,
+      "position": 2,
+      "epsilon": 0.05
+    }
+  ]
+}

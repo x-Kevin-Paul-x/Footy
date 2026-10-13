@@ -1,0 +1,134 @@
+{
+  "workload": "domain_finances_and_rollover",
+  "seasons": 5,
+  "seed": 42,
+  "checks": [
+    "cashflow_reconciles",
+    "no_insolvency",
+    "squad_replenishment",
+    "academy_bounded"
+  ],
+  "reports": [
+    {
+      "season": 1,
+      "opening_cash": 600000000,
+      "closing_cash": 689999999.9999999,
+      "money_growth": 0.1499999999999999,
+      "squads": [
+        18,
+        18,
+        18,
+        18,
+        18,
+        18
+      ],
+      "academies": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ],
+      "retained_python_bytes": 763720,
+      "peak_python_bytes": 862906
+    },
+    {
+      "season": 2,
+      "opening_cash": 689999999.9999999,
+      "closing_cash": 793499999.9999998,
+      "money_growth": 0.1499999999999999,
+      "squads": [
+        18,
+        18,
+        18,
+        18,
+        18,
+        18
+      ],
+      "academies": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ],
+      "retained_python_bytes": 1097834,
+      "peak_python_bytes": 1203417
+    },
+    {
+      "season": 3,
+      "opening_cash": 793499999.9999998,
+      "closing_cash": 912524999.9999996,
+      "money_growth": 0.1499999999999999,
+      "squads": [
+        18,
+        18,
+        18,
+        18,
+        18,
+        18
+      ],
+      "academies": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ],
+      "retained_python_bytes": 1447470,
+      "peak_python_bytes": 1544400
+    },
+    {
+      "season": 4,
+      "opening_cash": 912524999.9999996,
+      "closing_cash": 1049403749.9999995,
+      "money_growth": 0.1499999999999999,
+      "squads": [
+        18,
+        18,
+        18,
+        18,
+        18,
+        18
+      ],
+      "academies": [
+        24,
+        21,
+        24,
+        21,
+        23,
+        24
+      ],
+      "retained_python_bytes": 1778971,
+      "peak_python_bytes": 1828457
+    },
+    {
+      "season": 5,
+      "opening_cash": 1049403749.9999995,
+      "closing_cash": 1206814312.4999993,
+      "money_growth": 0.1499999999999999,
+      "squads": [
+        18,
+        18,
+        18,
+        18,
+        18,
+        18
+      ],
+      "academies": [
+        22,
+        24,
+        23,
+        24,
+        24,
+        23
+      ],
+      "retained_python_bytes": 2132902,
+      "peak_python_bytes": 2167561
+    }
+  ],
+  "native_match_physics": false
+}

@@ -20,8 +20,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    with op.batch_alter_table('Match', schema=None) as batch_op:
-        batch_op.create_index('ix_match_season_year', ['season_year'], unique=False)
+    bind = op.get_bind()
+    if 'ix_match_season_year' not in {i['name'] for i in sa.inspect(bind).get_indexes('Match')}:
+        with op.batch_alter_table('Match', schema=None) as batch_op:
+            batch_op.create_index('ix_match_season_year', ['season_year'], unique=False)
 
     bind = op.get_bind()
     duplicate_seasons = bind.execute(sa.text(
@@ -32,8 +34,9 @@ def upgrade() -> None:
             "SeasonReport contains duplicate years; reconcile them before applying "
             f"the uniqueness constraint: {[row[0] for row in duplicate_seasons]}"
         )
-    with op.batch_alter_table('SeasonReport', schema=None) as batch_op:
-        batch_op.create_unique_constraint('uq_season_report_season_year', ['season_year'])
+    if not any(c['column_names'] == ['season_year'] for c in sa.inspect(bind).get_unique_constraints('SeasonReport')):
+        with op.batch_alter_table('SeasonReport', schema=None) as batch_op:
+            batch_op.create_unique_constraint('uq_season_report_season_year', ['season_year'])
 
     duplicate_transfers = bind.execute(sa.text(
         "SELECT season_year FROM TransferReport GROUP BY season_year HAVING COUNT(*) > 1"
@@ -43,8 +46,9 @@ def upgrade() -> None:
             "TransferReport contains duplicate years; reconcile them before applying "
             f"the uniqueness constraint: {[row[0] for row in duplicate_transfers]}"
         )
-    with op.batch_alter_table('TransferReport', schema=None) as batch_op:
-        batch_op.create_unique_constraint('uq_transfer_report_season_year', ['season_year'])
+    if not any(c['column_names'] == ['season_year'] for c in sa.inspect(bind).get_unique_constraints('TransferReport')):
+        with op.batch_alter_table('TransferReport', schema=None) as batch_op:
+            batch_op.create_unique_constraint('uq_transfer_report_season_year', ['season_year'])
 
     # ### end Alembic commands ###
 

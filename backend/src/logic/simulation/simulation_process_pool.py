@@ -128,9 +128,12 @@ def _dynamic_queue_worker_runner(
                 t_match_end = time.perf_counter()
                 res_dict = res.to_dict() if hasattr(res, "to_dict") else dict(res)
                 res_dict["match_duration_sec"] = round(t_match_end - t_match_start, 3)
+                res_dict['_execution'] = {'worker_id': w_id, 'pid': os.getpid(),
+                                          'started': t_match_start, 'ended': t_match_end}
                 if in_flight_dict is not None:
                     in_flight_dict[w_id] = None
-                result_queue.put({"success": True, "match_id": worker.match_id, "data": res_dict})
+                result_queue.put({"success": True, "match_id": worker.match_id, "data": res_dict,
+                                  "worker_id": w_id, "lease_token": fix.get('__lease_token')})
             except Exception as ex:
                 if in_flight_dict is not None:
                     in_flight_dict[w_id] = None
@@ -138,6 +141,7 @@ def _dynamic_queue_worker_runner(
                 result_queue.put({
                     "success": False,
                     "match_id": fix.get("match_id"),
+                    "worker_id": w_id, "lease_token": fix.get('__lease_token'),
                     "error": str(ex),
                     "traceback": traceback.format_exc()
                 })
@@ -148,6 +152,7 @@ def _dynamic_queue_worker_runner(
         result_queue.put({
             "success": False,
             "match_id": f"worker_{w_id}_init_fatal",
+            "worker_id": w_id,
             "error": f"Worker initialization failed: {ex}",
             "traceback": traceback.format_exc()
         })
@@ -249,193 +254,92 @@ class SimulationProcessPool:
         else:
             return self._run_central_batched_pool(fixtures, ckpt_path, tikick_dir, max_steps, replay_mode)
 
-    def _run_dynamic_queue_pool(
-        self,
-        fixtures: List[Dict[str, Any]],
-        ckpt_path: str,
-        tikick_dir: str,
-        max_steps: int,
-        replay_mode: ReplayMode
-    ) -> List[Dict[str, Any]]:
-        """
-        Executes centralized GPU/CPU batched inference under a Fail-Fast fault contract.
-        If any worker pipe disconnects, times out, or raises an error, the batch immediately aborts,
-        cleans up all child processes, and raises a descriptive RuntimeError.
-        """
-        ctx = mp.get_context("spawn")
-        manager = ctx.Manager()
-        in_flight_dict = manager.dict()
-        task_queue = ctx.Queue()
+    def _run_dynamic_queue_pool(self, fixtures, ckpt_path, tikick_dir, max_steps, replay_mode):
+        """Assign each fixture before dispatch; ownership never depends on dequeue."""
+        from collections import deque
+        import uuid
+        ctx = mp.get_context('spawn')
+        ids = [str(f['match_id']) for f in fixtures]
+        if len(set(ids)) != len(ids):
+            raise ValueError('Fixture IDs must be unique within a batch')
+        pending = deque(ids)
+        by_id = dict(zip(ids, fixtures))
+        retries = dict.fromkeys(ids, 0)
+        results = {}
         result_queue = ctx.Queue()
+        count = min(self.num_workers, len(fixtures))
+        queues, processes, assigned = {}, {}, {}
+        watchdog = max(180.0 if replay_mode == ReplayMode.FULL_STATE else 90.0,
+                       max_steps * (0.15 if replay_mode == ReplayMode.FULL_STATE else 0.06))
 
-        num_fixtures = len(fixtures)
-        workers_to_spawn = min(self.num_workers, num_fixtures)
+        def spawn(index):
+            queues[index] = ctx.Queue(maxsize=1)
+            core = self.physical_cores[index % len(self.physical_cores)] if self.use_affinity and self.physical_cores else None
+            processes[index] = ctx.Process(target=_dynamic_queue_worker_runner,
+                args=(index, queues[index], result_queue, ckpt_path, tikick_dir,
+                      max_steps, replay_mode.value, core, None))
+            processes[index].start()
 
-        # Enqueue all fixtures into task queue
-        for fix in fixtures:
-            task_queue.put(fix)
-
-        processes = []
-        for w_id in range(workers_to_spawn):
-            in_flight_dict[w_id] = None
-            core_pin = (
-                self.physical_cores[w_id % len(self.physical_cores)]
-                if (self.use_affinity and self.physical_cores)
-                else None
-            )
-            p = ctx.Process(
-                target=_dynamic_queue_worker_runner,
-                args=(
-                    w_id,
-                    task_queue,
-                    result_queue,
-                    ckpt_path,
-                    tikick_dir,
-                    max_steps,
-                    replay_mode.value,
-                    core_pin,
-                    in_flight_dict
-                )
-            )
-            processes.append(p)
-            p.start()
-
-        fixtures_by_id = {str(f["match_id"]): f for f in fixtures}
-        fixture_states = {str(f["match_id"]): "QUEUED" for f in fixtures}
-        retry_counts = {str(f["match_id"]): 0 for f in fixtures}
-        results_by_id = {}
-        max_retries = 2
-
-        def clean_partial_artifacts(fix: Dict[str, Any]):
-            for k in ["trajectory_file", "trace_npz", "states_file", "trace_dump"]:
-                filepath = fix.get(k)
-                if filepath and os.path.exists(filepath):
-                    try:
-                        os.remove(filepath)
-                    except OSError:
-                        pass
+        def retry(mid, error):
+            if mid in results:
+                return
+            if retries[mid] >= 2:
+                raise RuntimeError(f'Simulation worker failed on match {mid}: {error}')
+            retries[mid] += 1
+            pending.appendleft(mid)
 
         try:
-            # A full 3,000-tick recording is materially longer than the old
-            # 1,200-tick workload, especially when recording native states.
-            watchdog_timeout = max(180.0 if replay_mode == ReplayMode.FULL_STATE else 90.0,
-                                   max_steps * (0.15 if replay_mode == ReplayMode.FULL_STATE else 0.06))
-
-            while len(results_by_id) < num_fixtures:
-                t_now = time.monotonic()
-
-                # Synchronize in-flight worker states with fixture_states
-                for w_idx in range(len(processes)):
-                    raw_inflight = in_flight_dict.get(w_idx)
-                    curr_inflight = raw_inflight.get("match_id") if isinstance(raw_inflight, dict) else raw_inflight
-                    if curr_inflight and curr_inflight in fixture_states and fixture_states[curr_inflight] != "SUCCESS":
-                        fixture_states[curr_inflight] = f"RUNNING({w_idx})"
-
+            for index in range(count):
+                spawn(index)
+            while len(results) < len(fixtures):
+                for index in range(count):
+                    if index not in assigned and pending:
+                        mid, token = pending.popleft(), uuid.uuid4().hex
+                        assigned[index] = (mid, token, time.monotonic())
+                        queues[index].put({**by_id[mid], '__lease_token': token})
                 try:
-                    msg = result_queue.get(timeout=0.5)
-                except Exception:
-                    # 1. Per-Fixture Watchdog: Monitor running workers for execution hangs
-                    for idx, p in enumerate(processes):
-                        raw_inflight = in_flight_dict.get(idx)
-                        if raw_inflight and isinstance(raw_inflight, dict):
-                            stuck_m_id = raw_inflight.get("match_id")
-                            start_t = raw_inflight.get("start_time", t_now)
-                            elapsed = t_now - start_t
-                            if elapsed > watchdog_timeout and p.is_alive():
-                                print(f"[SUPERVISOR] WATCHDOG: Fixture {stuck_m_id} on worker {idx} (PID {p.pid}) hung for {elapsed:.1f}s (>{watchdog_timeout}s). Terminating stuck worker...")
-                                try:
-                                    p.kill()
-                                    p.join(timeout=1.0)
-                                except Exception:
-                                    pass
-
-                        # 2. Monitor worker process health & recover in-flight jobs on crash or watchdog kill
-                        if not p.is_alive():
-                            raw_inflight = in_flight_dict.get(idx)
-                            lost_m_id = raw_inflight.get("match_id") if isinstance(raw_inflight, dict) else raw_inflight
-
-                            lost_ids = []
-                            if lost_m_id and lost_m_id in fixtures_by_id and lost_m_id not in results_by_id:
-                                lost_ids.append(lost_m_id)
-
-                            for m_to_retry in lost_ids:
-                                if retry_counts[m_to_retry] < max_retries:
-                                    retry_counts[m_to_retry] += 1
-                                    print(f"[SUPERVISOR] Recovering match {m_to_retry} (PID {p.pid}). Auto-retrying (Attempt {retry_counts[m_to_retry]}/{max_retries})...")
-                                    fixture_states[m_to_retry] = "RETRY_PENDING"
-                                    fix = fixtures_by_id[m_to_retry]
-                                    clean_partial_artifacts(fix)
-                                    task_queue.put(fix)
-                                    fixture_states[m_to_retry] = "QUEUED"
-                                else:
-                                    fixture_states[m_to_retry] = "FAILED"
-
-                            in_flight_dict[idx] = None
-
-                            # Respawn replacement worker to drain remaining queue
-                            core_pin = (
-                                self.physical_cores[idx % len(self.physical_cores)]
-                                if (self.use_affinity and self.physical_cores)
-                                else None
-                            )
-                            new_p = ctx.Process(
-                                target=_dynamic_queue_worker_runner,
-                                args=(
-                                    idx,
-                                    task_queue,
-                                    result_queue,
-                                    ckpt_path,
-                                    tikick_dir,
-                                    max_steps,
-                                    replay_mode.value,
-                                    core_pin,
-                                    in_flight_dict
-                                )
-                            )
-                            processes[idx] = new_p
-                            new_p.start()
-                    continue
-
-                m_id = str(msg.get("match_id", ""))
-                if not msg["success"]:
-                    if m_id in fixtures_by_id and retry_counts[m_id] < max_retries:
-                        retry_counts[m_id] += 1
-                        print(f"[SUPERVISOR] Auto-retrying failed match {m_id} (Attempt {retry_counts[m_id]}/{max_retries})...")
-                        fixture_states[m_id] = "RETRY_PENDING"
-                        fix = fixtures_by_id[m_id]
-                        clean_partial_artifacts(fix)
-                        task_queue.put(fix)
-                        fixture_states[m_id] = "QUEUED"
-                        continue
-                    else:
-                        fixture_states[m_id] = "FAILED"
-                        for p in processes:
-                            if p.is_alive():
-                                p.terminate()
-                        raise RuntimeError(
-                            f"Simulation worker failed on match {msg['match_id']}: {msg['error']}\n{msg.get('traceback', '')}"
-                        )
-
-                # Result Deduplication Guarantee
-                if m_id not in results_by_id:
-                    results_by_id[m_id] = msg["data"]
-                    fixture_states[m_id] = "SUCCESS"
-
-            # Send termination sentinels to cleanly shutdown workers
-            for _ in range(workers_to_spawn):
-                task_queue.put(None)
+                    message = result_queue.get(timeout=0.25)
+                except queue.Empty:
+                    message = None
+                if message:
+                    index = message.get('worker_id')
+                    lease = assigned.get(index)
+                    if lease and message.get('match_id') == lease[0] and message.get('lease_token') == lease[1]:
+                        assigned.pop(index)
+                        if message['success']:
+                            results[lease[0]] = message['data']
+                        else:
+                            retry(lease[0], message.get('error', 'unknown failure'))
+                    elif lease and str(message.get('match_id', '')).endswith('_init_fatal'):
+                        processes[index].join(timeout=1)
+                        if processes[index].is_alive():
+                            processes[index].terminate()
+                for index, process in list(processes.items()):
+                    lease = assigned.get(index)
+                    timed_out = lease and time.monotonic() - lease[2] > watchdog
+                    if timed_out and process.is_alive():
+                        process.kill()
+                        process.join(timeout=2)
+                    if not process.is_alive():
+                        process.join(timeout=1)
+                        lease = assigned.pop(index, None)
+                        if lease:
+                            retry(lease[0], 'worker exited or exceeded timeout')
+                        queues[index].cancel_join_thread()
+                        queues[index].close()
+                        if len(results) < len(fixtures):
+                            spawn(index)
+            return [results[mid] for mid in ids]
         finally:
-            for p in processes:
-                if p.is_alive():
-                    p.terminate()
-                p.join(timeout=1)
-
-        return [
-            results_by_id[str(f["match_id"])].to_dict()
-            if hasattr(results_by_id[str(f["match_id"])], "to_dict")
-            else results_by_id[str(f["match_id"])]
-            for f in fixtures
-        ]
+            for process in processes.values():
+                if process.is_alive():
+                    process.terminate()
+                process.join(timeout=2)
+            for task_queue in queues.values():
+                task_queue.cancel_join_thread()
+                task_queue.close()
+            result_queue.cancel_join_thread()
+            result_queue.close()
 
     def _run_central_batched_pool(
         self,

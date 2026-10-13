@@ -83,6 +83,7 @@ class SimulationSpec:
     away_pressing_intensity: float = 50.0
     away_tempo: float = 50.0
     apply_tactical_bias: bool = False
+    tactical_changes: List[Dict[str, Any]] = field(default_factory=list)
     home_color: str = "#e63946"
     away_color: str = "#2196f3"
     trace_npz: Optional[str] = None
@@ -97,6 +98,8 @@ class SimulationSpec:
     spec_version: str = "1.0.0"
 
     def __post_init__(self):
+        from logic.tactical_schedule import validate_changes
+        validate_changes(self.tactical_changes, self.max_steps)
         if self.fixture_id and (not self.match_id or self.match_id == "match_0"):
             self.match_id = str(self.fixture_id)
         else:
@@ -151,6 +154,7 @@ class SimulationSpec:
             away_pressing_intensity=float(d.get("away_pressing_intensity", 50.0)),
             away_tempo=float(d.get("away_tempo", 50.0)),
             apply_tactical_bias=bool(d.get("apply_tactical_bias", False)),
+            tactical_changes=d.get('tactical_changes', []),
             home_color=str(d.get("home_color", "#e63946")),
             away_color=str(d.get("away_color", "#2196f3")),
             trace_npz=trace_npz,
@@ -589,6 +593,9 @@ class GRFMatchExecutor:
         4. Updates state machines (xG, passes, shots, score, half-time, goals).
         5. Extracts next 20 canonical observations.
         """
+        provenance = getattr(raw_actions, 'policy_provenance', None)
+        if provenance is not None:
+            self.policy_provenance = dict(provenance)
         if self.done or self.step_idx >= self.max_steps:
             return np.zeros((20, 268), dtype=np.float32), True, {}
 
@@ -607,6 +614,11 @@ class GRFMatchExecutor:
         right_active = [int(o['active']) for o in self.raw_obs[10:20]]
         l_pos = np.array(o_prev['left_team'], dtype=np.float32)[left_active]
         r_pos = np.array(o_prev['right_team'], dtype=np.float32)[right_active]
+        from logic.tactical_schedule import apply_changes
+        changes = apply_changes(self.spec.tactical_changes, self.step_idx, self.home_tactics, self.away_tactics, self.curr_score)
+        for change in changes:
+            change['minute'] = max(1, min(90, int(self.step_idx / max(self.native_duration, 1) * 90)))
+            self.events.append(change)
         home_anchors = self.home_tactics.get_formation_anchors(is_right_team=False)
         away_anchors = self.away_tactics.get_formation_anchors(is_right_team=False)
 
@@ -617,7 +629,7 @@ class GRFMatchExecutor:
 
         # Tactical modulation
         l_act, r_act_tactical = l_act_raw, r_act_raw
-        if self.spec.apply_tactical_bias:
+        if self.spec.apply_tactical_bias or self.spec.tactical_changes:
             l_act = apply_tactical_action_bias(
                 l_act_raw, l_pos, [home_anchors[i] for i in left_active], self.home_tactics,
                 team_side="left", ball_xy=ball_xy, is_team_in_possession=(b_own_prev == 0)

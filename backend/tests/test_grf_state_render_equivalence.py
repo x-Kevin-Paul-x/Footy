@@ -8,12 +8,16 @@ Verifies that:
 """
 
 import sys
+import shutil
 import json
 import subprocess
 from pathlib import Path
 import pytest
 
 from logic.grf_native_runner import GRFNativeRunner, to_wsl_path
+
+pytestmark = pytest.mark.skipif(sys.platform != 'win32' or shutil.which('wsl') is None,
+                                reason='This adapter integration suite requires Windows with WSL')
 
 
 def test_grf_state_observation_and_render_equivalence():

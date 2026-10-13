@@ -334,7 +334,7 @@ const Dashboard: React.FC = () => {
 
           <Button
             variant="contained"
-            onClick={() => runSimMutation.mutate()}
+            onClick={() => runSimMutation.mutate(undefined)}
             disabled={runSimMutation.isPending || activeRun?.status === 'running'}
             startIcon={(runSimMutation.isPending || activeRun?.status === 'running') ? <CircularProgress size={18} color="inherit" /> : <AddIcon />}
             className="finnova-tactile-btn"
@@ -710,7 +710,7 @@ const Dashboard: React.FC = () => {
 
       {/* 4. BOTTOM ANALYTICS: MULTI-SEASON TRENDS & TOP PLAYERS */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '7fr 5fr' }, gap: 3.5, mt: 1 }}>
-        
+
         {/* Multi-Season Trend Chart */}
         <Card className="finnova-card">
           <CardContent sx={{ p: 3 }}>

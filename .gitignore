@@ -105,3 +105,14 @@ backend/verification/season_*/
 backend/verification/tmp/
 backend/verification/latest.json
 backend/native/runtime/
+backend/commentary/.venv-tts/
+backend/commentary/artifacts/
+backend/commentary/output/
+backend/commentary/bin/
+backend/commentary/models/llm/
+backend/commentary/models/tts/
+.coverage
+coverage.xml
+.ruff_cache/
+.mypy_cache/
+docs/evidence/training/**/*.pt

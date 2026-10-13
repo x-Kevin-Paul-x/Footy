@@ -71,3 +71,24 @@ def test_get_ml_report_rejects_path_traversal(tmp_path, monkeypatch):
 
     # FastAPI returns 404/400/HTTPException for invalid path segments or traversal depending on endpoint definition
     assert response.status_code in (404, 400)
+
+
+def test_evaluation_acceptance_and_process_result_are_pollable():
+    client = TestClient(api_fastapi.app)
+    response = client.post('/api/v1/run-ml-eval', json={'models': ['dqn_seed_42.pt'],
+                                                     'episodes': 1, 'teams': 6,
+                                                     'season_length': 2, 'seed': 1234})
+    assert response.status_code == 202
+    accepted = response.json()
+    status = client.get(accepted['status_url'])
+    assert status.status_code == 200
+    job = status.json()
+    assert job['status'] == 'completed', job.get('error_message')
+    assert job['result']['config']['engine'] == 'synthetic_management'
+    assert job['result']['config']['seeds'] == [1234]
+
+
+def test_evaluation_rejects_paths_and_invalid_bounds():
+    client = TestClient(api_fastapi.app)
+    assert client.post('/api/v1/run-ml-eval', json={'models': ['../../outside.pt']}).status_code == 422
+    assert client.post('/api/v1/run-ml-eval', json={'episodes': 0}).status_code == 422

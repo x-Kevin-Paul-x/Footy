@@ -1,0 +1,231 @@
+[
+  {
+    "name": "League",
+    "sql": "\nCREATE TABLE \"League\" (\n\tleague_id INTEGER NOT NULL, \n\tname VARCHAR NOT NULL, \n\tseason_year INTEGER NOT NULL, \n\tPRIMARY KEY (league_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "Manager",
+    "sql": "\nCREATE TABLE \"Manager\" (\n\tmanager_id INTEGER NOT NULL, \n\tname VARCHAR NOT NULL, \n\texperience_level INTEGER NOT NULL, \n\tteam_id INTEGER, \n\tprofile_id INTEGER, \n\ttransfers_made INTEGER NOT NULL, \n\tsuccessful_transfers INTEGER NOT NULL, \n\tformation VARCHAR NOT NULL, \n\tmatches_played INTEGER NOT NULL, \n\twins INTEGER NOT NULL, \n\tdraws INTEGER NOT NULL, \n\tlosses INTEGER NOT NULL, \n\ttotal_rewards FLOAT NOT NULL, \n\tPRIMARY KEY (manager_id), \n\tUNIQUE (name), \n\tFOREIGN KEY(team_id) REFERENCES \"Team\" (team_id), \n\tFOREIGN KEY(profile_id) REFERENCES \"ManagerProfile\" (profile_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerProfile",
+    "sql": "\nCREATE TABLE \"ManagerProfile\" (\n\tprofile_id INTEGER NOT NULL, \n\trisk_aversion FLOAT NOT NULL, \n\tfinancial_preference FLOAT NOT NULL, \n\tyouth_preference FLOAT NOT NULL, \n\taggression FLOAT NOT NULL, \n\tpatience FLOAT NOT NULL, \n\tPRIMARY KEY (profile_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "SeasonReport",
+    "sql": "\nCREATE TABLE \"SeasonReport\" (\n\treport_id INTEGER NOT NULL, \n\tseason_year INTEGER NOT NULL, \n\tchampion_team VARCHAR NOT NULL, \n\treport_data VARCHAR NOT NULL, \n\tcreated_at VARCHAR NOT NULL, \n\tPRIMARY KEY (report_id), \n\tUNIQUE (season_year)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "SimulationRun",
+    "sql": "\nCREATE TABLE \"SimulationRun\" (\n\trun_id VARCHAR NOT NULL, \n\tseason_year INTEGER NOT NULL, \n\tcreated_at VARCHAR NOT NULL, \n\tstarted_at VARCHAR, \n\tfinished_at VARCHAR, \n\theartbeat_at VARCHAR, \n\tstatus VARCHAR NOT NULL, \n\trender_mode VARCHAR NOT NULL, \n\ttotal_matches INTEGER NOT NULL, \n\tmatches_played INTEGER NOT NULL, \n\tcancel_requested BOOLEAN NOT NULL, \n\terror_message VARCHAR, \n\tmetadata_json VARCHAR, \n\tPRIMARY KEY (run_id)\n)\n\n",
+    "indexes": [
+      "CREATE INDEX ix_simrun_season_status ON \"SimulationRun\" (season_year, status)"
+    ]
+  },
+  {
+    "name": "Team",
+    "sql": "\nCREATE TABLE \"Team\" (\n\tteam_id INTEGER NOT NULL, \n\tname VARCHAR NOT NULL, \n\tbudget FLOAT NOT NULL, \n\tweekly_budget FLOAT NOT NULL, \n\ttransfer_budget FLOAT NOT NULL, \n\twage_budget FLOAT NOT NULL, \n\tmanager_id INTEGER, \n\tPRIMARY KEY (team_id), \n\tUNIQUE (name), \n\tFOREIGN KEY(manager_id) REFERENCES \"Manager\" (manager_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "TransferReport",
+    "sql": "\nCREATE TABLE \"TransferReport\" (\n\treport_id INTEGER NOT NULL, \n\tseason_year INTEGER NOT NULL, \n\treport_data VARCHAR NOT NULL, \n\tcreated_at VARCHAR NOT NULL, \n\tPRIMARY KEY (report_id), \n\tUNIQUE (season_year)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "Coach",
+    "sql": "\nCREATE TABLE \"Coach\" (\n\tcoach_id INTEGER NOT NULL, \n\tname VARCHAR NOT NULL, \n\tspecialty VARCHAR NOT NULL, \n\texperience_level INTEGER NOT NULL, \n\tteam_id INTEGER, \n\tlearning_rate FLOAT NOT NULL, \n\texploration_rate FLOAT NOT NULL, \n\tPRIMARY KEY (coach_id), \n\tFOREIGN KEY(team_id) REFERENCES \"Team\" (team_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "LeagueHistoricalStandings",
+    "sql": "\nCREATE TABLE \"LeagueHistoricalStandings\" (\n\thistorical_standing_id INTEGER NOT NULL, \n\tleague_id INTEGER NOT NULL, \n\tseason_year INTEGER NOT NULL, \n\tstandings VARCHAR NOT NULL, \n\tPRIMARY KEY (historical_standing_id), \n\tFOREIGN KEY(league_id) REFERENCES \"League\" (league_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "LeagueTeams",
+    "sql": "\nCREATE TABLE \"LeagueTeams\" (\n\tleague_id INTEGER NOT NULL, \n\tteam_id INTEGER NOT NULL, \n\tseason_year INTEGER NOT NULL, \n\tPRIMARY KEY (league_id, team_id, season_year), \n\tFOREIGN KEY(league_id) REFERENCES \"League\" (league_id), \n\tFOREIGN KEY(team_id) REFERENCES \"Team\" (team_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerEpisodeRewards",
+    "sql": "\nCREATE TABLE \"ManagerEpisodeRewards\" (\n\trowid INTEGER NOT NULL, \n\tmanager_id INTEGER NOT NULL, \n\treward FLOAT NOT NULL, \n\tPRIMARY KEY (rowid), \n\tFOREIGN KEY(manager_id) REFERENCES \"Manager\" (manager_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerFormationPreferences",
+    "sql": "\nCREATE TABLE \"ManagerFormationPreferences\" (\n\tformation_preference_id INTEGER NOT NULL, \n\tmanager_id INTEGER NOT NULL, \n\tformation VARCHAR NOT NULL, \n\tpreference_weight FLOAT NOT NULL, \n\tdate VARCHAR NOT NULL, \n\tPRIMARY KEY (formation_preference_id), \n\tFOREIGN KEY(manager_id) REFERENCES \"Manager\" (manager_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerMarketLearning",
+    "sql": "\nCREATE TABLE \"ManagerMarketLearning\" (\n\tmarket_learning_id INTEGER NOT NULL, \n\tmanager_id INTEGER NOT NULL, \n\tprice_trends VARCHAR NOT NULL, \n\tposition_demand VARCHAR NOT NULL, \n\tseasonal_patterns VARCHAR NOT NULL, \n\tdate VARCHAR NOT NULL, \n\tPRIMARY KEY (market_learning_id), \n\tFOREIGN KEY(manager_id) REFERENCES \"Manager\" (manager_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerMarketMemoryPositionDemand",
+    "sql": "\nCREATE TABLE \"ManagerMarketMemoryPositionDemand\" (\n\trowid INTEGER NOT NULL, \n\tmanager_id INTEGER NOT NULL, \n\tposition VARCHAR NOT NULL, \n\tdemand_value FLOAT NOT NULL, \n\ttimestamp VARCHAR NOT NULL, \n\tPRIMARY KEY (rowid), \n\tFOREIGN KEY(manager_id) REFERENCES \"Manager\" (manager_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerMarketMemoryPriceHistory",
+    "sql": "\nCREATE TABLE \"ManagerMarketMemoryPriceHistory\" (\n\trowid INTEGER NOT NULL, \n\tmanager_id INTEGER NOT NULL, \n\tposition VARCHAR NOT NULL, \n\tprice FLOAT NOT NULL, \n\ttimestamp VARCHAR NOT NULL, \n\tPRIMARY KEY (rowid), \n\tFOREIGN KEY(manager_id) REFERENCES \"Manager\" (manager_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerMarketMemorySeasonalFactors",
+    "sql": "\nCREATE TABLE \"ManagerMarketMemorySeasonalFactors\" (\n\trowid INTEGER NOT NULL, \n\tmanager_id INTEGER NOT NULL, \n\tmonth INTEGER NOT NULL, \n\tfactor FLOAT NOT NULL, \n\tPRIMARY KEY (rowid), \n\tFOREIGN KEY(manager_id) REFERENCES \"Manager\" (manager_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerMarketMemorySuccessPatterns",
+    "sql": "\nCREATE TABLE \"ManagerMarketMemorySuccessPatterns\" (\n\trowid INTEGER NOT NULL, \n\tmanager_id INTEGER NOT NULL, \n\tpattern_data VARCHAR NOT NULL, \n\tdate VARCHAR NOT NULL, \n\tPRIMARY KEY (rowid), \n\tFOREIGN KEY(manager_id) REFERENCES \"Manager\" (manager_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerMarketStateHistory",
+    "sql": "\nCREATE TABLE \"ManagerMarketStateHistory\" (\n\tmarket_state_id INTEGER NOT NULL, \n\tmanager_id INTEGER NOT NULL, \n\tmarket_trend VARCHAR NOT NULL, \n\tposition_demand VARCHAR NOT NULL, \n\tseasonal_factor VARCHAR NOT NULL, \n\tdate VARCHAR NOT NULL, \n\tPRIMARY KEY (market_state_id), \n\tFOREIGN KEY(manager_id) REFERENCES \"Manager\" (manager_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerMatchHistory",
+    "sql": "\nCREATE TABLE \"ManagerMatchHistory\" (\n\trowid INTEGER NOT NULL, \n\tmanager_id INTEGER NOT NULL, \n\tmatch_data VARCHAR NOT NULL, \n\tdate VARCHAR NOT NULL, \n\tPRIMARY KEY (rowid), \n\tFOREIGN KEY(manager_id) REFERENCES \"Manager\" (manager_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerMatchRewards",
+    "sql": "\nCREATE TABLE \"ManagerMatchRewards\" (\n\trowid INTEGER NOT NULL, \n\tmanager_id INTEGER NOT NULL, \n\treward FLOAT NOT NULL, \n\tPRIMARY KEY (rowid), \n\tFOREIGN KEY(manager_id) REFERENCES \"Manager\" (manager_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerMemoryUsage",
+    "sql": "\nCREATE TABLE \"ManagerMemoryUsage\" (\n\tmemory_usage_id INTEGER NOT NULL, \n\tmanager_id INTEGER NOT NULL, \n\ttransfer_history_size INTEGER NOT NULL, \n\tmarket_memory_size VARCHAR NOT NULL, \n\tvalue_estimates_size INTEGER NOT NULL, \n\tdate VARCHAR NOT NULL, \n\tPRIMARY KEY (memory_usage_id), \n\tFOREIGN KEY(manager_id) REFERENCES \"Manager\" (manager_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerPerformanceHistory",
+    "sql": "\nCREATE TABLE \"ManagerPerformanceHistory\" (\n\tperformance_id INTEGER NOT NULL, \n\tmanager_id INTEGER NOT NULL, \n\ttotal_rewards FLOAT NOT NULL, \n\twin_rate FLOAT NOT NULL, \n\tdraw_rate FLOAT NOT NULL, \n\texploration_rate FLOAT NOT NULL, \n\tlearning_rate FLOAT NOT NULL, \n\tmatches_played INTEGER NOT NULL, \n\twins INTEGER NOT NULL, \n\tdraws INTEGER NOT NULL, \n\tlosses INTEGER NOT NULL, \n\taverage_reward FLOAT NOT NULL, \n\ttransfer_success_rate FLOAT NOT NULL, \n\tcurrent_exploration_rate FLOAT NOT NULL, \n\tdate VARCHAR NOT NULL, \n\tPRIMARY KEY (performance_id), \n\tFOREIGN KEY(manager_id) REFERENCES \"Manager\" (manager_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerQTable",
+    "sql": "\nCREATE TABLE \"ManagerQTable\" (\n\trowid INTEGER NOT NULL, \n\tmanager_id INTEGER NOT NULL, \n\tqtable_type VARCHAR NOT NULL, \n\tqtable_data VARCHAR NOT NULL, \n\tPRIMARY KEY (rowid), \n\tFOREIGN KEY(manager_id) REFERENCES \"Manager\" (manager_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerTactics",
+    "sql": "\nCREATE TABLE \"ManagerTactics\" (\n\tmanager_id INTEGER NOT NULL, \n\toffensive INTEGER NOT NULL, \n\tdefensive INTEGER NOT NULL, \n\tpressure INTEGER NOT NULL, \n\tPRIMARY KEY (manager_id), \n\tFOREIGN KEY(manager_id) REFERENCES \"Manager\" (manager_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerTransferAttempts",
+    "sql": "\nCREATE TABLE \"ManagerTransferAttempts\" (\n\trowid INTEGER NOT NULL, \n\tmanager_id INTEGER NOT NULL, \n\tattempt_successful BOOLEAN NOT NULL, \n\tPRIMARY KEY (rowid), \n\tFOREIGN KEY(manager_id) REFERENCES \"Manager\" (manager_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerTransferValueEstimates",
+    "sql": "\nCREATE TABLE \"ManagerTransferValueEstimates\" (\n\trowid INTEGER NOT NULL, \n\tmanager_id INTEGER NOT NULL, \n\tplayer_name VARCHAR NOT NULL, \n\testimated_value FLOAT NOT NULL, \n\tPRIMARY KEY (rowid), \n\tFOREIGN KEY(manager_id) REFERENCES \"Manager\" (manager_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "Match",
+    "sql": "\nCREATE TABLE \"Match\" (\n\tmatch_id INTEGER NOT NULL, \n\tsimulation_run_id VARCHAR, \n\tmatch_number INTEGER NOT NULL, \n\tdate VARCHAR NOT NULL, \n\tseason_year INTEGER NOT NULL, \n\thome_team_id INTEGER NOT NULL, \n\taway_team_id INTEGER NOT NULL, \n\thome_goals INTEGER NOT NULL, \n\taway_goals INTEGER NOT NULL, \n\thome_possession FLOAT NOT NULL, \n\taway_possession FLOAT NOT NULL, \n\tweather VARCHAR NOT NULL, \n\tintensity VARCHAR NOT NULL, \n\thome_passes_attempted INTEGER NOT NULL, \n\taway_passes_attempted INTEGER NOT NULL, \n\thome_passes_completed INTEGER NOT NULL, \n\taway_passes_completed INTEGER NOT NULL, \n\thome_fouls INTEGER NOT NULL, \n\taway_fouls INTEGER NOT NULL, \n\thome_corners INTEGER NOT NULL, \n\taway_corners INTEGER NOT NULL, \n\thome_offsides INTEGER NOT NULL, \n\taway_offsides INTEGER NOT NULL, \n\thome_yellow_cards INTEGER NOT NULL, \n\taway_yellow_cards INTEGER NOT NULL, \n\thome_red_cards INTEGER NOT NULL, \n\taway_red_cards INTEGER NOT NULL, \n\thome_injuries INTEGER NOT NULL, \n\taway_injuries INTEGER NOT NULL, \n\ttrace_file VARCHAR, \n\tvideo_url VARCHAR, \n\tPRIMARY KEY (match_id), \n\tCONSTRAINT uq_match_run_season_number UNIQUE (simulation_run_id, season_year, match_number), \n\tFOREIGN KEY(simulation_run_id) REFERENCES \"SimulationRun\" (run_id)\n)\n\n",
+    "indexes": [
+      "CREATE INDEX \"ix_Match_simulation_run_id\" ON \"Match\" (simulation_run_id)",
+      "CREATE INDEX ix_match_season_year ON \"Match\" (season_year)"
+    ]
+  },
+  {
+    "name": "Player",
+    "sql": "\nCREATE TABLE \"Player\" (\n\tplayer_id INTEGER NOT NULL, \n\tjersey_number INTEGER, \n\tname VARCHAR NOT NULL, \n\tage INTEGER NOT NULL, \n\tposition VARCHAR NOT NULL, \n\tteam_id INTEGER, \n\tpotential INTEGER NOT NULL, \n\twage FLOAT NOT NULL, \n\tcontract_length INTEGER NOT NULL, \n\tsquad_role VARCHAR NOT NULL, \n\tPRIMARY KEY (player_id), \n\tUNIQUE (name), \n\tFOREIGN KEY(team_id) REFERENCES \"Team\" (team_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "TeamStatistics",
+    "sql": "\nCREATE TABLE \"TeamStatistics\" (\n\tteam_id INTEGER NOT NULL, \n\twins INTEGER NOT NULL, \n\tdraws INTEGER NOT NULL, \n\tlosses INTEGER NOT NULL, \n\tgoals_for INTEGER NOT NULL, \n\tgoals_against INTEGER NOT NULL, \n\tPRIMARY KEY (team_id), \n\tFOREIGN KEY(team_id) REFERENCES \"Team\" (team_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "CoachPlayerProgress",
+    "sql": "\nCREATE TABLE \"CoachPlayerProgress\" (\n\trowid INTEGER NOT NULL, \n\tcoach_id INTEGER NOT NULL, \n\tplayer_name VARCHAR NOT NULL, \n\tfocus_attribute VARCHAR NOT NULL, \n\timprovement VARCHAR NOT NULL, \n\tPRIMARY KEY (rowid), \n\tFOREIGN KEY(coach_id) REFERENCES \"Coach\" (coach_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "CoachSessionResults",
+    "sql": "\nCREATE TABLE \"CoachSessionResults\" (\n\trowid INTEGER NOT NULL, \n\tcoach_id INTEGER NOT NULL, \n\tmethod VARCHAR NOT NULL, \n\taverage_improvement FLOAT NOT NULL, \n\tplayers_improved INTEGER NOT NULL, \n\tPRIMARY KEY (rowid), \n\tFOREIGN KEY(coach_id) REFERENCES \"Coach\" (coach_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "CoachTrainingEffectiveness",
+    "sql": "\nCREATE TABLE \"CoachTrainingEffectiveness\" (\n\tcoach_id INTEGER NOT NULL, \n\tmethod VARCHAR NOT NULL, \n\teffectiveness FLOAT NOT NULL, \n\tPRIMARY KEY (coach_id, method), \n\tFOREIGN KEY(coach_id) REFERENCES \"Coach\" (coach_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerLineupHistory",
+    "sql": "\nCREATE TABLE \"ManagerLineupHistory\" (\n\tlineup_id INTEGER NOT NULL, \n\tmanager_id INTEGER NOT NULL, \n\tmatch_id INTEGER NOT NULL, \n\tdate VARCHAR NOT NULL, \n\tPRIMARY KEY (lineup_id), \n\tFOREIGN KEY(manager_id) REFERENCES \"Manager\" (manager_id), \n\tFOREIGN KEY(match_id) REFERENCES \"Match\" (match_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerTransferHistory",
+    "sql": "\nCREATE TABLE \"ManagerTransferHistory\" (\n\ttransfer_id INTEGER NOT NULL, \n\tplayer_id INTEGER NOT NULL, \n\tfrom_team_id INTEGER NOT NULL, \n\tto_team_id INTEGER NOT NULL, \n\tamount FLOAT NOT NULL, \n\tday INTEGER NOT NULL, \n\tseason_year INTEGER NOT NULL, \n\tPRIMARY KEY (transfer_id), \n\tFOREIGN KEY(player_id) REFERENCES \"Player\" (player_id), \n\tFOREIGN KEY(from_team_id) REFERENCES \"Team\" (team_id), \n\tFOREIGN KEY(to_team_id) REFERENCES \"Team\" (team_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "MatchEvent",
+    "sql": "\nCREATE TABLE \"MatchEvent\" (\n\tevent_id INTEGER NOT NULL, \n\tmatch_id INTEGER NOT NULL, \n\tminute INTEGER NOT NULL, \n\ttype VARCHAR NOT NULL, \n\tplayer VARCHAR, \n\tteam VARCHAR, \n\tdetails VARCHAR, \n\tPRIMARY KEY (event_id), \n\tFOREIGN KEY(match_id) REFERENCES \"Match\" (match_id)\n)\n\n",
+    "indexes": [
+      "CREATE INDEX \"ix_MatchEvent_match_id\" ON \"MatchEvent\" (match_id)"
+    ]
+  },
+  {
+    "name": "MatchShots",
+    "sql": "\nCREATE TABLE \"MatchShots\" (\n\tmatch_id INTEGER NOT NULL, \n\tteam VARCHAR NOT NULL, \n\ttotal INTEGER NOT NULL, \n\ton_target INTEGER NOT NULL, \n\tPRIMARY KEY (match_id, team), \n\tFOREIGN KEY(match_id) REFERENCES \"Match\" (match_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "PlayerAttributes",
+    "sql": "\nCREATE TABLE \"PlayerAttributes\" (\n\tplayer_id INTEGER NOT NULL, \n\tattribute_type VARCHAR NOT NULL, \n\tsub_attribute VARCHAR NOT NULL, \n\tvalue FLOAT NOT NULL, \n\tPRIMARY KEY (player_id, attribute_type, sub_attribute), \n\tFOREIGN KEY(player_id) REFERENCES \"Player\" (player_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "PlayerForm",
+    "sql": "\nCREATE TABLE \"PlayerForm\" (\n\tplayer_id INTEGER NOT NULL, \n\tform VARCHAR NOT NULL, \n\tPRIMARY KEY (player_id), \n\tFOREIGN KEY(player_id) REFERENCES \"Player\" (player_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "PlayerInjuryHistory",
+    "sql": "\nCREATE TABLE \"PlayerInjuryHistory\" (\n\tinjury_id INTEGER NOT NULL, \n\tplayer_id INTEGER NOT NULL, \n\tinjury_type VARCHAR NOT NULL, \n\tduration INTEGER NOT NULL, \n\tdate VARCHAR NOT NULL, \n\tPRIMARY KEY (injury_id), \n\tFOREIGN KEY(player_id) REFERENCES \"Player\" (player_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "PlayerStats",
+    "sql": "\nCREATE TABLE \"PlayerStats\" (\n\tplayer_id INTEGER NOT NULL, \n\tgoals INTEGER NOT NULL, \n\tassists INTEGER NOT NULL, \n\tappearances INTEGER NOT NULL, \n\tfitness FLOAT NOT NULL, \n\tclean_sheets INTEGER NOT NULL, \n\tyellow_cards INTEGER NOT NULL, \n\tred_cards INTEGER NOT NULL, \n\tPRIMARY KEY (player_id), \n\tFOREIGN KEY(player_id) REFERENCES \"Player\" (player_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "TeamCoaches",
+    "sql": "\nCREATE TABLE \"TeamCoaches\" (\n\tteam_id INTEGER NOT NULL, \n\tcoach_id INTEGER NOT NULL, \n\tPRIMARY KEY (team_id, coach_id), \n\tFOREIGN KEY(team_id) REFERENCES \"Team\" (team_id), \n\tFOREIGN KEY(coach_id) REFERENCES \"Coach\" (coach_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "TransferHistory",
+    "sql": "\nCREATE TABLE \"TransferHistory\" (\n\ttransfer_id INTEGER NOT NULL, \n\tplayer_id INTEGER NOT NULL, \n\tfrom_team_id INTEGER NOT NULL, \n\tto_team_id INTEGER NOT NULL, \n\tamount FLOAT NOT NULL, \n\tday INTEGER NOT NULL, \n\tseason_year INTEGER NOT NULL, \n\tPRIMARY KEY (transfer_id), \n\tFOREIGN KEY(player_id) REFERENCES \"Player\" (player_id), \n\tFOREIGN KEY(from_team_id) REFERENCES \"Team\" (team_id), \n\tFOREIGN KEY(to_team_id) REFERENCES \"Team\" (team_id)\n)\n\n",
+    "indexes": [
+      "CREATE INDEX ix_transfer_season_year ON \"TransferHistory\" (season_year)"
+    ]
+  },
+  {
+    "name": "TransferListing",
+    "sql": "\nCREATE TABLE \"TransferListing\" (\n\tlisting_id INTEGER NOT NULL, \n\tplayer_id INTEGER NOT NULL, \n\tasking_price FLOAT NOT NULL, \n\tselling_team_id INTEGER NOT NULL, \n\tlisted_date INTEGER NOT NULL, \n\texpires_in INTEGER NOT NULL, \n\tPRIMARY KEY (listing_id), \n\tFOREIGN KEY(player_id) REFERENCES \"Player\" (player_id), \n\tFOREIGN KEY(selling_team_id) REFERENCES \"Team\" (team_id)\n)\n\n",
+    "indexes": []
+  },
+  {
+    "name": "ManagerLineupPlayers",
+    "sql": "\nCREATE TABLE \"ManagerLineupPlayers\" (\n\tlineup_id INTEGER NOT NULL, \n\tplayer_id INTEGER NOT NULL, \n\tPRIMARY KEY (lineup_id, player_id), \n\tFOREIGN KEY(lineup_id) REFERENCES \"ManagerLineupHistory\" (lineup_id), \n\tFOREIGN KEY(player_id) REFERENCES \"Player\" (player_id)\n)\n\n",
+    "indexes": []
+  }
+]

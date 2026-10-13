@@ -1,3 +1,5 @@
+> Historical September 2026 audit context. For current implementation and evidence, see [current status](05_current_status.md) and [dated verification](verification_2026_10_13.md).
+
 # Implementation Plan
 
 > **Implementation verification — 6 September 2026:** This file is the original target design and remains useful as the detailed specification. It is not a completion record. The current implementation is a mixture of verified, partial, and open work; see [05_current_status.md](05_current_status.md) for code-backed status and [Backend_audit_PLAN.md](Backend_audit_PLAN.md) for the remaining execution order.

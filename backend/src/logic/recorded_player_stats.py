@@ -82,6 +82,8 @@ def recorded_player_totals(matches, event_rows, team_names):
 
 def apply_native_player_statistics(prepared, result):
     """Keep native batch player totals in sync with the same recorded events."""
+    from logic.availability import apply_recorded_availability
+    apply_recorded_availability(prepared, result)
     for side, lineup, conceded in (('home', prepared.home_lineup, result['score'][1]),
                                   ('away', prepared.away_lineup, result['score'][0])):
         for player in lineup:

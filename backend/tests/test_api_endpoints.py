@@ -29,9 +29,9 @@ def test_get_seasons_endpoint():
     assert isinstance(response.json()["seasons"], list)
 
 def test_run_simulation_status(monkeypatch):
-    monkeypatch.setattr("api_fastapi.footy_main.main", lambda: None)
+    monkeypatch.setattr("api_fastapi.footy_main.main", lambda *args: None)
     response = client.post("/run-simulation")
-    assert response.status_code == 200
+    assert response.status_code == 202
     json_data = response.json()
     assert "status" in json_data
     assert json_data["status"] in ["success", "busy"]

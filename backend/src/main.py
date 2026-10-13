@@ -54,7 +54,7 @@ def create_premier_league():
         "Nottingham Forest", "Sheffield United", "Tottenham", "West Ham",
         "Wolves", "Burnley"
     ]
-    
+
     # More realistic budgets based on actual Premier League finances
     budgets = {
         "Manchester City": 650000000,
@@ -78,15 +78,15 @@ def create_premier_league():
         "Sheffield United": 100000000,
         "Luton": 95000000
     }
-    
+
     premier_league = League("Premier League")
     premier_league.teams = []  # Clear default teams
-    
+
     logger.info("Creating Premier League teams with enhanced financial system...")
-    
+
     from database.team_db import get_all_teams
     from database.player_db import get_all_players
-    
+
     existing_teams = get_all_teams()
     existing_teams_map = {t[1]: t for t in existing_teams}
     all_db_players = get_all_players() if existing_teams else []
@@ -170,25 +170,25 @@ def create_premier_league():
             premier_league.teams.append(team)
             continue
         team = Team(team_name, budgets[team_name])
-        
+
         # Save team to database
         team.save_to_database()
-        
+
         premier_league.teams.append(team)
-        
+
         # Get correct dynamic ML model config. Falls back to dqn_best if not provided
         ml_model_name = os.environ.get("FOOTY_ACTIVE_ML_MODEL", "dqn_best.pt")
         model_path = ML_MODELS_DIR / ml_model_name
         has_dqn = os.path.exists(model_path)
-        
+
         manager = Manager(profile=None, use_dqn=has_dqn)  # Will use random profile
         if has_dqn:
             manager.brain.load_model(str(model_path))
             logger.info(f"Loaded ML model: {ml_model_name} for {team_name}")
-            
+
         manager.save_to_database()
         team.set_manager(manager)
-        
+
         # Create goalkeeper squad
         goalkeepers = []
         for i in range(2):
@@ -197,19 +197,19 @@ def create_premier_league():
             gk.save_to_database(team.team_id)
             team.add_player(gk, force=True)
             goalkeepers.append(gk)
-        
+
         # Create balanced outfield squad with realistic roles
         positions_needed = {
             "CB": 4, "LB": 2, "RB": 2,  # 8 defenders
-            "CDM": 2, "CM": 4, "CAM": 2,  # 8 midfielders  
+            "CDM": 2, "CM": 4, "CAM": 2,  # 8 midfielders
             "LW": 2, "RW": 2, "ST": 3   # 7 forwards
         }
-        
+
         players_created = 0
         for position, count in positions_needed.items():
             for i in range(count):
                 player = FootballPlayer.create_player(position=position)
-                
+
                 # Assign squad roles realistically
                 if players_created < 11:
                     player.squad_role = "STARTER"
@@ -217,22 +217,22 @@ def create_premier_league():
                     player.squad_role = "BENCH"
                 else:
                     player.squad_role = "RESERVE"
-                
+
                 # Save player to database
                 player.save_to_database(team.team_id)
                 team.add_player(player, force=True)
                 players_created += 1
-        
+
         # Generate initial youth academy players
         youth_count = random.randint(3, 6)
         for _ in range(youth_count):
             youth_player = team.generate_youth_player()
             youth_player.save_to_database(team.team_id)
-        
+
         # Process initial weekly finances
         financial_summary = team.process_weekly_finances()
-    
-    return premier_league   
+
+    return premier_league
 
 def print_league_table(table):
     """Print formatted league table with enhanced information"""
@@ -240,12 +240,12 @@ def print_league_table(table):
     logger.info("=" * 85)
     logger.info(f"{'Pos':<4} {'Team':<20} {'Pld':<4} {'W':<3} {'D':<3} {'L':<3} {'GF':<4} {'GA':<4} {'GD':<4} {'Pts':<4} {'Form':<6}")
     logger.info("-" * 85)
-    
+
     for pos, (team, stats) in enumerate(table, 1):
         # Calculate recent form (last 5 games)
         recent_results = stats.get('recent_form', [])
         form_str = ''.join(recent_results[-5:]) if recent_results else "-----"
-        
+
         logger.info(f"{pos:<4} {team:<20} {stats['played']:<4} {stats['won']:<3} {stats['drawn']:<3} {stats['lost']:<3} "
               f"{stats['gf']:<4} {stats['ga']:<4} {stats['gd']:<4} {stats['points']:<4} {form_str:<6}")
 
@@ -255,18 +255,18 @@ def print_financial_summary(teams):
     logger.info("=" * 100)
     logger.info(f"{'Team':<20} {'Budget':<12} {'Revenue':<12} {'Expenses':<12} {'Profit/Loss':<12} {'Health':<10}")
     logger.info("-" * 100)
-    
+
     for team in teams:
         financials = team.get_financials()
         profit_loss = financials['annual_revenue'] - financials['annual_expenses']
-        
+
         logger.info(f"{team.name:<20} £{team.budget/1000000:>8.1f}M £{financials['annual_revenue']/1000000:>8.1f}M "
               f"£{financials['annual_expenses']/1000000:>8.1f}M £{profit_loss/1000000:>+8.1f}M {financials['financial_health']:<10}")
 
 def print_transfer_summary(transfer_market):
     """Print transfer window summary"""
     analysis = transfer_market.get_market_analysis()
-    
+
     logger.info(f"\nTransfer Market Summary")
     logger.info("=" * 60)
     logger.info(f"Current Window: {analysis['current_window'] or 'CLOSED'}")
@@ -276,10 +276,10 @@ def print_transfer_summary(transfer_market):
     logger.info(f"Total Market Value: £{analysis['total_market_value']/1000000:.1f}M")
     logger.info(f"Transfers Completed: {analysis['transfers_completed']}")
     logger.info(f"Loans Completed: {analysis['loans_completed']}")
-    
+
     if analysis['positions']:
         logger.info(f"\nMost Active Positions:")
-        sorted_positions = sorted(analysis['positions'].items(), 
+        sorted_positions = sorted(analysis['positions'].items(),
                                 key=lambda x: x[1]['count'], reverse=True)[:5]
         for pos, data in sorted_positions:
             logger.info(f"  {pos}: {data['count']} players, Avg Value: £{data['average_value']/1000000:.1f}M")
@@ -297,13 +297,13 @@ def print_injury_report(teams):
                     'recovery': getattr(player, 'recovery_time', 0),
                     'position': player.position
                 })
-    
+
     if all_injuries:
         logger.info(f"\nCurrent Injury List ({len(all_injuries)} players)")
         logger.info("=" * 70)
         logger.info(f"{'Player':<20} {'Team':<15} {'Position':<8} {'Injury':<10} {'Days Out':<8}")
         logger.info("-" * 70)
-        
+
         for injury in sorted(all_injuries, key=lambda x: x['recovery'], reverse=True):
             logger.info(f"{injury['player']:<20} {injury['team']:<15} {injury['position']:<8} "
                   f"{injury['injury']:<10} {injury['recovery']:<8}")
@@ -321,15 +321,15 @@ def print_youth_prospects(teams):
                 'potential': player.potential,
                 'current_rating': player.get_overall_rating()
             })
-    
+
     # Sort by potential and current rating
     all_youth.sort(key=lambda x: (x['potential'], x['current_rating']), reverse=True)
-    
+
     logger.info(f"\nTop Youth Prospects")
     logger.info("=" * 80)
     logger.info(f"{'Name':<20} {'Team':<15} {'Age':<4} {'Pos':<5} {'Current':<8} {'Potential':<9}")
     logger.info("-" * 80)
-    
+
     for prospect in all_youth[:15]:  # Top 15
         logger.info(f"{prospect['name']:<20} {prospect['team']:<15} {prospect['age']:<4} "
               f"{prospect['position']:<5} {prospect['current_rating']:<8.1f} {prospect['potential']:<9}")
@@ -488,7 +488,7 @@ def sync_simulation_state_to_db(premier_league, transfer_market):
 
 def save_live_season_report(premier_league, transfer_market):
     try:
-        report_filename = REPORTS_DIR / 'season_reports' / f'season_report_{premier_league.season_year}.json'
+        report_filename = REPORTS_DIR / 'season_reports' / f'{getattr(premier_league, "simulation_run_id", "legacy")}_season_report_{premier_league.season_year}.json'
         table = premier_league.get_final_table()
         champions_name = table[0][0] if table else "TBD"
 
@@ -529,37 +529,37 @@ def save_live_season_report(premier_league, transfer_market):
             "transfer_summary": transfer_market.get_market_analysis() if transfer_market else {},
         }
 
-        save_season_report_to_db(premier_league.season_year, champions_name, live_report)
+        save_season_report_to_db(premier_league.season_year, champions_name, live_report, simulation_run_id=getattr(premier_league, "simulation_run_id", None))
     except Exception as e:
         logger.warning(f"Live season report DB save notice: {e}")
 
-def simulate_season_with_transfers(premier_league, transfer_market, run_id=None, render_mode=None):
+def simulate_season_with_transfers(premier_league, transfer_market, run_id=None, render_mode=None, event_callback=None):
     """Simulate a season with active transfer market and run-scoped tracking"""
     logger.info(f"\nSeason {premier_league.season_year} - Starting with Transfer Windows (run_id={run_id})")
-    
+
     # Summer transfer window (days 1-61)
     logger.info("\n=== SUMMER TRANSFER WINDOW OPEN ===")
     for day in range(1, 62):
         transfer_market.advance_day(premier_league.teams)
-        
+
         # AI transfer activity (every 3 days)
         if day % 3 == 0:
             # AI managers act on their scouting lists
             transfer_market.simulate_ai_transfers(premier_league.teams)
-        
+
         # Print progress every 20 days
         if day % 20 == 0:
             analysis = transfer_market.get_market_analysis()
             logger.info(f"Day {day}: {analysis['transfers_completed']} transfers completed, "
                   f"{analysis['total_listings']} active listings")
-    
+
     logger.info("=== SUMMER TRANSFER WINDOW CLOSED ===")
     print_transfer_summary(transfer_market)
     sync_simulation_state_to_db(premier_league, transfer_market)
-    
+
     # Generate schedule and play first half of season
     premier_league.generate_schedule()
-    
+
     # Play matches until January (concurrent fixtures within chronological matchdays)
     matches_played = 0
     total_matches = len(premier_league.schedule)
@@ -597,6 +597,8 @@ def simulate_season_with_transfers(premier_league, transfer_market, run_id=None,
             raise RuntimeError(f"Simulation run {run_id} was cancelled")
         with get_db_session() as db:
             persisted = db.query(DBMatch).filter(DBMatch.simulation_run_id == run_id).count()
+        from database.campaign_db import checkpoint_campaign
+        checkpoint_campaign(premier_league, persisted)
         update_simulation_run(run_id, matches_played=persisted)
 
     first_half_matches = sum(len(r) for r in schedule_rounds[:january_round])
@@ -633,6 +635,10 @@ def simulate_season_with_transfers(premier_league, transfer_market, run_id=None,
                     video_url=match_result.get("video_url") if match_result else None
                 )
                 matches_played += 1
+                if event_callback and match_result:
+                    from logic.events import match_events
+                    for event in match_events(match_result, run_id, match_result.get('match_id', str(match_number))):
+                        event_callback(event)
 
                 if match_result:
                     attendance_factor = 1.0 if match_result['score'][0] >= match_result['score'][1] else 0.9
@@ -718,6 +724,10 @@ def simulate_season_with_transfers(premier_league, transfer_market, run_id=None,
                         video_url=match_result.get("video_url") if match_result else None
                     )
                     matches_played += 1
+                    if event_callback and match_result:
+                        from logic.events import match_events
+                        for event in match_events(match_result, run_id, match_result.get('match_id', str(match_number))):
+                            event_callback(event)
 
                     if match_result:
                         attendance_factor = 1.0 if match_result['score'][0] >= match_result['score'][1] else 0.9
@@ -764,10 +774,10 @@ def simulate_season_with_transfers(premier_league, transfer_market, run_id=None,
     sync_simulation_state_to_db(premier_league, transfer_market)
     checkpoint_run()
     premier_league.last_matches_played = matches_played
-    
+
     return premier_league.get_final_table()
 
-def _run_main(run_id: str = None, render_mode: str = None):
+def _run_main(run_id: str = None, render_mode: str = None, event_callback=None, season_year=None, seasons=None):
     """Enhanced main function with run-scoped simulation"""
     from database.db_setup import init_simulation_run, clean_old_simulation_data, create_tables
     from database.session import get_db_session
@@ -780,32 +790,39 @@ def _run_main(run_id: str = None, render_mode: str = None):
 
     ensure_report_directories()
 
-    num_seasons = int(os.environ.get("FOOTY_NUM_SEASONS", str(NUM_SEASONS)))
-    
+    num_seasons = seasons if seasons is not None else int(os.environ.get("FOOTY_NUM_SEASONS", str(NUM_SEASONS)))
+
     # Create league and transfer market
     premier_league = create_premier_league()
+    if season_year is not None:
+        premier_league.season_year = season_year
     premier_league.simulation_run_id = run_id
     premier_league.render_mode = eff_render_mode
+    for team in premier_league.teams:
+        team.simulation_run_id = run_id
     transfer_market = TransferMarket()
-    
+    transfer_market.simulation_run_id = run_id
+    transfer_market.season_year = premier_league.season_year
+    transfer_market.registered_teams = premier_league.teams
+
     logger.info(f"\nInitial Financial Overview (run_id={run_id}):")
     print_financial_summary(premier_league.teams)
-    
+
     for season_index in range(num_seasons):
         logger.info(f"\n{'='*60}")
         logger.info(f"SEASON {premier_league.season_year} (Run: {run_id})")
         logger.info(f"{'='*60}")
-        
+
         # Simulate season with transfer activity
         transfer_market.season_year = premier_league.season_year
         transfer_market._init_transfer_log()
         final_table = simulate_season_with_transfers(
-            premier_league, transfer_market, run_id=run_id, render_mode=eff_render_mode
+            premier_league, transfer_market, run_id=run_id, render_mode=eff_render_mode, event_callback=event_callback
         )
-        
+
         # Generate comprehensive season report
         full_season_report = premier_league.generate_season_report()
-        
+
         # Print results
         print_league_table(full_season_report['table'])
 
@@ -813,19 +830,19 @@ def _run_main(run_id: str = None, render_mode: str = None):
         # Enhanced reporting
         champions_name = full_season_report['champions']
         logger.info(f"\n Premier League Champions: {champions_name}!")
-        
+
         champion_manager_details = full_season_report['champions_manager']
         logger.info(f"\n Manager of the Season: {champion_manager_details['name']} ({champions_name})")
         logger.info(f"   Experience Level: {champion_manager_details['experience']}")
         logger.info(f"   Formation: {champion_manager_details['formation']}")
         logger.info(f"   Transfer Success Rate: {champion_manager_details['transfer_success_rate']:.1f}%")
-        
+
         # Print team of the season
         logger.info(f"\n Premier League Team of the Season")
         logger.info("=" * 85)
         logger.info(f"{'Position':<8} {'Name':<20} {'Team':<15} {'Age':<4} {'Rating':<7} {'Value':<10}")
         logger.info("-" * 85)
-        
+
         for player_data in full_season_report['best_players']:
             rating = 0
             if "attributes" in player_data and player_data["attributes"]:
@@ -834,18 +851,26 @@ def _run_main(run_id: str = None, render_mode: str = None):
                            sum(len(cat) for cat in player_data["attributes"].values())
                 except Exception:
                     rating = 0
-            
+
             logger.info(f"{player_data.get('position', 'N/A'):<8} {player_data.get('name', 'N/A'):<20} "
                   f"{player_data.get('team', 'N/A'):<15} {player_data.get('age', 0):<4} "
                   f"{rating:<7.1f} £{player_data.get('value', 0)/1000000:<8.1f}M")
-        
+
         # Additional reports
         print_financial_summary(premier_league.teams)
         print_injury_report(premier_league.teams)
         print_youth_prospects(premier_league.teams)
-        
+
         # Save comprehensive season report to file and DB
-        report_filename = REPORTS_DIR / 'season_reports' / f'season_report_{premier_league.season_year}.json'
+        for team in premier_league.teams:
+            team.settle_financial_year()
+        sync_simulation_state_to_db(premier_league, transfer_market)
+        from database.campaign_db import checkpoint_campaign
+        with get_db_session() as db:
+            from database.models import Match as DBMatch
+            committed = db.query(DBMatch).filter(DBMatch.simulation_run_id == run_id).count()
+        checkpoint_campaign(premier_league, committed)
+        report_filename = REPORTS_DIR / 'season_reports' / f'{getattr(premier_league, "simulation_run_id", "legacy")}_season_report_{premier_league.season_year}.json'
         logger.info(f"\n Saving detailed season {premier_league.season_year} report to '{report_filename}' and database...")
 
         # Enhanced report with financial data
@@ -854,7 +879,7 @@ def _run_main(run_id: str = None, render_mode: str = None):
             "financial_summary": [team.get_financials() for team in premier_league.teams],
             "transfer_summary": transfer_market.get_market_analysis(),
             "injury_summary": {
-                "total_injuries": sum(1 for team in premier_league.teams 
+                "total_injuries": sum(1 for team in premier_league.teams
                                     for player in team.players if hasattr(player, 'is_injured') and player.is_injured),
                 "injury_types": {}
             },
@@ -868,7 +893,7 @@ def _run_main(run_id: str = None, render_mode: str = None):
             json.dumps(enhanced_report, indent=2, default=str),
             encoding="utf-8",
         )
-        save_season_report_to_db(premier_league.season_year, champions_name, enhanced_report)
+        save_season_report_to_db(premier_league.season_year, champions_name, enhanced_report, simulation_run_id=run_id)
 
         transfer_report_data = {
             "season": premier_league.season_year,
@@ -876,7 +901,11 @@ def _run_main(run_id: str = None, render_mode: str = None):
             "transfer_history": transfer_market.transfer_history,
             "loan_history": transfer_market.loan_history
         }
-        save_transfer_report_to_db(premier_league.season_year, transfer_report_data)
+        save_transfer_report_to_db(premier_league.season_year, transfer_report_data, simulation_run_id=run_id)
+        if event_callback:
+            from logic.events import DomainEvent
+            event_callback(DomainEvent(event='SEASON_END', run_id=run_id,
+                                      data={'season_year': premier_league.season_year, 'champion': champions_name}))
 
         completed_season = premier_league.season_year
         logger.info(f"\n Season {completed_season} completed successfully!")
@@ -896,10 +925,10 @@ def _run_main(run_id: str = None, render_mode: str = None):
         raise
 
 
-def main(run_id: str = None, render_mode: str = None):
+def main(run_id: str = None, render_mode: str = None, event_callback=None, season_year=None, seasons=None):
     """Run a season and durably record terminal failure for managed runs."""
     try:
-        return _run_main(run_id=run_id, render_mode=render_mode)
+        return _run_main(run_id=run_id, render_mode=render_mode, event_callback=event_callback, season_year=season_year, seasons=seasons)
     except Exception as exc:
         if run_id:
             try:

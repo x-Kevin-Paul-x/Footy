@@ -14,6 +14,12 @@ if sys.platform == "win32":
 # Add src to sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
+# Every benchmark gets a new isolated workspace before configuration imports.
+import tempfile
+_benchmark_root = Path(tempfile.mkdtemp(prefix='footy_season_benchmark_'))
+os.environ['FOOTY_DATA_DIR'] = str(_benchmark_root / 'data')
+os.environ['FOOTY_REPORTS_DIR'] = str(_benchmark_root / 'reports')
+
 from database.session import DB_FILE
 from database.db_setup import initialize_fresh_database
 from config import REPORTS_DIR, DATA_DIR
@@ -53,7 +59,7 @@ def clean_all_data():
 
     # 3. Wipe all existing tables in database cleanly (handles locked handles)
     from database.db_setup import reset_database
-    reset_database(DB_FILE)
+    reset_database(DB_FILE, allow_reset=True)
     print(f"  ✓ Wiped all tables in database: {os.path.basename(DB_FILE)}")
 
     # 4. Re-initialize clean fresh database schema

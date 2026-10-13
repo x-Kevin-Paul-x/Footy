@@ -29,8 +29,9 @@ def run_episode(
     policy: str = "trained",
     training: bool = False,
     epsilon: float = 0.0,
+    seed: Optional[int] = None,
 ) -> Dict[str, Any]:
-    obs, info = env.reset()
+    obs, info = env.reset(seed=seed)
     total_reward = 0.0
     done = False
     step_count = 0
@@ -47,6 +48,9 @@ def run_episode(
             action = 0
         elif policy == "youth_focus":
             action = 1 if action_mask[1] > 0.5 else 0
+        elif policy == "rule_based":
+            # Prefer value signings, then cheap depth; never exceed the mask.
+            action = next((a for a in (3, 2, 1, 0) if action_mask[a] > 0.5), 0)
         else:
             action = 0
 
@@ -78,6 +82,11 @@ def train_agent(args):
     if not TORCH_AVAILABLE:
         print("Error: PyTorch is required to train DQN.")
         sys.exit(1)
+    from logic.evaluation_service import seed_everything
+    import json
+    import torch
+    torch.set_num_threads(1)
+    seed_everything(args.seed)
 
     env = FootyEnv(num_teams=args.teams, season_length=args.season_length, fast_mode=args.fast_mode)
     agent = DQNAgent(obs_dim=env.obs_dim, action_dim=env.action_dim, hidden_dim=128, learning_rate=3e-4)
@@ -91,10 +100,13 @@ def train_agent(args):
 
     best_reward = -float("inf")
     start_time = time.time()
+    curve = []
 
     for episode in range(1, args.episodes + 1):
         epsilon = max(eps_end, eps_start - (eps_start - eps_end) * (episode / eps_decay))
-        result = run_episode(env, agent=agent, policy="trained", training=True, epsilon=epsilon)
+        result = run_episode(env, agent=agent, policy="trained", training=True, epsilon=epsilon, seed=args.seed + episode)
+        curve.append({'episode': episode, 'seed': args.seed + episode, 'reward': result['reward'],
+                      'points': result['final_points'], 'position': result['final_position'], 'epsilon': epsilon})
 
         if result["reward"] > best_reward:
             best_reward = result["reward"]
@@ -113,106 +125,47 @@ def train_agent(args):
 
     final_path = output_dir / "dqn_final.pt"
     agent.save(final_path)
+    (output_dir / 'training_curve.json').write_text(json.dumps({'config': vars(args), 'episodes': curve}, indent=2), encoding='utf-8')
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        figure, axis = plt.subplots(figsize=(8, 4))
+        axis.plot([row['episode'] for row in curve], [row['reward'] for row in curve], alpha=0.4, label='Episode reward')
+        window = min(10, len(curve))
+        average = np.convolve([row['reward'] for row in curve], np.ones(window) / window, mode='valid')
+        axis.plot(range(window, len(curve) + 1), average, label=f'{window}-episode mean')
+        axis.set(xlabel='Training episode', ylabel='Management reward', title=f'DQN training, seed {args.seed}')
+        axis.legend()
+        figure.tight_layout()
+        figure.savefig(output_dir / 'training_curve.svg')
+        plt.close(figure)
+    except ImportError:
+        print('Training log saved; install matplotlib to render the curve')
+    env.close()
     elapsed = time.time() - start_time
     print(f"Training completed in {elapsed:.2f}s. Checkpoints saved to {output_dir}")
 
 
 def evaluate_agent(args):
-    print(f"--- Evaluating model {args.model} against baselines ({args.episodes} episodes each) ---")
-    env = FootyEnv(num_teams=args.teams, season_length=args.season_length, fast_mode=args.fast_mode)
-    agent = DQNAgent(obs_dim=env.obs_dim, action_dim=env.action_dim)
-    
-    if args.model and Path(args.model).exists():
-        agent.load(args.model)
-        print(f"Loaded model weights from {args.model}")
-    else:
-        print(f"Notice: Model {args.model} not found; running with initialized weights.")
-
-    start_time = time.time()
-    policies_to_test = ["trained", "random", "do_nothing", "youth_focus"]
-    summaries = {}
-
-    for pol in policies_to_test:
-        episodes_data = []
-        for _ in range(args.episodes):
-            res = run_episode(env, agent=agent, policy=pol, training=False, epsilon=0.0)
-            episodes_data.append(res)
-        summaries[pol] = summarize_episode_results(pol, episodes_data)
-
-    runtime = {
-        "elapsed_seconds": round(time.time() - start_time, 2),
-        "episodes_per_policy": args.episodes,
-    }
-    config = {
-        "num_teams": args.teams,
-        "season_length": args.season_length,
-        "fast_mode": args.fast_mode,
-    }
-
-    report = build_evaluation_report(
-        model_path=args.model or "none",
-        config=config,
-        runtime=runtime,
-        policy_summaries=summaries,
-        primary_policy_name="trained",
-    )
-
-    report_dir = args.report_dir or "ml/reports"
-    report_file = save_evaluation_report(report, report_dir)
-    print(f"Evaluation report saved to: {report_file}")
-    print(f"Primary Policy Avg Reward: {summaries['trained']['avg_reward']:.2f}, Avg Rank: {summaries['trained']['avg_position']:.2f}")
+    from logic.evaluation_service import evaluate
+    model = Path(args.model).resolve()
+    report = evaluate({'models': [model.name], 'episodes': args.episodes, 'seed': args.seed,
+                       'teams': args.teams, 'season_length': args.season_length, 'fast_mode': True},
+                      model.parent, args.report_dir)
+    print(f"Evaluation report: {report['report_name']}")
 
 
 def compare_agents(args):
-    print(f"--- Comparing models: {args.models} ({args.episodes} episodes each) ---")
-    env = FootyEnv(num_teams=args.teams, season_length=args.season_length, fast_mode=args.fast_mode)
-    start_time = time.time()
-    summaries = {}
-    policy_models = {}
-
-    for idx, model_path in enumerate(args.models):
-        policy_name = f"model_{Path(model_path).stem}"
-        agent = DQNAgent(obs_dim=env.obs_dim, action_dim=env.action_dim)
-        if Path(model_path).exists():
-            agent.load(model_path)
-            print(f"Loaded: {model_path}")
-        else:
-            print(f"Warning: {model_path} not found.")
-
-        policy_models[policy_name] = model_path
-        episodes_data = []
-        for _ in range(args.episodes):
-            res = run_episode(env, agent=agent, policy="trained", training=False, epsilon=0.0)
-            episodes_data.append(res)
-        summaries[policy_name] = summarize_episode_results(policy_name, episodes_data)
-
-    # Baseline comparison
-    baseline_data = [run_episode(env, policy="random") for _ in range(args.episodes)]
-    summaries["baseline_random"] = summarize_episode_results("baseline_random", baseline_data)
-
-    runtime = {
-        "elapsed_seconds": round(time.time() - start_time, 2),
-        "episodes_per_policy": args.episodes,
-    }
-    config = {
-        "num_teams": args.teams,
-        "season_length": args.season_length,
-        "fast_mode": args.fast_mode,
-    }
-
-    primary = list(summaries.keys())[0]
-    report = build_evaluation_report(
-        model_path=";".join(args.models),
-        config=config,
-        runtime=runtime,
-        policy_summaries=summaries,
-        primary_policy_name=primary,
-        policy_models=policy_models,
-    )
-
-    report_dir = args.report_dir or "ml/reports"
-    report_file = save_evaluation_report(report, report_dir)
-    print(f"Comparison report saved to: {report_file}")
+    from logic.evaluation_service import evaluate
+    models = [Path(model).resolve() for model in args.models]
+    if len({model.parent for model in models}) != 1:
+        raise ValueError('Compared models must share one model directory')
+    report = evaluate({'models': [model.name for model in models], 'episodes': args.episodes,
+                       'seed': args.seed, 'teams': args.teams,
+                       'season_length': args.season_length, 'fast_mode': True},
+                      models[0].parent, args.report_dir)
+    print(f"Comparison report: {report['report_name']}")
 
 
 def main():
@@ -222,6 +175,7 @@ def main():
     # Train
     train_parser = subparsers.add_parser("train", help="Train Action-Masked DQN")
     train_parser.add_argument("--episodes", type=int, default=100, help="Number of training episodes")
+    train_parser.add_argument('--seed', type=int, default=42)
     train_parser.add_argument("--teams", type=int, default=6, help="Number of teams in simulation")
     train_parser.add_argument("--season-length", type=int, default=20, help="Season fixture length")
     train_parser.add_argument("--fast-mode", action="store_true", default=True, help="Fast simulation mode")
@@ -230,6 +184,7 @@ def main():
     # Eval
     eval_parser = subparsers.add_parser("eval", help="Evaluate DQN against baselines")
     eval_parser.add_argument("--model", type=str, default="ml/models/dqn_best.pt", help="Path to model checkpoint")
+    eval_parser.add_argument("--seed", type=int, default=1000)
     eval_parser.add_argument("--episodes", type=int, default=10, help="Evaluation episodes")
     eval_parser.add_argument("--teams", type=int, default=6, help="Number of teams")
     eval_parser.add_argument("--season-length", type=int, default=20, help="Season fixture length")
@@ -238,6 +193,7 @@ def main():
 
     # Compare
     comp_parser = subparsers.add_parser("compare", help="Compare multiple checkpoints")
+    comp_parser.add_argument("--seed", type=int, default=1000)
     comp_parser.add_argument("--models", nargs="+", required=True, help="List of model checkpoint paths")
     comp_parser.add_argument("--episodes", type=int, default=10, help="Episodes per checkpoint")
     comp_parser.add_argument("--teams", type=int, default=6, help="Number of teams")

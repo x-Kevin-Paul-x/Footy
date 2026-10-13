@@ -26,14 +26,14 @@ class League:
         self.season_year = datetime.now().year
         self.schedule = []  # Store the match schedule
         self.schedule_rounds = []  # Chronological matchdays; one fixture per team per round
-        
+
         # Database attributes
         self.league_id = None
-        
+
         # Create directory for match reports
         self._init_season()
         os.makedirs(self.match_reports_dir, exist_ok=True)
-        
+
         # Initialize TransferMarket for the league instance
         self.transfer_market = TransferMarket(log_path=f"season_{self.season_year}_transfers.txt")
 
@@ -62,7 +62,7 @@ class League:
         data = get_league(league_id)
         if not data:
             return None
-            
+
         league = cls(
             name=data["name"],
             num_teams=data["num_teams"]
@@ -500,10 +500,10 @@ class League:
             "weather": result.get("weather", "N/A"),
             "events": len(result.get("events", []))
         }
-        
+
         filename = f"{self.season_year}_Match_{match_number:04d}.json"
         path = os.path.join(self.match_reports_dir, filename)
-        
+
         with open(path, 'w') as f:
             json.dump(report, f, indent=2)
 
@@ -548,10 +548,10 @@ class League:
             "weather": getattr(match, "weather", "N/A"),
             "intensity": getattr(match, "intensity", 1.0)
         }
-        
+
         filename = f"{datetime.now().year}_Match_{match_number:04d}.json"
         path = os.path.join(self.match_reports_dir, filename)
-        
+
         with open(path, 'w') as f:
             json.dump(report, f, indent=2)
 
@@ -571,23 +571,23 @@ class League:
                     "gd": 0,
                     "recent_form": []
                 }
-        
+
         # Update match stats
         home_goals = result["score"][0]
         away_goals = result["score"][1]
-        
+
         # Home team
         self.standings[home.name]["played"] += 1
         self.standings[home.name]["gf"] += home_goals
         self.standings[home.name]["ga"] += away_goals
         self.standings[home.name]["gd"] = self.standings[home.name]["gf"] - self.standings[home.name]["ga"]
-        
+
         # Away team
         self.standings[away.name]["played"] += 1
         self.standings[away.name]["gf"] += away_goals
         self.standings[away.name]["ga"] += home_goals
         self.standings[away.name]["gd"] = self.standings[away.name]["gf"] - self.standings[away.name]["ga"]
-        
+
         # Update points and form
         if home_goals > away_goals:
             self.standings[home.name]["won"] += 1
@@ -611,7 +611,7 @@ class League:
             # Update form
             self.standings[home.name]["recent_form"].append("D")
             self.standings[away.name]["recent_form"].append("D")
-        
+
         # Keep only last 5 form results
         for team in [home, away]:
             if len(self.standings[team.name]["recent_form"]) > 5:
@@ -650,9 +650,9 @@ class League:
                 "experience": manager.experience_level,
                 "formation": manager.formation,
                 "transfer_success_rate": manager_stats.get("transfer_success_rate", 0.0),
-                "market_trends": manager.analyze_market_trends() 
+                "market_trends": manager.analyze_market_trends()
             }
-        
+
         # Fallback if champion manager not found
         best_fallback_manager = None
         highest_win_rate = -1
@@ -667,7 +667,7 @@ class League:
                         best_fallback_manager = manager
                 elif best_fallback_manager is None:
                     best_fallback_manager = manager
-        
+
         if best_fallback_manager:
             manager_stats = best_fallback_manager.get_stats()
             return {
@@ -715,17 +715,17 @@ class League:
         retirement_age = 36
         for team in self.teams:
             # Age main squad players
+            team.settle_financial_year()
             players_to_remove = []
             for player in team.players:
                 player.age += 1
                 # Reset fitness and injury for new season
                 player.stats["fitness"] = min(100, player.stats.get("fitness", 100) + 30)
-                player.is_injured = False
-                player.recovery_time = 0
+                player.recover_from_injury(42)
                 # Reset cards for new season
                 player.stats["yellow_cards"] = 0
                 player.stats["red_cards"] = 0
-                
+
                 if player.age >= retirement_age:
                     players_to_remove.append(player)
             for player in players_to_remove:
@@ -742,11 +742,13 @@ class League:
                     youth_to_remove.append(player)
             for player in youth_to_remove:
                 team.youth_academy.remove(player)
+            team.youth_academy = sorted([p for p in team.youth_academy if p.age <= 21],
+                                       key=lambda p: p.potential, reverse=True)[:24]
 
             # Generate 3-5 new youth players per season (increased for sustainability)
             for _ in range(random.randint(3, 5)):
                 team.generate_youth_player()
-            
+
             # Ensure minimum squad size of 18 players
             while len(team.players) < 18:
                 # First try to promote from youth academy
@@ -761,16 +763,31 @@ class League:
                     team.promote_youth_player(new_player)
                     new_player.stats["fitness"] = 100
                     new_player.is_injured = False
-            
+
             # Let manager decide additional youth promotions
             if team.manager:
                 team.manager.decide_promotions()
+            # Retirement must not leave a club unable to field each position.
+            groups = [(2, ('GK',)), (6, ('CB', 'LB', 'RB', 'LWB', 'RWB')),
+                      (6, ('CM', 'CDM', 'CAM', 'LM', 'RM')), (4, ('ST', 'CF', 'LW', 'RW'))]
+            from models.player import FootballPlayer
+            for required, positions in groups:
+                present = sum(p.position in positions for p in team.players)
+                for _ in range(max(0, required - present)):
+                    player = FootballPlayer.create_player(age=18, position=positions[0], potential=65)
+                    player.wage = 1000
+                    team.add_player(player, force=True)
+            table = self.get_final_table() if hasattr(self, 'get_final_table') else []
+            rank = next((i + 1 for i, row in enumerate(table) if row[0] == team.name), len(self.teams))
+            team.update_broadcast_allocation(rank, clubs=len(self.teams), pool=100_000_000 * len(self.teams))
 
         # Simulate youth tournament and apply growth
         self.simulate_youth_tournament()
 
         self._init_season()
         print(f"Advanced to season {self.season_year}")
+        for team in self.teams:
+            team.youth_academy = sorted(team.youth_academy, key=lambda p: p.potential, reverse=True)[:24]
 
     def _process_all_contracts(self):
         """Process contract renewals and expirations for all teams."""
@@ -778,13 +795,13 @@ class League:
             players_to_keep = []
             for player in team.players[:]:  # Copy list to avoid modification during iteration
                 player.contract_length -= 1
-                
+
                 # Renew contracts for valuable players before they expire
                 if player.contract_length <= 1:
                     if self._should_auto_renew(player, team):
                         player.contract_length = random.randint(2, 4)  # 2-4 year extension
                         player.wage = player.wage * random.uniform(1.05, 1.15)  # Small wage increase
-                
+
                 # Keep player if contract is valid
                 if player.contract_length > 0:
                     players_to_keep.append(player)
@@ -792,29 +809,29 @@ class League:
                     # Contract expired - player leaves
                     team.remove_player(player)
                     player.team = None
-    
+
     def _should_auto_renew(self, player, team):
         """Determine if a player's contract should be automatically renewed."""
         # Always renew if squad is small
         if len(team.players) <= 18:
             return True
-        
+
         # High-rated players
         if player.get_overall_rating() > 75:
             return True
-        
+
         # Young players with good potential
         if player.age < 26 and player.potential > 70:
             return True
-        
+
         # Key starters
         if player.squad_role == "STARTER":
             return True
-        
+
         # Don't renew old, low-quality players if squad is large
         if player.age > 32 and player.get_overall_rating() < 70:
             return len(team.players) <= 22
-        
+
         # Default: renew to maintain squad
         return len(team.players) <= 22
 
@@ -878,18 +895,18 @@ class League:
         """Calculate how well a player satisfies team needs."""
         squad_needs = team.get_squad_needs()
         position_group = self._get_position_group(player.position)
-        
+
         # Get current and ideal counts for the position
         position_analysis = squad_needs.get("position_analysis", {})
         if position_group not in position_analysis:
             return 0.0
-            
+
         current_count = position_analysis[position_group]["current"]
         ideal_count = position_analysis[position_group]["ideal"]
-        
+
         if ideal_count == 0:
             return 0.0
-            
+
         # Calculate need satisfaction (0.0 to 1.0)
         if current_count < ideal_count:
             return 1.0  # Fills a needed position
@@ -905,7 +922,7 @@ class League:
             "MID": [],
             "FWD": []
         }
-        
+
         for player in team.players:
             if player.position == "GK":
                 position_groups["GK"].append(player)
@@ -943,12 +960,12 @@ class League:
                         intensity = "medium"
                     else:
                         intensity = "low"
-                    
+
                     # Apply higher coach bonus if player matches coach specialty
                     coach_bonus = getattr(coach, 'experience_level', 5) / 10.0
                     if group == coach_specialty:
                         coach_bonus *= 1.5  # 50% bonus for specialized coaching
-                    
+
                     # Apply training with focus on position-specific attributes
                     focus_area = None
                     if group == "GK":
@@ -959,7 +976,7 @@ class League:
                         focus_area = "passing"
                     elif group == "FWD":
                         focus_area = "shooting"
-                    
+
                     player.train_player(
                         intensity=intensity,
                         training_days=3,
@@ -982,9 +999,9 @@ class League:
                 player_info["recovery_time"] = getattr(player_obj, "recovery_time", 0)
                 player_info["injury_history"] = getattr(player_obj, "injury_history", [])
                 # Ensure 'team' field in player_info is just the name string
-                player_info["team"] = team_obj.name 
+                player_info["team"] = team_obj.name
                 players_data.append(player_info)
-            
+
             # Process transfer history
             raw_team_transfer_history = team_obj.statistics["transfer_history"]
             processed_team_transfer_history = []
@@ -1014,7 +1031,7 @@ class League:
                         "day_of_window": None,
                         "message": "Original entry was a malformed string."
                     })
-            
+
             team_detail = {
                 "name": team_obj.name,
                 "budget": team_obj.budget,
@@ -1105,10 +1122,10 @@ if __name__ == "__main__":
         debug_print(f"\n{'='*50}")
         debug_print(f"Season {season + 1}")
         debug_print(f"{'='*50}")
-        
+
         league.generate_schedule()
         league.play_season()
-        
+
         # Print season summary in debug mode
         if args.debug:
             standings = league.get_league_table()
@@ -1119,10 +1136,10 @@ if __name__ == "__main__":
                 debug_print(f"{team_name:<20} {stats['points']:>3} {stats['played']:>3} "
                           f"{stats['won']:>3} {stats['drawn']:>3} {stats['lost']:>3} "
                           f"{stats['gf']:>3} {stats['ga']:>3} {stats['gd']:>3}")
-            
+
             best_manager = league.get_best_manager()
             debug_print(f"\nBest Manager: {best_manager['name']}")
             debug_print(f"Formation: {best_manager['formation']}")
             debug_print(f"Transfer Success Rate: {best_manager['transfer_success_rate']*100:.1f}%")
-        
+
         league.increment_season()

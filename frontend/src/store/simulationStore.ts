@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { SeasonReport } from '../services/api'; // Type-only import
-import { getAvailableSeasons, getCurrentSimulationRun, getSeasonReportData, runSimulation as apiRunSimulation } from '../services/api';
+import { getAvailableSeasons, getSimulationRun, getSeasonReportData, runSimulation as apiRunSimulation } from '../services/api';
 
 
 interface SimulationState {
@@ -75,17 +75,17 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
     try {
       const result = await apiRunSimulation();
       if (result.status === 'success') {
-        let run = await getCurrentSimulationRun();
-        while (run.run_id === result.run_id && ['running', 'cancelling'].includes(run.status)) {
+        let run = await getSimulationRun(result.run_id);
+        while (['queued', 'running', 'cancelling'].includes(run.status)) {
           set({ simulationMessage: `Simulation in progress: ${run.matches_played}/${run.total_matches} matches` });
           await new Promise((resolve) => setTimeout(resolve, 1500));
-          run = await getCurrentSimulationRun();
+          run = await getSimulationRun(result.run_id);
         }
-        if (run.status === 'failed' || run.status === 'interrupted') {
+        if (['failed', 'interrupted', 'cancelled'].includes(run.status)) {
           throw new Error(run.error_message || `Simulation ${run.status}`);
         }
         set({ isSimulating: false, simulationMessage: `Simulation ${run.status}.` });
-        await get().fetchAvailableSeasons(); 
+        await get().fetchAvailableSeasons();
       } else {
         set({ error: result.message || 'Simulation failed.', isSimulating: false });
       }

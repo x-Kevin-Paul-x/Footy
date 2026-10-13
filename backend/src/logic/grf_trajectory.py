@@ -275,7 +275,11 @@ class MatchTrajectory:
         if not path.exists():
             raise FileNotFoundError(f"Trajectory file not found: {path}")
 
-        data = np.load(str(path), allow_pickle=True)
+        try:
+            with np.load(str(path), allow_pickle=False) as archive:
+                data = {name: archive[name] for name in archive.files}
+        except ValueError as exc:
+            raise ReplayIntegrityError('Unsafe or invalid trajectory array; convert legacy object metadata explicitly') from exc
         manifest_dict = json.loads(str(data["manifest"][0]))
         manifest = MatchManifest.from_dict(manifest_dict)
         seed = int(data["seed"][0]) if "seed" in data else 0

@@ -1,0 +1,63 @@
+{
+  "backend_commentary": {
+    "tests": 188,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 11,
+    "seconds": 312.38
+  },
+  "native_linux": {
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "seconds": 854.65
+  },
+  "frontend": {
+    "tests": 13,
+    "suites": 6,
+    "failures": 0
+  },
+  "native_scope": {
+    "seeds": [
+      42,
+      1337,
+      4242,
+      7777,
+      9999,
+      12345
+    ],
+    "worker_counts": [
+      1,
+      8,
+      12,
+      16
+    ],
+    "steps": 1200,
+    "worker_assignment_ids": [
+      0,
+      3,
+      7,
+      11
+    ],
+    "crash_steps": [
+      300,
+      600,
+      900
+    ]
+  },
+  "date": "2026-10-13",
+  "lint": "ruff runtime/syntax and scoped mypy passed",
+  "verification_limits": "Windows native-import skips are separate from direct Linux verification; synthetic management results are not GRF realism.",
+  "legacy_archive_additional_check": {
+    "tests": 42,
+    "passed": 41,
+    "skipped": 1
+  },
+  "dependency_audit": {
+    "root_vulnerabilities": 0,
+    "frontend_vulnerabilities": 0
+  },
+  "editable_install": "imports and fresh migrations verified outside repository root",
+  "pre_commit": "installed; tracked-file checks passed; staged-file checks run at commit"
+}
