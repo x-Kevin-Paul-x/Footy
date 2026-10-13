@@ -110,6 +110,8 @@ class GRFPlayerProfile:
     goalkeeping: float = 70.0
     form_factor: float = 1.0
     fitness_factor: float = 1.0
+    jersey_number: Optional[int] = None
+    assigned_position: Optional[str] = None
 
     @property
     def speed_multiplier(self) -> float:
@@ -223,10 +225,12 @@ class FootyGRFAdapter:
             if hasattr(player, "stats") and isinstance(player.stats, dict):
                 fitness = float(player.stats.get("fitness", 100)) / 100.0
 
-        p_id = getattr(player, "id", None) if not isinstance(player, dict) else player.get("id")
+        p_id = (getattr(player, "player_id", None) or getattr(player, "id", None)) if not isinstance(player, dict) else player.get("player_id", player.get("id"))
 
         return GRFPlayerProfile(
             player_id=p_id,
+            jersey_number=player.get('jersey_number') if isinstance(player, dict) else getattr(player, 'jersey_number', None),
+            assigned_position=assigned_pos,
             name=name,
             position=pos,
             pace=pace,

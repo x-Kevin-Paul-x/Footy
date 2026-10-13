@@ -8,7 +8,6 @@ import os
 import sys
 import json
 import time
-import hashlib
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 from collections import deque
@@ -23,18 +22,11 @@ except ImportError:
 
 from logic.grf_trajectory import MatchTrajectory, MatchManifest
 
-# Deterministic kit palette
-_KIT_PALETTE = [
-    "#e63946", "#2196f3", "#4caf50", "#ff9800", "#9c27b0",
-    "#00bcd4", "#f44336", "#3f51b5", "#8bc34a", "#ff5722",
-    "#009688", "#673ab7", "#ffc107", "#607d8b", "#e91e63",
-]
+from logic.team_identity import club_colour
 
 
 def team_color_from_name(name: Any) -> str:
-    str_name = getattr(name, "name", str(name))
-    idx = int(hashlib.md5(str_name.encode('utf-8')).hexdigest()[:4], 16) % len(_KIT_PALETTE)
-    return _KIT_PALETTE[idx]
+    return club_colour(name)
 
 
 def hex_to_bgr(hex_color: str) -> Tuple[int, int, int]:
@@ -71,6 +63,8 @@ def draw_hud(
     match_seconds: Optional[float] = None,
 ) -> np.ndarray:
     annotated = frame  # In-place drawing on writable frame, avoid full-frame copy
+    home_bgr = hex_to_bgr(club_colour(home_team, '#%02x%02x%02x' % tuple(reversed(home_bgr))))
+    away_bgr = hex_to_bgr(club_colour(away_team, '#%02x%02x%02x' % tuple(reversed(away_bgr))))
     h_img, w_img = annotated.shape[:2]
 
     # Floating Modern Top-Left TV Pill HUD
@@ -168,44 +162,13 @@ def draw_pre_match_card(
     home_formation: str = "4-3-3",
     away_formation: str = "4-2-3-1",
     home_bgr: Tuple[int, int, int] = (50, 50, 220),
-    away_bgr: Tuple[int, int, int] = (220, 50, 50)
+    away_bgr: Tuple[int, int, int] = (220, 50, 50),
+    home_roster: Optional[List[Dict[str, Any]]] = None,
+    away_roster: Optional[List[Dict[str, Any]]] = None,
+    theme: str = 'dark',
 ) -> np.ndarray:
-    canvas = np.zeros((h, w, 3), dtype=np.uint8)
-    canvas[:] = (18, 22, 32)
-
-    cv2.rectangle(canvas, (0, 0), (w, 80), (10, 14, 22), -1)
-    cv2.putText(canvas, "FOOTY 3D BROADCAST  *  MATCHDAY PRESENTATION",
-                (w // 2 - 290, 50), cv2.FONT_HERSHEY_DUPLEX, 0.78, (0, 220, 255), 2, cv2.LINE_AA)
-
-    cv2.rectangle(canvas, (50, 105), (w // 2 - 25, 175), home_bgr, -1)
-    cv2.rectangle(canvas, (w // 2 + 25, 105), (w - 50, 175), away_bgr, -1)
-
-    htc = text_color_for_bg(home_bgr)
-    atc = text_color_for_bg(away_bgr)
-
-    cv2.putText(canvas, home_team.upper(), (70, 152), cv2.FONT_HERSHEY_DUPLEX, 0.85, htc, 2, cv2.LINE_AA)
-    cv2.putText(canvas, f"[{home_formation}]", (w // 2 - 130, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.58, htc, 2, cv2.LINE_AA)
-
-    cv2.putText(canvas, away_team.upper(), (w // 2 + 45, 152), cv2.FONT_HERSHEY_DUPLEX, 0.85, atc, 2, cv2.LINE_AA)
-    cv2.putText(canvas, f"[{away_formation}]", (w - 150, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.58, atc, 2, cv2.LINE_AA)
-
-    cv2.putText(canvas, "STARTING XI", (70, 215), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (0, 220, 255), 2)
-    cv2.putText(canvas, "STARTING XI", (w // 2 + 45, 215), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (0, 220, 255), 2)
-
-    hp = home_players[:11] if home_players else [f"{home_team} Player {i+1}" for i in range(11)]
-    ap = away_players[:11] if away_players else [f"{away_team} Player {i+1}" for i in range(11)]
-
-    for idx, p in enumerate(hp):
-        y = 255 + idx * 36
-        num_str = f"{idx+1}." if idx > 0 else "1 (GK)"
-        cv2.putText(canvas, f"{num_str:6s} {p}", (70, y), cv2.FONT_HERSHEY_DUPLEX, 0.55, (235, 235, 235), 1, cv2.LINE_AA)
-
-    for idx, p in enumerate(ap):
-        y = 255 + idx * 36
-        num_str = f"{idx+1}." if idx > 0 else "1 (GK)"
-        cv2.putText(canvas, f"{num_str:6s} {p}", (w // 2 + 45, y), cv2.FONT_HERSHEY_DUPLEX, 0.55, (235, 235, 235), 1, cv2.LINE_AA)
-
-    return canvas
+    from logic.clay_broadcast import pre_match
+    return pre_match(w, h, home_team, away_team, home_players, away_players, home_formation, away_formation, home_bgr, away_bgr, home_roster, away_roster, theme)
 
 
 def draw_studio_stats_card(
@@ -226,56 +189,11 @@ def draw_studio_stats_card(
     home_bgr: Tuple[int, int, int] = (50, 50, 220),
     away_bgr: Tuple[int, int, int] = (220, 50, 50),
     events: Optional[List[Dict[str, Any]]] = None,
-    motm_player: Optional[str] = None
+    motm_player: Optional[str] = None,
+    theme: str = 'dark',
 ) -> np.ndarray:
-    canvas = np.zeros((h, w, 3), dtype=np.uint8)
-    canvas[:] = (16, 20, 28)
-
-    cv2.rectangle(canvas, (0, 0), (w, 80), (10, 14, 20), -1)
-    cv2.putText(canvas, title, (w // 2 - 90, 52), cv2.FONT_HERSHEY_DUPLEX, 0.88, (0, 220, 255), 2, cv2.LINE_AA)
-
-    cv2.rectangle(canvas, (80, 105), (w // 2 - 80, 185), home_bgr, -1)
-    cv2.rectangle(canvas, (w // 2 + 80, 105), (w - 80, 185), away_bgr, -1)
-    cv2.rectangle(canvas, (w // 2 - 75, 105), (w // 2 + 75, 185), (10, 14, 20), -1)
-
-    htc = text_color_for_bg(home_bgr)
-    atc = text_color_for_bg(away_bgr)
-
-    cv2.putText(canvas, home_team.upper(), (100, 156), cv2.FONT_HERSHEY_DUPLEX, 0.85, htc, 2, cv2.LINE_AA)
-    cv2.putText(canvas, away_team.upper(), (w // 2 + 100, 156), cv2.FONT_HERSHEY_DUPLEX, 0.85, atc, 2, cv2.LINE_AA)
-    cv2.putText(canvas, f"{score[0]} - {score[1]}", (w // 2 - 50, 160), cv2.FONT_HERSHEY_DUPLEX, 1.05, (255, 255, 255), 2, cv2.LINE_AA)
-
-    stat_rows = [
-        ("Possession", f"{h_poss:.1f}%" if h_poss is not None else 'Untracked', f"{a_poss:.1f}%" if a_poss is not None else 'Untracked'),
-        ("Total Shots", str(h_shots), str(a_shots)),
-        ("Shots on Target", str(h_sot), str(a_sot)),
-        ("Expected Goals (xG)", f"{h_xg:.2f}", f"{a_xg:.2f}")
-    ]
-
-    for idx, (label, val_l, val_r) in enumerate(stat_rows):
-        y = 250 + idx * 52
-        cv2.rectangle(canvas, (80, y - 32), (w - 80, y + 14), (24, 30, 42), -1)
-        cv2.putText(canvas, val_l, (120, y), cv2.FONT_HERSHEY_DUPLEX, 0.68, (255, 255, 255), 2, cv2.LINE_AA)
-        cv2.putText(canvas, label, (w // 2 - 90, y), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (180, 200, 220), 2, cv2.LINE_AA)
-        cv2.putText(canvas, val_r, (w - 180, y), cv2.FONT_HERSHEY_DUPLEX, 0.68, (255, 255, 255), 2, cv2.LINE_AA)
-
-    if events:
-        goals = [e for e in events if e.get("type") == "goal"]
-        if goals:
-            cv2.putText(canvas, "MATCH TIMELINE", (80, 490), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (16, 185, 129), 2)
-            for idx, g in enumerate(goals[:3]):
-                gy = 525 + idx * 30
-                cv2.putText(canvas, f"{g.get('minute')}' - {g.get('player')} ({g.get('team', '').upper()})",
-                            (80, gy), cv2.FONT_HERSHEY_DUPLEX, 0.58, (240, 240, 240), 1, cv2.LINE_AA)
-
-    if motm_player and title == "FULL TIME":
-        mx, my = w // 2 + 40, 480
-        cv2.rectangle(canvas, (mx, my), (w - 80, my + 130), (28, 35, 50), -1)
-        cv2.rectangle(canvas, (mx, my), (w - 80, my + 130), (0, 215, 255), 2)
-        cv2.putText(canvas, "MAN OF THE MATCH", (mx + 20, my + 38), cv2.FONT_HERSHEY_DUPLEX, 0.65, (0, 220, 255), 2, cv2.LINE_AA)
-        cv2.putText(canvas, motm_player, (mx + 20, my + 82), cv2.FONT_HERSHEY_DUPLEX, 0.85, (255, 255, 255), 2, cv2.LINE_AA)
-
-    return canvas
+    from logic.clay_broadcast import stats
+    return stats(w, h, title, home_team, away_team, score, h_poss, a_poss, h_shots, a_shots, h_sot, a_sot, h_xg, a_xg, home_bgr, away_bgr, events, motm_player, theme)
 
 
 _STATIC_PITCH_CACHE: Dict[Tuple[int, int], np.ndarray] = {}
@@ -355,7 +273,9 @@ def draw_pitch_frame_from_state(
     away_bgr: Tuple[int, int, int] = (220, 50, 50),
     goal_banner: Optional[str] = None,
     w: int = 1280,
-    h: int = 720
+    h: int = 720,
+    home_roster: Optional[List[Dict[str, Any]]] = None,
+    away_roster: Optional[List[Dict[str, Any]]] = None,
 ) -> np.ndarray:
     """
     Render a single high-fidelity 720p broadcast frame directly from trajectory coordinates.
@@ -398,7 +318,8 @@ def draw_pitch_frame_from_state(
         cv2.circle(canvas, (px, py), 13, (15, 15, 15), -1)
         cv2.circle(canvas, (px, py), 11, home_bgr, -1)
         cv2.circle(canvas, (px, py), 11, (255, 255, 255), 1, cv2.LINE_AA)
-        num_str = str(i + 1) if i > 0 else "1"
+        record = home_roster[i] if i < len(home_roster or []) else {}
+        num_str = str(record['jersey_number']) if record.get('jersey_number') is not None else '?'
         htc = text_color_for_bg(home_bgr)
         cv2.putText(canvas, num_str, (px - (4 if len(num_str) == 1 else 7), py + 4),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.38, htc, 1, cv2.LINE_AA)
@@ -415,7 +336,8 @@ def draw_pitch_frame_from_state(
         cv2.circle(canvas, (px, py), 13, (15, 15, 15), -1)
         cv2.circle(canvas, (px, py), 11, away_bgr, -1)
         cv2.circle(canvas, (px, py), 11, (0, 220, 255), 1, cv2.LINE_AA)
-        num_str = str(away_idx + 1) if away_idx > 0 else "1"
+        record = away_roster[away_idx] if away_idx < len(away_roster or []) else {}
+        num_str = str(record['jersey_number']) if record.get('jersey_number') is not None else '?'
         atc = text_color_for_bg(away_bgr)
         cv2.putText(canvas, num_str, (px - (4 if len(num_str) == 1 else 7), py + 4),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.38, atc, 1, cv2.LINE_AA)
@@ -520,8 +442,8 @@ def _render_video_from_trajectory_to_path(
     total_steps = trajectory.total_steps
     home_team = manifest.home_team
     away_team = manifest.away_team
-    home_color = manifest.home_color or team_color_from_name(home_team)
-    away_color = manifest.away_color or team_color_from_name(away_team)
+    home_color = club_colour(home_team, manifest.home_color)
+    away_color = club_colour(away_team, manifest.away_color)
     home_bgr = hex_to_bgr(home_color)
     away_bgr = hex_to_bgr(away_color)
 
@@ -539,6 +461,7 @@ def _render_video_from_trajectory_to_path(
         intro_card = draw_pre_match_card(
             w=1280, h=720, home_team=home_team, away_team=away_team,
             home_players=manifest.home_players, away_players=manifest.away_players,
+            home_roster=manifest.home_roster, away_roster=manifest.away_roster,
             home_formation=manifest.home_formation, away_formation=manifest.away_formation,
             home_bgr=home_bgr, away_bgr=away_bgr
         )
@@ -577,6 +500,7 @@ def _render_video_from_trajectory_to_path(
                 state, home_team, away_team,
                 home_players=manifest.home_players,
                 away_players=manifest.away_players,
+                home_roster=manifest.home_roster, away_roster=manifest.away_roster,
                 home_bgr=home_bgr, away_bgr=away_bgr,
                 goal_banner=banner_to_show
             )
@@ -738,8 +662,8 @@ def _transcode_live_avi_to_path(
     try:
         home_team = manifest.home_team
         away_team = manifest.away_team
-        h_col = home_color or team_color_from_name(home_team)
-        a_col = away_color or team_color_from_name(away_team)
+        h_col = club_colour(home_team, home_color)
+        a_col = club_colour(away_team, away_color)
         home_bgr = hex_to_bgr(h_col)
         away_bgr = hex_to_bgr(a_col)
 
@@ -747,6 +671,7 @@ def _transcode_live_avi_to_path(
         intro_card = draw_pre_match_card(
             w=1280, h=720, home_team=home_team, away_team=away_team,
             home_players=manifest.home_players, away_players=manifest.away_players,
+            home_roster=manifest.home_roster, away_roster=manifest.away_roster,
             home_formation=manifest.home_formation, away_formation=manifest.away_formation,
             home_bgr=home_bgr, away_bgr=away_bgr
         )

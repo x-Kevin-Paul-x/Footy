@@ -5,6 +5,8 @@ Mesa D3D12 NVIDIA OpenGL graphics context across multiple match video renders.
 Eliminates repeated ~2.2s environment teardown/recreation overhead in bulk replay pipelines.
 """
 
+from logic.team_identity import club_colour
+
 import os
 import sys
 import time
@@ -131,8 +133,8 @@ class PersistentReplayEngine:
         away_players = traj.manifest.away_players if traj else (payload.get("away_players") or [f"{away_team} Player {i+1}" for i in range(11)])
         home_formation = traj.manifest.home_formation if traj else payload.get("home_formation", "4-3-3")
         away_formation = traj.manifest.away_formation if traj else payload.get("away_formation", "4-2-3-1")
-        home_color = (traj.manifest.home_color if traj else payload.get("home_color")) or team_color_from_name(home_team)
-        away_color = (traj.manifest.away_color if traj else payload.get("away_color")) or team_color_from_name(away_team)
+        home_color = club_colour(home_team, traj.manifest.home_color if traj else payload.get("home_color"))
+        away_color = club_colour(away_team, traj.manifest.away_color if traj else payload.get("away_color"))
         home_bgr = hex_to_bgr(home_color)
         away_bgr = hex_to_bgr(away_color)
 
@@ -199,6 +201,8 @@ class PersistentReplayEngine:
             intro_card_bgr = draw_pre_match_card(
                 w=width, h=height, home_team=home_team, away_team=away_team,
                 home_players=home_players, away_players=away_players,
+                home_roster=traj.manifest.home_roster if traj else payload.get("home_roster"),
+                away_roster=traj.manifest.away_roster if traj else payload.get("away_roster"),
                 home_formation=home_formation, away_formation=away_formation,
                 home_bgr=home_bgr, away_bgr=away_bgr
             )

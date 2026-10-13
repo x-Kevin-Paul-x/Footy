@@ -42,6 +42,8 @@ class MatchManifest:
     engine_fingerprint: Dict[str, Any] = field(default_factory=dict)
     video_url: Optional[str] = None
     created_at: Optional[str] = None
+    home_roster: List[Dict[str, Any]] = field(default_factory=list)
+    away_roster: List[Dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self):
         if self.score is not None:
@@ -60,7 +62,12 @@ class MatchManifest:
             self.passes_completed = (int(self.passes_completed[0]), int(self.passes_completed[1]))
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        # Preserve legacy manifest digests when no identity was recorded.
+        for key in ('home_roster', 'away_roster'):
+            if not data[key]:
+                data.pop(key)
+        return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "MatchManifest":
@@ -95,6 +102,8 @@ class MatchManifest:
             engine_fingerprint=data.get("engine_fingerprint", {}),
             video_url=data.get("video_url"),
             created_at=data.get("created_at"),
+            home_roster=data.get("home_roster", []),
+            away_roster=data.get("away_roster", []),
         )
 
 

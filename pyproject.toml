@@ -40,6 +40,9 @@ py-modules = ["api_fastapi", "config", "main", "schemas"]
 [tool.setuptools.packages.find]
 where = ["backend/src"]
 
+[tool.setuptools.package-data]
+logic = ["broadcast_fonts/*.ttf", "broadcast_fonts/*OFL.txt"]
+
 [tool.pytest.ini_options]
 pythonpath = ["backend/src"]
 testpaths = ["backend/tests"]
