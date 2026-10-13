@@ -12,7 +12,7 @@ Reviewed and tested: **13 October 2026**. See [dated verification](verification_
 | Historical campaign state | Implemented for new runs | Run-scoped reports/transfers, frozen squads/finances and persisted cash entries; Saved campaigns exposes history. Older runs cannot retroactively acquire missing snapshots. |
 | Replay input/publication | Implemented, tested | Safe V3 byte chunks, restricted legacy conversion, object-free NPZ, contained paths, run-scoped video linking, emitted-frame timelines and complete decode validation. |
 | Manager AI evidence | Measured | Three training seeds and thirty held-out evaluation seeds. DQN advantage was not established; synthetic environment and tabular decision fallback are documented. |
-| Native worker evidence | Measured | Observed real concurrency; six-seed topology checks plus worker/crash tests. See final verification summary for precise completed scope. |
+| Native worker evidence | Measured | Nine distinct direct-Linux tests: six-seed topology checks, operating modes, event/stat correspondence, broadcast publication, worker assignment and proven worker SIGKILL recovery. |
 | Economy and availability | Implemented, tested | Cashflow reconciliation; attendance cash; merit broadcasting; loan squad/wage/expiry rules; release and sell-on clauses; persisted injury/bans/contracts; positional replenishment and capped academies. |
 | Statistical realism | Open research | A sourced calibration report measures the retained native season's scoring discrepancy. No score postprocessing is used. |
 | In-match changes / home advantage | Experimental opt-in | Deterministic conditional changes and venue-dependent policy modulation under FOOTY_DYNAMIC_TACTICS=1; keep official TiKick default until calibrated. |

@@ -7,11 +7,34 @@
     "seconds": 312.38
   },
   "native_linux": {
-    "tests": 3,
+    "distinct_tests": 9,
     "failures": 0,
     "errors": 0,
     "skipped": 0,
-    "seconds": 854.65
+    "runs": {
+      "baseline": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "seconds": 854.65
+      },
+      "extended": {
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 279.184
+      },
+      "strengthened_worker_sigkill": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 46.615
+      }
+    },
+    "note": "Extended suite SIGKILL result superseded by a rerun selecting a real spawned worker and requiring proof of delivery."
   },
   "frontend": {
     "tests": 13,
@@ -44,7 +67,15 @@
       300,
       600,
       900
-    ]
+    ],
+    "additional_certification_worker_counts": [
+      8,
+      10,
+      12,
+      14,
+      16
+    ],
+    "broadcast_publication_and_cache_verified": true
   },
   "date": "2026-10-13",
   "lint": "ruff runtime/syntax and scoped mypy passed",
@@ -61,14 +92,14 @@
   "editable_install": "imports and fresh migrations verified outside repository root",
   "pre_commit": "installed; all-file and staged-file gates passed",
   "github_ci": {
-    "run_id": 38470099412,
-    "commit": "303255a3f9a4fab74399e846781bbcbf434875fc",
+    "run_id": 38470716998,
+    "commit": "76ad78282369f4713f3b74636f934e34375fd685",
     "conclusion": "success",
-    "backend_passed": 168,
+    "backend_passed": 170,
     "backend_skipped": 22,
     "coverage_percent": 44,
     "frontend_passed": 13,
-    "url": "https://github.com/x-Kevin-Paul-x/Footy/actions/runs/38470099412"
+    "url": "https://github.com/x-Kevin-Paul-x/Footy/actions/runs/38470716998"
   },
   "portability_additional_checks": {
     "passed": 51,

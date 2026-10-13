@@ -12,7 +12,7 @@ This report records the project-roadmap branch checks. Raw policy, calibration, 
 | Frontend | 13 tests passed across six suites, including job polling, refresh recovery, shared API/WS configuration and saved-campaign cash history. |
 | Backend lint / scoped typing | Ruff runtime/syntax gate passed; mypy passed for the configured path/timeline modules. |
 | Frontend production build | Passed. Existing bundle-size and stale Browserslist notices remain informational. |
-| Clean GitHub verification | [Run 38470099412](https://github.com/x-Kevin-Paul-x/Footy/actions/runs/38470099412) passed: 168 backend/commentary tests, 22 explicit environment/legacy skips, 44% portable source coverage; 13 frontend tests plus lint, typing and production build. |
+| Clean GitHub verification | [Run 38470716998](https://github.com/x-Kevin-Paul-x/Footy/actions/runs/38470716998) passed: 170 backend/commentary tests, 22 explicit environment/legacy skips, 44% portable source coverage; 13 frontend tests plus lint, typing and production build. |
 | Final portability and error checks | 51 affected checks passed locally, including native match API calls; the final report-error suite passed 14 tests. Native runtime unavailability returns 503, and missing reports retain 404. |
 | Public demo | [Live static demo](https://x-kevin-paul-x.github.io/Footy/) deployed after CI. Results/calibration loaded in the browser; video played with 310.7-second duration and no media error. |
 | Root dependency audit | Compatible lodash/shell-quote updates applied; zero reported vulnerabilities in the root launcher and frontend dependency trees after compatible fixes and a clean frontend installation. |
@@ -28,6 +28,10 @@ The first direct Linux topology check exposed different archive hashes even thou
 The rerun checks six seeds at one, eight, twelve and sixteen workers, with sixteen simultaneous fixtures in each populated pool. Raw trajectory archives must match the corresponding single-worker baseline. Separate tests check worker IDs 0/3/7/11 and controlled crashes at steps 300, 600 and 900. All three direct Linux checks passed in 854.68 seconds. The native XML result is summarized in [verification summary](evidence/verification_summary.json).
 
 The one/two-worker performance diagnostic uses 200-step partial matches; the topology/worker tests use 1,200-step traces. These prove their stated execution invariants, not full-season outcome realism or GPU-policy equivalence.
+
+Six additional direct-Linux suites passed in 279.19 seconds: operating-mode/topology determinism, full simulation-to-broadcast publication and cache validation, event/state correspondence, football statistics, sequential/pool equivalence, and abrupt termination recovery. The broadcast render completed in 52.26 seconds. This brings coverage to nine distinct native tests across both runs.
+
+The abrupt-termination log revealed that the old test killed Python's resource tracker, allowing a false recovery certification. The test now selects a spawned pool worker, excludes the resource tracker, and requires evidence that a worker was killed. Its stronger rerun passed in 46.62 seconds: six fixtures completed, the target score remained 1–1, and the recovered trajectory hash matched its baseline. The native workflow includes all nine suites and requires the GRF import/checkpoint before running.
 
 ## Scope and limitations
 

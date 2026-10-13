@@ -6,9 +6,11 @@ jobs:
     runs-on: [self-hosted, linux, grf]
     steps:
       - uses: actions/checkout@v4
+      - name: Require configured native runtime and checkpoint
+        run: python -c "import gfootball.env, torch; from pathlib import Path; assert Path('backend/checkpoints/tikick/actor.pt').is_file(), 'Missing TiKick actor checkpoint'"
       - name: Verify native engine, topology and recovery
         env:
           FOOTY_DATA_DIR: ${{ runner.temp }}/footy-native-data
           FOOTY_REPORTS_DIR: ${{ runner.temp }}/footy-native-reports
         run: |
-          python -m pytest backend/tests/test_deterministic_recovery.py backend/tests/test_multi_seed_topology_invariance.py backend/tests/test_inflight_sigkill_recovery.py backend/tests/test_worker_assignment_independence.py -ra
+          python -m pytest backend/tests/test_deterministic_recovery.py backend/tests/test_multi_seed_topology_invariance.py backend/tests/test_inflight_sigkill_recovery.py backend/tests/test_worker_assignment_independence.py backend/tests/test_determinism_certification.py backend/tests/test_e2e_full_lifecycle_certification.py backend/tests/test_football_event_correspondence.py backend/tests/test_football_semantic_correctness.py backend/tests/test_simulation_equivalence.py -ra

@@ -62,6 +62,8 @@ python backend/run_3_seasons.py
 
 The first checks domain/economy rollover without GRF. The second uses the configured match engine in isolated data/report directories and can take hours. Canonical results, event attribution, fixture uniqueness, and archive integrity must stay deterministic across worker counts. `FOOTY_DYNAMIC_TACTICS=1` is an experimental, opt-in policy-modulation profile; measure its native outcomes before changing the default.
 
+The manual native workflow requires a self-hosted Linux runner labelled `grf`, with Footy's dependencies, GRF, the actor checkpoint, FFmpeg, and compatible rendering/encoding drivers already configured. Its broadcast certification uses the current NVIDIA/D3D12 profile. The workflow fails its preflight when the required native import or checkpoint is absent; standard hosted CI does not provide this runtime.
+
 To build the read-only demo: `python scripts/export_demo.py`. Serve the output with `python -m http.server --directory backend/verification/tmp/demo 8080`. The manual GitHub Pages workflow publishes only curated static recordings and evidence.
 
 Do not commit databases, runtime archives, downloaded speech models, private environment files, or generated verification workspaces. Keep new features reviewable across schema, domain, API, client types, UI and failure tests.
