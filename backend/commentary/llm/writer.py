@@ -32,4 +32,3 @@ class CommentaryWriter:
             utterances.append(utt)
         return CommentaryScript(match_id=self.context.match_id, utterances=utterances,
             model_version="Qwen3.5-9B-Q4_K_M" if self.diagnostics["llm_accepted"] else "factual-fallback")
-

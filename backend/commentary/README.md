@@ -87,4 +87,3 @@ These are timing, factual-rule and audio measurements. Audio listening is not av
 in this agent session, so this does not claim a perceptual broadcast-quality score.
 The validator is deliberately conservative; its factual fallback can be less expressive
 than a human commentator. Crowd audio is added in post-production and must retain its credit.
-

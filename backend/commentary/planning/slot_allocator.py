@@ -62,4 +62,3 @@ class SlotAllocator:
         slots.sort(key=lambda s:s.start_ms)
         for i, s in enumerate(slots): s.commentary_id = f"com_{i+1:03d}"
         return slots
-

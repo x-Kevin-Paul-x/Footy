@@ -20,4 +20,3 @@ def build_writer_user_prompt(slot, match_context, recent_utterances):
     public = {k:slot.get(k) for k in ("slot_type","speaker","target_words","running_score","active_event_type","active_player","active_team","in_play_summary")}
     return json.dumps({"live":public,"facts":whitelist,"recent_lines":[u["primary"] for u in recent_utterances[-12:]],
         "requirements":"No partner names. Primary must fit target_words. Don't repeat these openings."})
-

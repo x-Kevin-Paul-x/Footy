@@ -38,4 +38,3 @@ class StoryStatsBuilder:
             xg=m.get("xg", []), possession=m.get("possession", []), shots=m.get("shots", []),
             shots_on_target=m.get("shots_on_target", []), allowed_facts=facts,
             fact_available_ms=available, event_to_fact_id=links)
-

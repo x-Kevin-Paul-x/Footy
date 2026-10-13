@@ -63,4 +63,3 @@ def test_future_fact_and_emergency_score_are_rejected():
     assert not valid
     assert any("Future fact" in e for e in errors)
     assert any("Illegal scoreline" in e for e in errors)
-

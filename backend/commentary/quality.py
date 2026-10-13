@@ -57,4 +57,3 @@ def audit_commentary(artifacts_dir, timeline, source_video=None, output_video=No
         if not report["original_video_packets_preserved"]: raise ValueError("Video was changed")
     (p/"quality_report.json").write_text(json.dumps(report,indent=2),encoding="utf-8")
     return report
-

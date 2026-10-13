@@ -122,4 +122,3 @@ if __name__=="__main__":
     p.add_argument("--device",default="auto",choices=["auto","cpu","cuda"])
     p.add_argument("--limit",type=int)
     run_batch_tts(**vars(p.parse_args()))
-

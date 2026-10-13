@@ -56,4 +56,3 @@ class AmbientBedManager:
             f.setnchannels(2); f.setsampwidth(2); f.setframerate(self.sample_rate)
             f.writeframes((np.clip(bed,-.9,.9).T*32767).astype(np.int16).tobytes())
         return output_path
-
