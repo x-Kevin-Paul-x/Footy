@@ -232,6 +232,9 @@ def test_opta_xg_model():
 
 def test_simulate_grf_match_endpoint_fast_mode():
     """Test /api/v1/match/simulate-grf with generate_video=False executes fast Phase A simulation."""
+    from logic.grf_native_runner import GRFNativeRunner
+    if not GRFNativeRunner().is_available():
+        pytest.skip('Native match API integration requires the Windows/WSL GRF runtime')
     import time
     t0 = time.time()
     payload = {
@@ -322,6 +325,9 @@ def test_simulation_seed_variation():
 
 def test_simulate_grf_match_endpoint_with_video_async():
     """Test /api/v1/match/simulate-grf with generate_video=True returns video_url."""
+    from logic.grf_native_runner import GRFNativeRunner
+    if not GRFNativeRunner().is_available():
+        pytest.skip('Native match API integration requires the Windows/WSL GRF runtime')
     import time
     t0 = time.time()
     payload = {

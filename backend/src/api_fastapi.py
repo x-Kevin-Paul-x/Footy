@@ -1403,6 +1403,8 @@ async def simulate_grf_match(req: MatchSimulationRequest):
 
         # Execute authentic GRF simulation (Phase A - pure physics, fast)
         native_runner = GRFNativeRunner()
+        if not await asyncio.to_thread(native_runner.is_available):
+            raise HTTPException(status_code=503, detail='Native GRF runtime is unavailable; configure the Windows/WSL bridge before requesting a new match.')
         from database.db_setup import get_current_simulation_run
         effective_run_id = req.run_id or (existing_match.get("simulation_run_id") if existing_match else None) or get_current_simulation_run()
 

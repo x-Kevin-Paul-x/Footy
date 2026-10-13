@@ -115,6 +115,8 @@ class TTSWorker:
 
     def _synthesize_windows_tts_fallback(self, text: str, output_path: Path, rate: int = 0) -> bool:
         """Fallback local TTS using Windows SpeechSynthesizer with English voice selection."""
+        if sys.platform != 'win32':
+            raise RuntimeError('Windows speech fallback is unavailable; configure the Qwen TTS engine on this platform')
         ps_script = f"""
 Add-Type -AssemblyName System.Speech
 $s = New-Object System.Speech.Synthesis.SpeechSynthesizer

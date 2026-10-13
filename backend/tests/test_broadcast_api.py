@@ -22,6 +22,7 @@ def _install_runner_spy(monkeypatch):
         return _result()
 
     monkeypatch.setattr(GRFNativeRunner, "simulate", fake_simulate)
+    monkeypatch.setattr(GRFNativeRunner, 'is_available', lambda self: True)
     monkeypatch.setattr("database.match_db.get_match_details", lambda _match_id: None)
     monkeypatch.setattr("database.db_setup.get_current_simulation_run", lambda: None)
     return captured
@@ -46,3 +47,14 @@ def test_simulate_grf_keeps_legacy_no_state_default(monkeypatch):
     })
     assert response.status_code == 200
     assert captured[-1]["record_grf_states"] is False
+
+
+def test_simulate_grf_unavailable_runtime_is_service_error(monkeypatch):
+    captured = _install_runner_spy(monkeypatch)
+    monkeypatch.setattr(GRFNativeRunner, 'is_available', lambda self: False)
+    response = client.post('/api/v1/match/simulate-grf', json={
+        'home_team_name': 'Arsenal', 'away_team_name': 'Chelsea', 'max_steps': 100,
+    })
+    assert response.status_code == 503
+    assert 'runtime is unavailable' in response.json()['detail']
+    assert captured == []
