@@ -2,6 +2,8 @@ import shutil
 import struct
 from pathlib import Path
 
+import pytest
+
 from fastapi.testclient import TestClient
 from api_fastapi import app, DB_FILE, SAVES_DIR
 
@@ -11,6 +13,17 @@ def test_health_endpoint():
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "service": "Footy API"}
+
+
+@pytest.mark.parametrize(('path', 'repository'), [
+    ('/api/v1/season-reports/1901', 'get_season_report_by_year'),
+    ('/api/v1/transfer-reports/1901', 'get_transfer_report_by_year'),
+])
+def test_missing_report_preserves_not_found_status(monkeypatch, path, repository):
+    monkeypatch.setattr(f'api_fastapi.{repository}', lambda year: None)
+    response = client.get(path)
+    assert response.status_code == 404
+    assert 'not found' in response.json()['detail'].lower()
 
 def test_get_teams_endpoint():
     response = client.get("/teams")

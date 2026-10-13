@@ -13,4 +13,4 @@
 - Editable installation, cross-platform launchers, full portable CI/coverage, scoped lint/typing, pre-commit hooks and native/manual-demo workflows.
 - Three reproducible training runs, thirty held-out evaluation seeds, observed native concurrency, a five-season economy soak and a sourced season calibration report.
 
-Native substitutions, calibrated scoring targets and automatic live-campaign resume remain limitations. A public demo and numbered release are prepared but are not claimed as published by this branch.
+Native substitutions, calibrated scoring targets and automatic live-campaign resume remain limitations. The [read-only demo](https://x-kevin-paul-x.github.io/Footy/) is deployed after passing CI; v0.1.0 is an unpublished draft release.

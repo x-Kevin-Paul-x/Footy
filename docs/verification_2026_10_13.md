@@ -12,6 +12,9 @@ This report records the project-roadmap branch checks. Raw policy, calibration, 
 | Frontend | 13 tests passed across six suites, including job polling, refresh recovery, shared API/WS configuration and saved-campaign cash history. |
 | Backend lint / scoped typing | Ruff runtime/syntax gate passed; mypy passed for the configured path/timeline modules. |
 | Frontend production build | Passed. Existing bundle-size and stale Browserslist notices remain informational. |
+| Clean GitHub verification | [Run 38470099412](https://github.com/x-Kevin-Paul-x/Footy/actions/runs/38470099412) passed: 168 backend/commentary tests, 22 explicit environment/legacy skips, 44% portable source coverage; 13 frontend tests plus lint, typing and production build. |
+| Final portability and error checks | 51 affected checks passed locally, including native match API calls; the final report-error suite passed 14 tests. Native runtime unavailability returns 503, and missing reports retain 404. |
+| Public demo | [Live static demo](https://x-kevin-paul-x.github.io/Footy/) deployed after CI. Results/calibration loaded in the browser; video played with 310.7-second duration and no media error. |
 | Root dependency audit | Compatible lodash/shell-quote updates applied; zero reported vulnerabilities in the root launcher and frontend dependency trees after compatible fixes and a clean frontend installation. |
 | Real native benchmark | One and two workers observed, repeated canonical outcomes and topology comparison passed. [Raw report](evidence/native_benchmark.json). |
 | Training and policy comparison | Three 100-episode training runs, seeds 42–44; 30 held-out seeds per policy. [Raw results](evidence/manager_evaluation.json). |
@@ -33,6 +36,6 @@ The one/two-worker performance diagnostic uses 200-step partial matches; the top
 - Native substitutions remain unsupported. `FOOTY_DYNAMIC_TACTICS=1` is an experimental policy-modulation profile; the default official TiKick profile is preserved.
 - The retained season still scores more frequently than the real reference. Calibration evidence is published without changing authoritative scores to meet a target.
 - Database snapshots retain committed history and pinned artifacts; live in-memory campaign continuation is not implemented.
-- The read-only demo is packaged and has a manual Pages workflow. A public demo and numbered GitHub release are not represented as deployed by this code branch.
+- The read-only demo is deployed through GitHub Pages. The v0.1.0 release is an unpublished draft with generated manager checkpoints, provenance and checksums; it is available to the repository owner for review.
 
 Coverage and native test limitations are explicit so that a skipped or synthetic check cannot be mistaken for production verification.

@@ -59,5 +59,33 @@
     "frontend_vulnerabilities": 0
   },
   "editable_install": "imports and fresh migrations verified outside repository root",
-  "pre_commit": "installed; tracked-file checks passed; staged-file checks run at commit"
+  "pre_commit": "installed; all-file and staged-file gates passed",
+  "github_ci": {
+    "run_id": 38470099412,
+    "commit": "303255a3f9a4fab74399e846781bbcbf434875fc",
+    "conclusion": "success",
+    "backend_passed": 168,
+    "backend_skipped": 22,
+    "coverage_percent": 44,
+    "frontend_passed": 13,
+    "url": "https://github.com/x-Kevin-Paul-x/Footy/actions/runs/38470099412"
+  },
+  "portability_additional_checks": {
+    "passed": 51,
+    "native_api_tests_included": true,
+    "report_error_suite_passed": 14
+  },
+  "demo": {
+    "url": "https://x-kevin-paul-x.github.io/Footy/",
+    "deployment": "success",
+    "browser_data_loaded": true,
+    "video_duration_seconds": 310.7,
+    "playback_verified": true,
+    "media_error": null
+  },
+  "release": {
+    "version": "v0.1.0",
+    "status": "draft",
+    "assets": "three generated manager checkpoints, manifest, checksums"
+  }
 }

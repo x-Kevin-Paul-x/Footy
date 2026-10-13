@@ -26,6 +26,8 @@ Built with **FastAPI, React 19, SQLAlchemy, Google Research Football, TiKick, FF
 
 [Watch the full match recording](assets/matches/full-match-recordings/burnley-2-4-bournemouth.mp4) · [Recorded replay timeline](assets/matches/full-match-recordings/burnley-2-4-bournemouth.timeline.json)
 
+[Explore the read-only demo](https://x-kevin-paul-x.github.io/Footy/) · [Dated implementation and CI verification](docs/verification_2026_10_13.md)
+
 **11v11 Multi-Agent Physics** · **Seeded Replay Verification** · **Recorded Match Replays** · **15 Interactive Surfaces**
 
 [Why Footy](#why-footy) · [One Match Flow](#one-match-through-footy) · [Engineering Snapshot](#engineering-snapshot) · [Performance](#simulation-performance) · [Showcase Match](#a-real-generated-match) · [The Platform](#the-platform) · [How It Works](#how-it-works) · [Footy vs GRF](#footy-vs-google-research-football) · [Quick Start](#quick-start)

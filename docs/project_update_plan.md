@@ -2,6 +2,8 @@
 
 Prepared: 13 October 2026
 
+Implementation followed this planning baseline. See [current status](05_current_status.md) and [dated verification](verification_2026_10_13.md) for delivered changes, measured results and remaining native-engine limitations.
+
 ## Objective and scope
 
 Turn the supplied project review into an executable roadmap: protect saved data, make long-running jobs reliable, demonstrate the AI and simulation claims, and prepare a reproducible release before expanding gameplay and the economy.

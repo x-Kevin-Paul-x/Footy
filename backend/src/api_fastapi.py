@@ -651,6 +651,8 @@ async def get_season_report_detail(season_year: int):
         if not report_data:
             raise HTTPException(status_code=404, detail="Report not found for given year.")
         return report_data
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching season report details: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -680,6 +682,8 @@ async def get_transfer_report_detail(season_year: int):
         if not report_data:
             raise HTTPException(status_code=404, detail="Transfer report not found for given year.")
         return report_data
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching transfer report details: {e}")
         raise HTTPException(status_code=500, detail=str(e))

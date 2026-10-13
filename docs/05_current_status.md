@@ -17,8 +17,8 @@ Reviewed and tested: **13 October 2026**. See [dated verification](verification_
 | Statistical realism | Open research | A sourced calibration report measures the retained native season's scoring discrepancy. No score postprocessing is used. |
 | In-match changes / home advantage | Experimental opt-in | Deterministic conditional changes and venue-dependent policy modulation under FOOTY_DYNAMIC_TACTICS=1; keep official TiKick default until calibrated. |
 | Native substitutions | Unsupported | Existing legacy substitutions and stored benches do not establish native hot-swap support. |
-| Installation and CI | Implemented, tested locally | Editable package, cross-platform launcher, full portable tests/coverage, lint, scoped typing, hooks and explicit native workflow. GitHub workflow result must be checked after push. |
-| Documentation and distribution | Prepared | Updated claims, platform setup, model provenance, contribution/issue templates, changelog, third-party notices, static demo package and manual Pages workflow. Public hosting/versioned release remain deployment actions. |
+| Installation and CI | Implemented, tested locally and on GitHub | Editable package, cross-platform launcher, full portable tests/coverage, lint, scoped typing, hooks and explicit native workflow. [Clean Linux CI and demo deployment passed](https://github.com/x-Kevin-Paul-x/Footy/actions/runs/38470099412). |
+| Documentation and distribution | Demo deployed; release drafted | Updated claims, platform setup, model provenance, contribution/issue templates, changelog and third-party notices. [Read-only demo](https://x-kevin-paul-x.github.io/Footy/) is live; v0.1.0 is an unpublished draft with generated checkpoints and checksums. |
 
 The implementation preserves the current default artifact retention setting. Creating a new save pins the run directories referenced by that snapshot; deleting the save releases those retention references. Keep curated match assets separate from disposable runtime recordings.
 
