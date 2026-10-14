@@ -59,9 +59,10 @@ Reference: [visual audit](simulation_visual_audit_2026_10_13.md).
 - [x] Benchmark complete 1080p/4K recordings and the final native director presentation; preserve all source hashes.
 - [x] Verify 30 fps prototype duration and event timestamps without changing the original replay.
 - [x] Run backend suite (196 passed, 11 skipped), final affected checks (17 passed), frontend tests (14 passed), lint, typing and production build.
-- [ ] Commit and push the remaining simulation visual upgrades.
+- [x] Commit and push the remaining simulation visual upgrades.
 
 Evidence: `docs/evidence/simulation_visuals/native-upgrade-proof.json` and native gameplay/goal screenshots.
+Implementation pushed as `4b42df8` on `codex/project-roadmap-updates`.
 Full recording: 3,108 frames. 1080p: 292.85 seconds; private 4K benchmark: 1,008.23 seconds; final 720p director export: 160.48 seconds.
 The first 1080p/4K runs measured native rendering throughput; the final RGB/orientation, HUD, kit and camera presentation was visually reviewed in the 720p director export and 720p/1080p native checks.
 
