@@ -3,12 +3,27 @@
 import hashlib
 import json
 import os
+from copy import deepcopy
 from pathlib import Path
 from filelock import FileLock
 from logic.team_identity import club_colour
 
 HAIR_STYLES = ("bald", "short01", "short02", "medium01", "medium02", "long01", "long02")
 HAIR_COLOURS = ("black", "brown", "darkblonde", "blonde", "red")
+
+
+def recorded_roster(profiles, names):
+    """Use the same recorded names as goal attribution, including names-only callers."""
+    return [
+        {
+            "player_id": p.player_id,
+            "name": names[i] if i < len(names) else p.name,
+            "jersey_number": p.jersey_number,
+            "position": p.assigned_position or p.position,
+            "appearance": deepcopy(p.appearance),
+        }
+        for i, p in enumerate(profiles)
+    ]
 
 
 def appearance_for_player(player_id, name):
@@ -74,6 +89,6 @@ def freeze_visual_identity(home_team, away_team, home_roster, away_roster):
         used.append(colour)
     return {
         "version": 1,
-        "home": {"kit": home, "selected": "home", "goalkeeper": keepers[0], "roster": home_roster},
-        "away": {"kit": away, "selected": selection, "goalkeeper": keepers[1], "roster": away_roster},
+        "home": {"kit": home, "selected": "home", "goalkeeper": keepers[0], "roster": deepcopy(home_roster)},
+        "away": {"kit": away, "selected": selection, "goalkeeper": keepers[1], "roster": deepcopy(away_roster)},
     }

@@ -76,7 +76,7 @@ def bind_visual_identity(env, manifest, directory):
             generate_kit(path, kit, player.get("jersey_number"))
             appearance = player.get("appearance") or {}
             names = manifest.home_players if team == 0 else manifest.away_players
-            name = player.get("name") or (names[index] if index < len(names) else "Unknown player")
+            name = names[index] if index < len(names) else player.get("name") or "Unknown player"
             native.set_visual_player(
                 team,
                 index,

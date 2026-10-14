@@ -949,6 +949,7 @@ class GRFMatchExecutor:
         xg_h_derived = round(float(sum(e.get("xg", 0.0) for e in shot_events_h)), 2)
         xg_a_derived = round(float(sum(e.get("xg", 0.0) for e in shot_events_a)), 2)
 
+        from logic.visual_identity import recorded_roster
         manifest = MatchManifest(
             match_id=self.match_id,
             home_team=self.home_team,
@@ -966,10 +967,8 @@ class GRFMatchExecutor:
             events=self.events,
             home_players=self.home_players,
             away_players=self.away_players,
-            home_roster=[{'player_id': p.player_id, 'name': p.name, 'jersey_number': p.jersey_number,
-                          'position': p.assigned_position or p.position, 'appearance': p.appearance} for p in self.home_tactics.roster],
-            away_roster=[{'player_id': p.player_id, 'name': p.name, 'jersey_number': p.jersey_number,
-                          'position': p.assigned_position or p.position, 'appearance': p.appearance} for p in self.away_tactics.roster],
+            home_roster=recorded_roster(self.home_tactics.roster, self.home_players),
+            away_roster=recorded_roster(self.away_tactics.roster, self.away_players),
             home_formation=self.home_formation,
             away_formation=self.away_formation,
             home_color=self.home_color,
