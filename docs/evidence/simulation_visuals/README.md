@@ -30,7 +30,8 @@ states; they do not reconstruct historical identity.
 final camera/material/animation checks. 30 fps optical flow and the CC0 cheer
 conversion remain experimental; 4K is not a public supported profile.
 
-The README hero GIF at `assets/readme/native-goal.gif` is an eight-second
-excerpt of that same final director export, beginning at 34.2 seconds around
-the first goal (event timestamp 36.2 seconds). It is encoded at 720×405 and
-10 fps with an infinite loop; playback uses the original recorded speed.
+The README now features a randomly selected match from a fresh four-fixture
+season sample. Its GIF, real studio frames, full video and selection evidence
+are retained in `assets/matches/current-season/`; see that directory's README
+for provenance. The images in this evidence directory retain the earlier
+visual-upgrade verification context described above.

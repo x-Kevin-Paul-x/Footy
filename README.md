@@ -20,11 +20,11 @@ Built with **FastAPI, React 19, SQLAlchemy, Google Research Football, TiKick, FF
 
 <br/>
 
-![Footy goal replay: moving club-kit players, rounded scoreboard and recorded scorer camera transition](assets/readme/native-goal.gif)
+![Fresh-season West Ham–Bournemouth replay with club kits, clay scoreboard and scorer camera transition](assets/readme/native-goal.gif)
 
 **Club colours. Recorded players. A matchday broadcast in Footy's clay style.**
 
-[Explore the visual upgrades](#matchday-in-footy) · [Native replay evidence](docs/evidence/simulation_visuals/native-upgrade-proof.json) · [Full-season match recording](assets/matches/full-match-recordings/burnley-2-4-bournemouth.mp4)
+[Explore the visual upgrades](#matchday-in-footy) · [Fresh-season match evidence](assets/matches/current-season/showcase.json) · [Watch West Ham 4–4 Bournemouth](assets/matches/current-season/west-ham-bournemouth.mp4)
 
 [Explore the read-only demo](https://x-kevin-paul-x.github.io/Footy/) · [Dated implementation and CI verification](docs/verification_2026_10_13.md)
 
@@ -40,21 +40,17 @@ Built with **FastAPI, React 19, SQLAlchemy, Google Research Football, TiKick, FF
 
 The simulation now shares the frontend's claymorphism: rounded panels, soft shadows, Outfit and Inter typography, and midnight or warm studio themes. Club colours carry through the lineups, scoreboard and radar—Burnley's claret and Bournemouth's red replace generic blue and orange team panels.
 
-| Starting XI · Midnight | Starting XI · Warm |
+| Recorded Starting XI | Recorded Half-time Studio |
 | :---: | :---: |
-| ![Midnight starting-XI presentation](docs/evidence/simulation_visuals/start-dark.png) | ![Warm starting-XI presentation](docs/evidence/simulation_visuals/start-light.png) |
+| ![West Ham and Bournemouth recorded lineups](assets/matches/current-season/start.png) | ![West Ham–Bournemouth recorded half-time card](assets/matches/current-season/half-time.png) |
 
-| Half-time studio | Full-time studio |
-| :---: | :---: |
-| ![Midnight half-time card](docs/evidence/simulation_visuals/half-dark.png) | ![Warm full-time card](docs/evidence/simulation_visuals/full-light.png) |
-
-*Studio previews use illustrative statistics. Missing shirt numbers in the historical source are shown as dashes.*
+*These studio frames use the selected fresh match's recorded names, shirt numbers and statistics.*
 
 ### From the studio to the pitch
 
-![Native saved-state gameplay with club kits, Footy scoreboard and tactical radar](docs/evidence/simulation_visuals/native-gameplay.png)
+![West Ham–Bournemouth saved-state gameplay with club kits, Footy scoreboard and radar](assets/matches/current-season/gameplay.png)
 
-The gameplay and goal screenshots come from a complete, separately generated Burnley–Bournemouth match restored from its saved native states. They show the new presentation; the retained 2–4 full-season recording below predates these upgrades.
+The gameplay screenshot and looping goal preview come from **West Ham 4–4 Bournemouth**, randomly selected from four completed fixtures in a fresh season run on **14 October 2026**. The full match uses recorded squad identities and the new native presentation. [Watch the full replay](assets/matches/current-season/west-ham-bournemouth.mp4).
 
 | Replay feature | What you can use |
 | :--- | :--- |
@@ -68,11 +64,11 @@ The gameplay and goal screenshots come from a complete, separately generated Bur
 In the match replay panel, choose **Adjust broadcast settings**, select picture quality, studio theme and a 3D camera, then generate the replay. Native kits, appearances and camera bindings require the [isolated native visual runtime](backend/native/README.md) and compatible saved state archives. Legacy recordings retain unknown IDs and numbers where those were never recorded.
 
 <details>
-<summary><strong>Player identity close-up and experimental motion</strong></summary>
+<summary><strong>Recorded goal close-up and experimental motion</strong></summary>
 
-![Native kit and appearance binding, including shirt number 47](docs/evidence/simulation_visuals/native-kits-closeup.png)
+![Recorded Bournemouth goal presentation with club kits and scorer close-up](assets/matches/current-season/goal.png)
 
-This close-up uses an explicitly synthetic cosmetic fixture on unchanged recorded states to demonstrate shirt-number and appearance binding.
+This goal frame comes from the same fresh-season replay, using the selected match's frozen player and kit identities.
 
 - **30 fps optical-flow export:** a separate prototype preserves duration and event timestamps; fast motion can show interpolation artifacts.
 - **CC0 celebration clip:** a KayKit cheer has been converted and previewed on the native rig. It still needs artistic refinement before use in the production goal flow. [Asset, licence and conversion notes](backend/assets/animations/README.md).
@@ -136,7 +132,7 @@ React 19 Analytics & Tables    Broadcast-Style 3D Replay (.mp4)
 | **Targeted Regression Suites** | **33 passed** | Season contracts, replay loading, squad data, and recording retention |
 | **API Surface** | **74 routes** | FastAPI REST endpoints, WebSocket channels, and media streaming |
 | **Relational Schema** | **Versioned ORM schema** | SQLAlchemy 2.0 entities, SQLite WAL persistence, tested fresh/legacy Alembic upgrades |
-| **Replay Validation** | **1,634 decoded frames** | H.264 High Profile @ 720p 15fps, verified against canonical score |
+| **Replay Validation** | **12,004 native states checked** | Four fresh fixtures; canonical positions, scores, ownership and 30 goal frames verified |
 | **Product Surfaces** | **15 React pages** | React 19, TypeScript, MUI, Recharts, TanStack Query, and Zustand |
 | **Simulation Core** | **11v11 Multi-Agent** | Native Google Research Football environment + TiKick neural policy |
 | **Codebase Scale** | **40.4k LOC** | 27,637 lines Python (`backend/src` + `backend/tests`), 12,714 lines TS/TSX |
@@ -197,74 +193,32 @@ The DQN runs do not establish an advantage over random actions in this sample. T
 
 ## A Real Generated Match
 
-### Latest verified season: Burnley 2–4 Bournemouth
+### Fresh season showcase: West Ham 4–4 Bournemouth
 
-The October 2026 verification run completed all **380 fixtures in 38 minutes 38 seconds** using ten CPU workers and the official TiKick actor checkpoint. An additional native-state audit checked **1,140,380 saved states and all 1,874 goals** without a mismatch. The season simulation saves the authoritative native states; video generation later restores and renders those states without simulating the match again.
+On **14 October 2026**, Footy created a fresh season and completed four fixtures through the production GRF/TiKick pipeline with two CPU workers. Fixture simulation took **69.85 seconds**; the isolated run took **89.64 seconds** including setup and management processing. This is a four-match season sample, not a completed season.
 
-The GIF below shows a ten-second excerpt around Bournemouth's opening goal. Its source is the complete match #372 recording: **310.7 seconds, 1280×720, H.264, 10 fps, 37,349,145 bytes (35.62 MiB)**. The full MP4 and its goal timeline are preserved in [`assets/matches/full-match-recordings/`](assets/matches/full-match-recordings/).
+| Fixture | Recorded result |
+| :--- | :---: |
+| Arsenal vs Burnley | 2–1 |
+| Aston Villa vs Wolves | 7–5 |
+| West Ham vs Bournemouth | **4–4 · randomly selected** |
+| Brentford vs Tottenham | 5–2 |
 
-![Bournemouth opening goal from the earlier verified full-season recording](assets/matches/burnley-bournemouth.gif)
+The showcase was selected uniformly from all four finished fixtures, without filtering teams or results. The [selection seed, fixture results, frozen rosters and verification evidence](assets/matches/current-season/showcase.json) are retained with the video.
 
-Runtime videos, trajectories and native state archives are saved under `backend/reports/recordings/<run_id>/` by default, or `$FOOTY_REPORTS_DIR/recordings/<run_id>/` when a custom reports directory is configured. Timed verification runs use `backend/verification/season_<timestamp>/reports/recordings/<run_id>/`.
+The full replay restores saved native states and applies **club kits, recorded shirt numbers and appearances, midnight studio cards, the clay scoreboard and radar, and scorer camera transitions**. Rendering leaves the original match events and ball paths intact.
 
-**Storage policy:** starting a new simulation deletes previous runtime run directories, including their videos and native archives. The current run and curated files under `assets/matches/` are preserved. `FOOTY_RUN_RETENTION=N` optionally retains N previous runs; the default is zero. Timed verification runs also clear previous verification recordings while keeping their audit summaries and databases.
+[▶ Watch the complete West Ham–Bournemouth replay](assets/matches/current-season/west-ham-bournemouth.mp4) · [Recorded presentation timeline](assets/matches/current-season/west-ham-bournemouth.timeline.json) · [Asset provenance](assets/matches/current-season/README.md)
 
-### Earlier standalone showcase
+![Recorded full-time studio: West Ham 4–4 Bournemouth](assets/matches/current-season/full-time.png)
 
-This repository includes a verified match generated through the real `/api/v1/match/simulate-grf` endpoint on **6 September 2026**. Arsenal beat Chelsea **1–0**, with Arsenal Player 8 scoring at the 73rd minute.
+**Full recording:** 1280×720, H.264, 10 fps, **3,109 decoded frames / 310.9 seconds**. The looping GIF preserves the recorded speed.
 
-<div align="center">
+**Replay verification:** all **12,004 saved states** across the four matches matched their canonical trajectories, including scores, player positions, ball coordinates and possession ownership. All **30 native goal frames** passed their checks, and every match reached native full time.
 
-### **Arsenal 1 – 0 Chelsea**
-**63% Possession** · **1–0 Shots** · **0.30–0.00 xG** · **1,634 Validated Frames** · **H.264 720p**
+The [earlier complete-season audit](docs/fresh_season_verification.md) remains available as historical engineering evidence. The footage featured here uses the upgraded presentation.
 
-[▶ Watch Complete 3D Replay (MP4)](assets/readme/showcase-match.mp4) · [Inspect Match JSON](assets/readme/showcase-match.json) · [Inspect Presentation Timeline](assets/readme/showcase-match.timeline.json)
-
-<br/>
-
-![Generated full-time broadcast card](assets/readme/match-fulltime.png)
-
-</div>
-
-<details>
-<summary><strong>🔍 Replay Validation Details</strong></summary>
-
-| Render Property | Verified Value |
-| :--- | ---: |
-| **Resolution** | 1280 × 720 |
-| **Frame Rate** | 15 fps |
-| **Video Codec** | H.264 High Profile |
-| **Duration** | 108.93 seconds |
-| **Frames Decoded** | 1,634 |
-| **Output File Size** | 3.60 MiB |
-| **Overlay Layers** | Lineup card, scorebug, match clock, minimap radar, event badges, full-time statistics |
-
-</details>
-
-<details>
-<summary><strong>⚡ Reproduce the Showcase Request</strong></summary>
-
-```powershell
-$body = @{
-  match_id        = "readme_showcase_arsenal_chelsea_20260906"
-  home_team_name  = "Arsenal"
-  away_team_name  = "Chelsea"
-  home_formation  = "4-3-3"
-  away_formation  = "4-2-3-1"
-  max_steps       = 1200
-  generate_video  = $true
-  record_dump     = $true
-  render_mode     = "3d"
-} | ConvertTo-Json
-
-Invoke-RestMethod `
-  -Method Post `
-  -Uri "http://localhost:5001/api/v1/match/simulate-grf" `
-  -ContentType "application/json" `
-  -Body $body
-```
-
-</details>
+Runtime recordings remain under `backend/reports/recordings/<run_id>/` or the configured `FOOTY_REPORTS_DIR`. This showcase was generated in an isolated verification folder; its curated video and images under `assets/matches/current-season/` are retained independently of runtime cleanup.
 
 ---
 

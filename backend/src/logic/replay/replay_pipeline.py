@@ -426,6 +426,7 @@ class ReplayPipeline:
                         a_sot=snapshot.shots_on_target[1] if snapshot else 0,
                         h_xg=snapshot.xg[0] if snapshot else 0.0,
                         a_xg=snapshot.xg[1] if snapshot else 0.0,
+                        events=[e for e in traj.manifest.events if e.get('minute', 0) <= 45] if traj else [],
                         home_bgr=home_bgr, away_bgr=away_bgr, theme=payload.get("theme", "dark")
                     )
                     ht_card_rgb = cv2.cvtColor(ht_card_bgr, cv2.COLOR_BGR2RGB)
@@ -446,6 +447,7 @@ class ReplayPipeline:
                 a_sot=traj.manifest.shots_on_target[1] if traj else 0,
                 h_xg=traj.manifest.xg[0] if traj else 0.0,
                 a_xg=traj.manifest.xg[1] if traj else 0.0,
+                events=traj.manifest.events if traj else [],
                 home_bgr=home_bgr, away_bgr=away_bgr, theme=payload.get("theme", "dark")
             )
             ft_card_rgb = cv2.cvtColor(ft_card_bgr, cv2.COLOR_BGR2RGB)
