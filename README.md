@@ -20,7 +20,7 @@ Built with **FastAPI, React 19, SQLAlchemy, Google Research Football, TiKick, FF
 
 <br/>
 
-![Footy native goal presentation: club kits, rounded scoreboard and recorded scorer close-up](docs/evidence/simulation_visuals/native-goal.png)
+![Footy goal replay: moving club-kit players, rounded scoreboard and recorded scorer camera transition](assets/readme/native-goal.gif)
 
 **Club colours. Recorded players. A matchday broadcast in Footy's clay style.**
 
