@@ -379,10 +379,12 @@ def main():
     dump_file = payload.get("dump_file")
     trajectory_file = payload.get("trajectory_file")
 
-    if dump_file and os.path.exists(dump_file):
-        render_from_dump(payload)
-    elif states_file and os.path.exists(states_file):
+    if states_file and os.path.exists(states_file):
         render_from_grf_states(payload)
+    elif dump_file and os.path.exists(dump_file):
+        if payload.get('resolution', '720p') != '720p' or payload.get('camera', 'wide') != 'wide':
+            raise ValueError('HD profiles and camera presets require a saved native state archive')
+        render_from_dump(payload)
     elif trajectory_file and os.path.exists(trajectory_file):
         render_from_trajectory_npz(payload)
     else:

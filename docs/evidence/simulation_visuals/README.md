@@ -15,5 +15,17 @@ Its generated video is a local verification artifact at
 `backend/verification/tmp/clay-recorded-replay.mp4`.
 
 Broadcast cards default to the midnight theme. The warm theme is implemented
-and previewed; selecting it through frontend video-render controls remains
-future work. These graphics do not change native 3D kit textures or models.
+and selectable through the replay controls, alongside 720p/1080p quality and
+native camera presets. The second delivery connects native club kits, shirt
+numbers, cosmetics and recorded player labels through the isolated visual
+runtime described in `backend/native/README.md`.
+
+`native-gameplay.png` and `native-goal.png` come from the final complete director
+export of an isolated generated match. Its generic player names are recorded
+fixture names. `native-kits-closeup.png` and the celebration preview use an
+explicit synthetic cosmetic fixture (including shirt 47) on unchanged saved
+states; they do not reconstruct historical identity.
+
+`native-upgrade-proof.json` includes complete 1080p/4K throughput results and
+final camera/material/animation checks. 30 fps optical flow and the CC0 cheer
+conversion remain experimental; 4K is not a public supported profile.

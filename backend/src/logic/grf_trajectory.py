@@ -44,6 +44,7 @@ class MatchManifest:
     created_at: Optional[str] = None
     home_roster: List[Dict[str, Any]] = field(default_factory=list)
     away_roster: List[Dict[str, Any]] = field(default_factory=list)
+    visual_identity: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.score is not None:
@@ -64,7 +65,7 @@ class MatchManifest:
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
         # Preserve legacy manifest digests when no identity was recorded.
-        for key in ('home_roster', 'away_roster'):
+        for key in ('home_roster', 'away_roster', 'visual_identity'):
             if not data[key]:
                 data.pop(key)
         return data
@@ -104,6 +105,7 @@ class MatchManifest:
             created_at=data.get("created_at"),
             home_roster=data.get("home_roster", []),
             away_roster=data.get("away_roster", []),
+            visual_identity=data.get('visual_identity', {}),
         )
 
 

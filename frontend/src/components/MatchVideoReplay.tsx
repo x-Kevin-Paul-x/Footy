@@ -34,7 +34,7 @@ interface MatchVideoReplayProps {
   awayTeam: string;
   score?: [number, number];
   events?: Array<{ minute: number; type: string; player?: string; team?: string; details?: string }>;
-  onGenerateReplay?: (mode: "3d" | "2d") => void;
+  onGenerateReplay?: (mode: "3d" | "2d", presentation: { resolution: '720p' | '1080p'; theme: 'dark' | 'light'; camera: 'wide' | 'bird' | 'tele' | 'director' }) => void;
   isGenerating?: boolean;
 }
 
@@ -58,6 +58,9 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
   // Active Video URL & Live Rendering State
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(videoUrl || null);
   const [renderMode, setRenderMode] = useState<"3d" | "2d">("3d");
+  const [resolution, setResolution] = useState<'720p' | '1080p'>('720p');
+  const [camera, setCamera] = useState<'wide' | 'bird' | 'tele' | 'director'>('wide');
+  const [broadcastTheme, setBroadcastTheme] = useState<'dark' | 'light'>(theme.palette.mode === 'light' ? 'light' : 'dark');
   const [isActivelyRendering, setIsActivelyRendering] = useState<boolean>(isGenerating);
   const [renderProgress, setRenderProgress] = useState<number>(0);
   const [renderStage, setRenderStage] = useState<string>("Initializing TiKick MARL Policy...");
@@ -241,6 +244,11 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
       </Box>
 
       <CardContent sx={{ p: 3 }}>
+        {activeVideoUrl && !isDisplayingHUD && onGenerateReplay && (
+          <Button size="small" onClick={() => { setActiveVideoUrl(null); setRenderError(null); }} sx={{ mb: 2 }}>
+            Adjust broadcast settings
+          </Button>
+        )}
         {renderError && <Alert severity="error" sx={{ mb: 2 }}>{renderError}</Alert>}
         {activeVideoUrl && !isDisplayingHUD ? (
           <Box>
@@ -465,7 +473,7 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
               No 3D Replay Rendered Yet
             </Typography>
             <Typography variant="body2" sx={{ color: "text.secondary", maxWidth: 480, mx: "auto", mb: 2.5 }}>
-              Generate a physics-accurate 720p HD broadcast replay powered by the Google Research Football 3D engine and TiKick 11v11 AI.
+              Watch your recorded match with club colours and your preferred broadcast style.
             </Typography>
 
             {/* Engine Render Mode Settings Option */}
@@ -516,6 +524,25 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
                   ⚽ 2D Tactical Radar
                 </ToggleButton>
               </ToggleButtonGroup>
+              <Typography variant="caption">Picture quality</Typography>
+              <ToggleButtonGroup value={resolution} exclusive onChange={(_, value) => value && setResolution(value)} size="small" aria-label="Picture quality">
+                <ToggleButton value="720p">720p HD</ToggleButton>
+                <ToggleButton value="1080p">1080p Full HD</ToggleButton>
+              </ToggleButtonGroup>
+              <Typography variant="caption">Broadcast style</Typography>
+              <ToggleButtonGroup value={broadcastTheme} exclusive onChange={(_, value) => value && setBroadcastTheme(value)} size="small" aria-label="Broadcast style">
+                <ToggleButton value="dark">Midnight</ToggleButton>
+                <ToggleButton value="light">Warm clay</ToggleButton>
+              </ToggleButtonGroup>
+              {renderMode === '3d' && <>
+                <Typography variant="caption">Camera</Typography>
+                <ToggleButtonGroup value={camera} exclusive onChange={(_, value) => value && setCamera(value)} size="small" aria-label="Camera">
+                  <ToggleButton value="wide">Broadcast</ToggleButton>
+                  <ToggleButton value="bird">Overhead</ToggleButton>
+                  <ToggleButton value="tele">Sideline</ToggleButton>
+                  <ToggleButton value="director">Match director</ToggleButton>
+                </ToggleButtonGroup>
+              </>}
             </Box>
 
             {onGenerateReplay && (
@@ -523,7 +550,7 @@ export const MatchVideoReplay: React.FC<MatchVideoReplayProps> = ({
                 variant="contained"
                 size="large"
                 startIcon={<VideocamIcon />}
-                onClick={() => onGenerateReplay(renderMode)}
+                onClick={() => onGenerateReplay(renderMode, { resolution, theme: broadcastTheme, camera: renderMode === '3d' ? camera : 'wide' })}
                 sx={{
                   borderRadius: 3,
                   fontWeight: 800,

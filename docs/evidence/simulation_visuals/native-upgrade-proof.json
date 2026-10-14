@@ -1,0 +1,319 @@
+{
+  "date": "2026-10-14",
+  "full_match_1080p": {
+    "match_id": "visual_full_match",
+    "output_mp4": "backend/verification/tmp/visual-full-1080p.mp4",
+    "resolution": "1080p",
+    "total_frames": 3108,
+    "total_time_sec": 292.85,
+    "effective_fps": 10.6,
+    "render_profile": {
+      "resolution": "1080p",
+      "dimensions": "1920x1080",
+      "encoder_used": "FFmpegSoftwareEncoder",
+      "encoder_preset": "p4",
+      "opengl_driver": "auto",
+      "total_render_time_ms": 292845.6,
+      "timing_breakdown": {
+        "startup_init_ms": 16456.0,
+        "archive_read_ms": 1647.6,
+        "state_restore_ms": 16977.7,
+        "grf_render_ms": 242019.8,
+        "rgb_copy_resize_ms": 33.5,
+        "hud_compositing_ms": 12224.8,
+        "queue_push_block_ms": 185.0,
+        "encoder_write_ms": 30789.2,
+        "ffmpeg_flush_ms": 435.1
+      },
+      "queue_telemetry": {
+        "max_capacity": 16,
+        "frames_enqueued": 3109,
+        "frames_dequeued": 3109,
+        "producer_block_count": 53,
+        "consumer_block_count": 3009,
+        "time_producer_blocked_ms": 591.67,
+        "time_consumer_idle_ms": 245287.74,
+        "max_depth": 16,
+        "mean_depth": 1.37,
+        "p50_depth": 1.0,
+        "p95_depth": 1.0
+      },
+      "effective_fps": 10.6,
+      "total_frames": 3108,
+      "broadcast_fps": 10
+    },
+    "source_unchanged": true,
+    "source_hashes": {
+      "backend/verification/tmp/visual-full-match/recordings/default/trace_visual_full_match.grfstate": "5f2e7f12fd48e0f32af5c6022c4a055da79462421ffece2ef1c1396138370664",
+      "backend/verification/tmp/visual-full-match/recordings/default/trace_visual_full_match.npz": "a6826bcbb55b944b31f4019f02295bd9891f2d8052fc1ef2c421924a0fd9b6ea",
+      "backend/verification/tmp/visual-full-match/recordings/default/trace_visual_full_match.goals.json": "8c0e7a9bbe8f52be3a2deca21d84cc6889fcc0d53db22f04d1163054be0f81b3",
+      "backend/verification/tmp/visual-full-match/recordings/default/trace_visual_full_match.goals.grfstate": "fe7ff470704cefdf9fcd4721f8f0120e69345bc3b093925cf7ea049731a055b8"
+    },
+    "physics_hash": "193a2c50da2e58df8f1cba75c289195e567506b8db388a54abf58b04eeab9321"
+  },
+  "full_match_4k": {
+    "match_id": "visual_full_match",
+    "output_mp4": "backend/verification/tmp/visual-full-4k.mp4",
+    "resolution": "4k",
+    "total_frames": 3108,
+    "total_time_sec": 1008.23,
+    "effective_fps": 3.1,
+    "render_profile": {
+      "resolution": "4k",
+      "dimensions": "3840x2160",
+      "encoder_used": "FFmpegSoftwareEncoder",
+      "encoder_preset": "p4",
+      "opengl_driver": "auto",
+      "total_render_time_ms": 1008227.3,
+      "timing_breakdown": {
+        "startup_init_ms": 20127.9,
+        "archive_read_ms": 2114.9,
+        "state_restore_ms": 89559.0,
+        "grf_render_ms": 828896.4,
+        "rgb_copy_resize_ms": 50.6,
+        "hud_compositing_ms": 52817.8,
+        "queue_push_block_ms": 203.5,
+        "encoder_write_ms": 189661.4,
+        "ffmpeg_flush_ms": 2173.3
+      },
+      "queue_telemetry": {
+        "max_capacity": 16,
+        "frames_enqueued": 3109,
+        "frames_dequeued": 3109,
+        "producer_block_count": 53,
+        "consumer_block_count": 3007,
+        "time_producer_blocked_ms": 2751.14,
+        "time_consumer_idle_ms": 797092.32,
+        "max_depth": 16,
+        "mean_depth": 1.38,
+        "p50_depth": 1.0,
+        "p95_depth": 1.0
+      },
+      "effective_fps": 3.1,
+      "total_frames": 3108,
+      "broadcast_fps": 10
+    },
+    "source_unchanged": true,
+    "source_hashes": {
+      "backend/verification/tmp/visual-full-match/recordings/default/trace_visual_full_match.grfstate": "5f2e7f12fd48e0f32af5c6022c4a055da79462421ffece2ef1c1396138370664",
+      "backend/verification/tmp/visual-full-match/recordings/default/trace_visual_full_match.npz": "a6826bcbb55b944b31f4019f02295bd9891f2d8052fc1ef2c421924a0fd9b6ea",
+      "backend/verification/tmp/visual-full-match/recordings/default/trace_visual_full_match.goals.json": "8c0e7a9bbe8f52be3a2deca21d84cc6889fcc0d53db22f04d1163054be0f81b3",
+      "backend/verification/tmp/visual-full-match/recordings/default/trace_visual_full_match.goals.grfstate": "fe7ff470704cefdf9fcd4721f8f0120e69345bc3b093925cf7ea049731a055b8"
+    },
+    "physics_hash": "193a2c50da2e58df8f1cba75c289195e567506b8db388a54abf58b04eeab9321"
+  },
+  "native_identity_cameras_animation": {
+    "checks": [
+      {
+        "dimensions": [
+          1280,
+          720
+        ],
+        "camera": 1,
+        "blend": 1.0,
+        "physics_unchanged": true
+      },
+      {
+        "dimensions": [
+          1280,
+          720
+        ],
+        "camera": 2,
+        "blend": 1.0,
+        "physics_unchanged": true
+      },
+      {
+        "dimensions": [
+          1280,
+          720
+        ],
+        "camera": 3,
+        "blend": 1.0,
+        "physics_unchanged": true
+      },
+      {
+        "dimensions": [
+          1280,
+          720
+        ],
+        "camera": 4,
+        "blend": 0.5,
+        "physics_unchanged": true
+      },
+      {
+        "dimensions": [
+          1280,
+          720
+        ],
+        "camera": 4,
+        "blend": 1.0,
+        "physics_unchanged": true
+      },
+      {
+        "clip": "CC0 KayKit Cheer",
+        "native_frames": 168,
+        "physics_unchanged": true
+      },
+      {
+        "dimensions": [
+          1920,
+          1080
+        ],
+        "camera": 1,
+        "blend": 1.0,
+        "physics_unchanged": true
+      },
+      {
+        "dimensions": [
+          1920,
+          1080
+        ],
+        "camera": 2,
+        "blend": 1.0,
+        "physics_unchanged": true
+      },
+      {
+        "dimensions": [
+          1920,
+          1080
+        ],
+        "camera": 3,
+        "blend": 1.0,
+        "physics_unchanged": true
+      },
+      {
+        "dimensions": [
+          1920,
+          1080
+        ],
+        "camera": 4,
+        "blend": 0.5,
+        "physics_unchanged": true
+      },
+      {
+        "dimensions": [
+          1920,
+          1080
+        ],
+        "camera": 4,
+        "blend": 1.0,
+        "physics_unchanged": true
+      },
+      {
+        "dimensions": [
+          1280,
+          720
+        ],
+        "camera": 1,
+        "blend": 1.0,
+        "physics_unchanged": true
+      },
+      {
+        "dimensions": [
+          1280,
+          720
+        ],
+        "camera": 2,
+        "blend": 1.0,
+        "physics_unchanged": true
+      },
+      {
+        "dimensions": [
+          1280,
+          720
+        ],
+        "camera": 3,
+        "blend": 1.0,
+        "physics_unchanged": true
+      },
+      {
+        "dimensions": [
+          1280,
+          720
+        ],
+        "camera": 4,
+        "blend": 0.5,
+        "physics_unchanged": true
+      },
+      {
+        "dimensions": [
+          1280,
+          720
+        ],
+        "camera": 4,
+        "blend": 1.0,
+        "physics_unchanged": true
+      },
+      {
+        "clip": "CC0 KayKit Cheer",
+        "native_frames": 168,
+        "physics_unchanged": true
+      }
+    ],
+    "source_unchanged": true,
+    "source_sha256": "5f2e7f12fd48e0f32af5c6022c4a055da79462421ffece2ef1c1396138370664"
+  },
+  "motion_prototype": {
+    "frames": 570,
+    "fps": 30,
+    "duration_seconds": 19.0,
+    "source_unchanged": true
+  },
+  "limitations": [
+    "Public native profiles remain 720p/1080p at the recorded 10 fps.",
+    "30 fps is a separate experimental optical-flow export.",
+    "CC0 cheer is a native rig-preview prototype, not a production goal clip.",
+    "Native cosmetics/cameras require the isolated native visual runtime build."
+  ],
+  "final_presentation_720p": {
+    "match_id": "visual_full_match",
+    "output_mp4": "backend/verification/tmp/visual-final-director.mp4",
+    "resolution": "720p",
+    "total_frames": 3108,
+    "total_time_sec": 160.48,
+    "effective_fps": 19.4,
+    "render_profile": {
+      "resolution": "720p",
+      "dimensions": "1280x720",
+      "encoder_used": "FFmpegSoftwareEncoder",
+      "encoder_preset": "p4",
+      "opengl_driver": "auto",
+      "total_render_time_ms": 160476.0,
+      "timing_breakdown": {
+        "startup_init_ms": 20267.6,
+        "archive_read_ms": 1636.5,
+        "state_restore_ms": 7107.3,
+        "grf_render_ms": 117180.9,
+        "rgb_copy_resize_ms": 13.7,
+        "hud_compositing_ms": 12578.9,
+        "queue_push_block_ms": 120.8,
+        "encoder_write_ms": 11343.0,
+        "ffmpeg_flush_ms": 138.7
+      },
+      "queue_telemetry": {
+        "max_capacity": 16,
+        "frames_enqueued": 3109,
+        "frames_dequeued": 3109,
+        "producer_block_count": 53,
+        "consumer_block_count": 3009,
+        "time_producer_blocked_ms": 363.76,
+        "time_consumer_idle_ms": 128742.96,
+        "max_depth": 16,
+        "mean_depth": 1.37,
+        "p50_depth": 1.0,
+        "p95_depth": 1.0
+      },
+      "effective_fps": 19.4,
+      "total_frames": 3108,
+      "broadcast_fps": 10
+    },
+    "source_unchanged": true,
+    "source_hashes": {
+      "backend/verification/tmp/visual-full-match/recordings/default/trace_visual_full_match.grfstate": "5f2e7f12fd48e0f32af5c6022c4a055da79462421ffece2ef1c1396138370664",
+      "backend/verification/tmp/visual-full-match/recordings/default/trace_visual_full_match.npz": "a6826bcbb55b944b31f4019f02295bd9891f2d8052fc1ef2c421924a0fd9b6ea",
+      "backend/verification/tmp/visual-full-match/recordings/default/trace_visual_full_match.goals.json": "8c0e7a9bbe8f52be3a2deca21d84cc6889fcc0d53db22f04d1163054be0f81b3",
+      "backend/verification/tmp/visual-full-match/recordings/default/trace_visual_full_match.goals.grfstate": "fe7ff470704cefdf9fcd4721f8f0120e69345bc3b093925cf7ea049731a055b8"
+    },
+    "physics_hash": "193a2c50da2e58df8f1cba75c289195e567506b8db388a54abf58b04eeab9321"
+  }
+}

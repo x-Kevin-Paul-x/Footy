@@ -62,61 +62,8 @@ def draw_hud(
     is_second_half: bool = False,
     match_seconds: Optional[float] = None,
 ) -> np.ndarray:
-    annotated = frame  # In-place drawing on writable frame, avoid full-frame copy
-    home_bgr = hex_to_bgr(club_colour(home_team, '#%02x%02x%02x' % tuple(reversed(home_bgr))))
-    away_bgr = hex_to_bgr(club_colour(away_team, '#%02x%02x%02x' % tuple(reversed(away_bgr))))
-    h_img, w_img = annotated.shape[:2]
-
-    # Floating Modern Top-Left TV Pill HUD
-    px, py = 32, 24
-    pw, ph = 370, 38
-
-    # Fast ROI slice alpha-blending
-    roi = annotated[py:py+ph, px:px+pw]
-    bg_patch = np.full((ph, pw, 3), (14, 18, 26), dtype=np.uint8)
-    cv2.addWeighted(bg_patch, 0.85, roi, 0.15, 0, roi)
-    cv2.rectangle(annotated, (px, py), (px + pw, py + ph), (55, 68, 85), 1)
-
-    # Home Pill
-    h_abbr = team_abbr(home_team)
-    cv2.rectangle(annotated, (px + 2, py + 2), (px + 62, py + ph - 2), home_bgr, -1)
-    htc = text_color_for_bg(home_bgr)
-    cv2.putText(annotated, h_abbr, (px + 10, py + 26), cv2.FONT_HERSHEY_DUPLEX, 0.62, htc, 2, cv2.LINE_AA)
-
-    # Score
-    cv2.putText(annotated, str(score[0]), (px + 76, py + 28), cv2.FONT_HERSHEY_DUPLEX, 0.75, (255, 255, 255), 2, cv2.LINE_AA)
-    cv2.putText(annotated, "-", (px + 100, py + 26), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (160, 175, 195), 1, cv2.LINE_AA)
-    cv2.putText(annotated, str(score[1]), (px + 120, py + 28), cv2.FONT_HERSHEY_DUPLEX, 0.75, (255, 255, 255), 2, cv2.LINE_AA)
-
-    # Away Pill
-    a_abbr = team_abbr(away_team)
-    cv2.rectangle(annotated, (px + 144, py + 2), (px + 204, py + ph - 2), away_bgr, -1)
-    atc = text_color_for_bg(away_bgr)
-    cv2.putText(annotated, a_abbr, (px + 152, py + 26), cv2.FONT_HERSHEY_DUPLEX, 0.62, atc, 2, cv2.LINE_AA)
-
-    # Clock
-    half_tag = "2ND" if is_second_half else "1ST"
-    if match_seconds is None:
-        clock_str = f"{half_tag}  {match_min:02d}:00"
-    else:
-        elapsed_seconds = max(0, int(match_seconds))
-        clock_str = f"{half_tag}  {elapsed_seconds // 60:02d}:{elapsed_seconds % 60:02d}"
-    cv2.rectangle(annotated, (px + 208, py + 2), (px + pw - 2, py + ph - 2), (24, 30, 42), -1)
-    cv2.putText(annotated, clock_str, (px + 222, py + 26), cv2.FONT_HERSHEY_DUPLEX, 0.55, (0, 220, 255), 1, cv2.LINE_AA)
-
-    # Goal Banner
-    if goal_banner:
-        bx1, bx2 = w_img // 2 - 280, w_img // 2 + 280
-        by1, by2 = h_img - 78, h_img - 24
-        bw, bh = bx2 - bx1, by2 - by1
-        g_roi = annotated[by1:by2, bx1:bx2]
-        g_bg = np.full((bh, bw, 3), (10, 15, 24), dtype=np.uint8)
-        cv2.addWeighted(g_bg, 0.88, g_roi, 0.12, 0, g_roi)
-        cv2.rectangle(annotated, (bx1, by1), (bx1 + 8, by2), (0, 215, 255), -1)
-        cv2.rectangle(annotated, (bx1, by1), (bx2, by2), (0, 215, 255), 2)
-        cv2.putText(annotated, goal_banner, (bx1 + 24, by1 + 37), cv2.FONT_HERSHEY_DUPLEX, 0.72, (255, 255, 255), 2, cv2.LINE_AA)
-
-    return annotated
+    from logic.clay_hud import overlay
+    return overlay(frame, home_team, away_team, score, match_min, home_bgr, away_bgr, goal_banner, is_second_half, match_seconds)
 
 
 def draw_replay_frame(
@@ -408,14 +355,16 @@ def _validate_and_publish_video(staging_path: str, output_path: str) -> None:
 def render_video_from_trajectory(
     trajectory: MatchTrajectory,
     output_mp4: str,
-    progress_callback: Optional[Any] = None
+    progress_callback: Optional[Any] = None,
+    resolution: str = "720p",
+    theme: str = "dark",
 ) -> str:
     """Render to a partial file and atomically publish after decode validation."""
     target = os.path.abspath(output_mp4)
     os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
     staging = f"{target}.partial.{os.getpid()}.mp4"
     try:
-        _render_video_from_trajectory_to_path(trajectory, staging, progress_callback)
+        _render_video_from_trajectory_to_path(trajectory, staging, progress_callback, resolution, theme)
         _validate_and_publish_video(staging, target)
     finally:
         if os.path.exists(staging):
@@ -429,7 +378,9 @@ def render_video_from_trajectory(
 def _render_video_from_trajectory_to_path(
     trajectory: MatchTrajectory,
     output_mp4: str,
-    progress_callback: Optional[Any] = None
+    progress_callback: Optional[Any] = None,
+    resolution: str = "720p",
+    theme: str = "dark",
 ) -> str:
     """
     Render 100% pure deterministic 720p HD broadcast MP4 from recorded MatchTrajectory.
@@ -438,6 +389,8 @@ def _render_video_from_trajectory_to_path(
     if imageio is None:
         raise ImportError("imageio with libx264 is required for trajectory video rendering.")
 
+    from logic.replay.presentation import dimensions
+    width, height = dimensions(resolution)
     manifest = trajectory.manifest
     total_steps = trajectory.total_steps
     home_team = manifest.home_team
@@ -459,7 +412,7 @@ def _render_video_from_trajectory_to_path(
     try:
         # 1. Pre-Match Card (3 seconds = 45 frames)
         intro_card = draw_pre_match_card(
-            w=1280, h=720, home_team=home_team, away_team=away_team,
+            w=width, h=height, theme=theme, home_team=home_team, away_team=away_team,
             home_players=manifest.home_players, away_players=manifest.away_players,
             home_roster=manifest.home_roster, away_roster=manifest.away_roster,
             home_formation=manifest.home_formation, away_formation=manifest.away_formation,
@@ -502,7 +455,7 @@ def _render_video_from_trajectory_to_path(
                 away_players=manifest.away_players,
                 home_roster=manifest.home_roster, away_roster=manifest.away_roster,
                 home_bgr=home_bgr, away_bgr=away_bgr,
-                goal_banner=banner_to_show
+                goal_banner=banner_to_show, w=width, h=height
             )
             writer.append_data(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
@@ -545,7 +498,7 @@ def _render_video_from_trajectory_to_path(
                 else:
                     h_half_poss, a_half_poss = 50.0, 50.0
                 ht_card = draw_studio_stats_card(
-                    w=1280, h=720, title="HALF TIME",
+                    w=width, h=height, theme=theme, title="HALF TIME",
                     home_team=home_team, away_team=away_team,
                     score=tuple(state["score"]),
                     h_poss=h_half_poss, a_poss=a_half_poss,
@@ -575,7 +528,7 @@ def _render_video_from_trajectory_to_path(
             motm = manifest.home_players[8] if manifest.home_score >= manifest.away_score else manifest.away_players[9]
 
         ft_card = draw_studio_stats_card(
-            w=1280, h=720, title="FULL TIME",
+            w=width, h=height, theme=theme, title="FULL TIME",
             home_team=home_team, away_team=away_team,
             score=manifest.score,
             h_poss=manifest.possession[0], a_poss=manifest.possession[1],

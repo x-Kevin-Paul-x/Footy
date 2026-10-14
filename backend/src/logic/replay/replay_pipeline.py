@@ -20,8 +20,13 @@ import numpy as np
 import cv2
 
 from .grf_render_runtime import render_restored_native_frame
+from .presentation import create_native_environment, dimensions
+from .native_visuals import enable_visual_runtime, bind_visual_identity
+from .camera_director import CameraDirector
+from .radar import draw_radar
 from .render_status import write_render_status
 
+enable_visual_runtime()
 try:
     import gfootball.env as football_env
 except ImportError:
@@ -152,12 +157,8 @@ class ReplayPipeline:
         broadcast_fps = int(payload.get("fps", 10))
         requested_res = str(payload.get("resolution", "720p")).lower()
 
-        if "1080" in requested_res:
-            width, height = 1920, 1080
-            res_str = "1080p"
-        else:
-            width, height = 1280, 720
-            res_str = "720p"
+        width, height = dimensions(requested_res)
+        res_str = requested_res
 
         if not states_file or not os.path.exists(states_file):
             raise FileNotFoundError(f"State archive not found: {states_file}")
@@ -205,19 +206,10 @@ class ReplayPipeline:
         if football_env is None:
             raise RuntimeError("gfootball is not installed or available in this environment.")
 
-        # Instantiate persistent C++ GRF environment at native 720p resolution
-        env = football_env.create_environment(
-            env_name="11_vs_11_kaggle",
-            representation='raw',
-            render=True,
-            number_of_left_players_agent_controls=10,
-            number_of_right_players_agent_controls=10,
-            other_config_options={
-                'render_resolution_x': 1280,
-                'render_resolution_y': 720
-            }
-        )
-        env.reset()
+        env = create_native_environment(football_env, width, height)
+        if traj:
+            bind_visual_identity(env, traj.manifest, Path(output_mp4).with_suffix('.kits'))
+        director = CameraDirector(traj.manifest, payload.get('camera', 'wide')) if traj else None
 
         # Encoder & Instrumented Queue setup
         encoder = create_encoder(self.encoder_type, preset=self.encoder_preset)
@@ -283,7 +275,7 @@ class ReplayPipeline:
                 home_roster=traj.manifest.home_roster if traj else payload.get("home_roster"),
                 away_roster=traj.manifest.away_roster if traj else payload.get("away_roster"),
                 home_formation=home_formation, away_formation=away_formation,
-                home_bgr=home_bgr, away_bgr=away_bgr
+                home_bgr=home_bgr, away_bgr=away_bgr, theme=payload.get("theme", "dark")
             )
             intro_card_rgb = cv2.cvtColor(intro_card_bgr, cv2.COLOR_BGR2RGB)
             intro_frames = max(10, int(3.0 * broadcast_fps))
@@ -313,6 +305,8 @@ class ReplayPipeline:
 
             # 2. Sequential Frame Render Loop
             for step in range(total_steps):
+                if director and payload.get('camera', 'wide') != 'wide':
+                    env._footy_camera = director.at_step(step)
                 if encoder_exception is not None:
                     raise RuntimeError(f"Encoder thread failed: {encoder_exception}")
 
@@ -341,8 +335,8 @@ class ReplayPipeline:
                 if not isinstance(frame_rgb, np.ndarray) or frame_rgb.dtype != np.uint8:
                     frame_rgb = np.clip(frame_rgb, 0, 255).astype(np.uint8)
 
-                if width != 1280 or height != 720:
-                    frame_rgb = cv2.resize(frame_rgb, (width, height), interpolation=cv2.INTER_CUBIC)
+                if frame_rgb.shape[:2] != (height, width):
+                    raise ReplayIntegrityError(f"Native frame {frame_rgb.shape[:2]} does not match requested {(height, width)}")
                 t_copy_resize_acc += (time.perf_counter() - t0)
 
                 # HUD Compositing
@@ -400,6 +394,7 @@ class ReplayPipeline:
                 if goal_banner_cd > 0:
                     goal_banner_cd -= 1
 
+                frame_bgr = draw_radar(frame_bgr, raw_o, home_bgr, away_bgr)
                 composite_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
                 t_hud_acc += (time.perf_counter() - t0)
 
@@ -431,7 +426,7 @@ class ReplayPipeline:
                         a_sot=snapshot.shots_on_target[1] if snapshot else 0,
                         h_xg=snapshot.xg[0] if snapshot else 0.0,
                         a_xg=snapshot.xg[1] if snapshot else 0.0,
-                        home_bgr=home_bgr, away_bgr=away_bgr
+                        home_bgr=home_bgr, away_bgr=away_bgr, theme=payload.get("theme", "dark")
                     )
                     ht_card_rgb = cv2.cvtColor(ht_card_bgr, cv2.COLOR_BGR2RGB)
                     for _ in range(int(3.0 * broadcast_fps)):
@@ -451,7 +446,7 @@ class ReplayPipeline:
                 a_sot=traj.manifest.shots_on_target[1] if traj else 0,
                 h_xg=traj.manifest.xg[0] if traj else 0.0,
                 a_xg=traj.manifest.xg[1] if traj else 0.0,
-                home_bgr=home_bgr, away_bgr=away_bgr
+                home_bgr=home_bgr, away_bgr=away_bgr, theme=payload.get("theme", "dark")
             )
             ft_card_rgb = cv2.cvtColor(ft_card_bgr, cv2.COLOR_BGR2RGB)
             for _ in range(int(4.0 * broadcast_fps)):

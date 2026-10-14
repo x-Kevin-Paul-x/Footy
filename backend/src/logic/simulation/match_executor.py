@@ -967,9 +967,9 @@ class GRFMatchExecutor:
             home_players=self.home_players,
             away_players=self.away_players,
             home_roster=[{'player_id': p.player_id, 'name': p.name, 'jersey_number': p.jersey_number,
-                          'position': p.assigned_position or p.position} for p in self.home_tactics.roster],
+                          'position': p.assigned_position or p.position, 'appearance': p.appearance} for p in self.home_tactics.roster],
             away_roster=[{'player_id': p.player_id, 'name': p.name, 'jersey_number': p.jersey_number,
-                          'position': p.assigned_position or p.position} for p in self.away_tactics.roster],
+                          'position': p.assigned_position or p.position, 'appearance': p.appearance} for p in self.away_tactics.roster],
             home_formation=self.home_formation,
             away_formation=self.away_formation,
             home_color=self.home_color,
@@ -986,6 +986,9 @@ class GRFMatchExecutor:
             created_at=self.spec.created_at or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         )
 
+        from logic.visual_identity import freeze_visual_identity
+        manifest.visual_identity = freeze_visual_identity(self.home_team, self.away_team,
+                                                         manifest.home_roster, manifest.away_roster)
         trajectory_hash = None
         # Save trajectory NPZ if requested
         if self.rec_players is not None and self.trace_npz:

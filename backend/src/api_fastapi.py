@@ -1236,10 +1236,14 @@ async def render_match_replay(match_id: str, req: Optional[MatchRenderRequest] =
         clean_id = str(match_id)
         req_mode = req.render_mode if req else "auto"
         force = req.force if req else False
+        resolution = req.resolution if req else '720p'
+        theme = req.theme if req else 'dark'
+        camera = req.camera if req else 'wide'
+        from logic.replay.presentation import profile_matches
 
         # If already exists and not forcing, return immediately
         v_target, video_url = find_match_video_and_url(clean_id)
-        if v_target and not force:
+        if v_target and not force and profile_matches(v_target, resolution, theme, camera) and (req_mode == 'auto' or v_target.name.endswith(f'_{req_mode}.mp4')):
             return MatchRenderResponse(
                 match_id=clean_id,
                 status="ready",
@@ -1281,6 +1285,9 @@ async def render_match_replay(match_id: str, req: Optional[MatchRenderRequest] =
             output_mp4=str(output_path),
             mode=req_mode,
             force=force,
+            resolution=resolution,
+            theme=theme,
+            camera=camera,
         )
 
         v_url = result.get("video_url")
@@ -1289,7 +1296,7 @@ async def render_match_replay(match_id: str, req: Optional[MatchRenderRequest] =
             match_id=clean_id,
             status=status_str,
             video_url=v_url,
-            render_mode_used=result.get("mode_used", req_mode),
+            render_mode_used=result.get("render_mode_used", req_mode),
             message=result.get("message", "Render completed successfully.")
         )
     except HTTPException:

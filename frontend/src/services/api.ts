@@ -776,9 +776,9 @@ export interface MatchRenderResponse {
 
 export const renderMatchReplay = async (
   matchId: string | number,
-  options?: { render_mode?: '3d' | '2d' | 'auto'; force?: boolean }
+  options?: { render_mode?: '3d' | '2d' | 'auto'; force?: boolean; resolution?: '720p' | '1080p'; theme?: 'dark' | 'light'; camera?: 'wide' | 'bird' | 'tele' | 'director' }
 ): Promise<MatchRenderResponse> => {
-  const response = await apiClient.post<MatchRenderResponse>(`/api/v1/match/${matchId}/render`, options || {});
+  const response = await apiClient.post<MatchRenderResponse>(`/api/v1/match/${matchId}/render`, options || {}, { timeout: 660000 });
   return response.data;
 };
 

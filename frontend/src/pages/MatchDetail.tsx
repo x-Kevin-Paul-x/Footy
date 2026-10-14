@@ -28,7 +28,7 @@ import {
   TimelineContent,
   TimelineDot,
 } from "@mui/lab";
-import { getMatchDetails, getMatchVideo, simulateGrfMatch } from "../services/api";
+import { getMatchDetails, getMatchVideo, renderMatchReplay } from "../services/api";
 import FormationViewer from "../components/FormationViewer";
 import MatchStats from "../components/MatchStats";
 import MatchVideoReplay from "../components/MatchVideoReplay";
@@ -198,21 +198,17 @@ const MatchDetail: React.FC = () => {
     fetchMatch();
   }, [matchId]);
 
-  const handleGenerateReplay = async (selectedMode: "3d" | "2d" = "3d") => {
+  const handleGenerateReplay = async (selectedMode: "3d" | "2d" = "3d", presentation: { resolution: '720p' | '1080p'; theme: 'dark' | 'light'; camera?: 'wide' | 'bird' | 'tele' | 'director' } = { resolution: '720p', theme: 'dark' }) => {
     if (!match) return;
     setIsGeneratingVideo(true);
     try {
-      const res = await simulateGrfMatch({
-        match_id: String(match.match_id),
-        home_team_name: match.home_team_name,
-        away_team_name: match.away_team_name,
-        home_formation: match.home_formation,
-        away_formation: match.away_formation,
-        generate_video: true,
+      const res = await renderMatchReplay(String(match.match_id), {
         render_mode: selectedMode,
+        ...presentation,
+        force: true,
       });
       if (res.video_url) {
-        setVideoUrl(res.video_url);
+        setVideoUrl(`${res.video_url}?v=${Date.now()}`);
       }
     } catch (err) {
       console.error("Error generating GRF replay:", err);

@@ -39,7 +39,9 @@ ALIASES = {
     "west ham": "west ham united",
     "newcastle": "newcastle united",
     "man city": "manchester city",
+    "mancity": "manchester city",
     "man utd": "manchester united",
+    "manutd": "manchester united",
     "man united": "manchester united",
     "leeds": "leeds united",
 }

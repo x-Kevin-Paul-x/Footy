@@ -134,6 +134,9 @@ class MatchRenderRequest(BaseModel):
     match_id: Optional[str] = Field(default=None, max_length=128)
     render_mode: Literal["3d", "2d", "auto"] = "auto"
     force: bool = False
+    resolution: Literal['720p', '1080p'] = '720p'
+    theme: Literal['dark', 'light'] = 'dark'
+    camera: Literal['wide', 'bird', 'tele', 'director'] = 'wide'
 
 
 class MatchRenderResponse(BaseModel):

@@ -301,6 +301,9 @@ class GRFNativeRunner:
         output_mp4: Optional[str] = None,
         mode: str = "3d",
         force: bool = False,
+        resolution: str = '720p',
+        theme: str = 'dark',
+        camera: str = 'wide',
     ) -> Dict[str, Any]:
         """
         Execute standalone TV broadcast video rendering from recorded trace (Phase B).
@@ -308,6 +311,10 @@ class GRFNativeRunner:
         and mode='auto' (resilient fallback hierarchy).
         """
         RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+        from logic.replay.presentation import dimensions, profile_matches, write_profile
+        dimensions(resolution)
+        if theme not in ('dark', 'light'):
+            raise ValueError('Replay theme must be dark or light')
         m_id = str(match_id)
         mode_suffix = "2d" if mode == "2d" else "3d"
         out_win = to_win_path(output_mp4) or (RECORDINGS_DIR / f"match_{m_id}_{mode_suffix}.mp4")
@@ -347,7 +354,7 @@ class GRFNativeRunner:
                     existing_3d_video = None
             except (OSError, ValueError):
                 existing_3d_video = None
-        if mode in ("3d", "auto") and existing_3d_video is not None and not force:
+        if mode in ("3d", "auto") and existing_3d_video is not None and not force and profile_matches(existing_3d_video, resolution, theme, camera):
             logger.info("GRF Renderer: serving existing 3D broadcast video from simulation for match=%s: %s", m_id, existing_3d_video)
             from logic.grf_trajectory import MatchTrajectory
             traj = MatchTrajectory.load_from_npz(traj_win) if traj_win.exists() else None
@@ -405,7 +412,12 @@ class GRFNativeRunner:
                     pass
 
             traj = MatchTrajectory.load_from_npz(traj_win)
-            video_url = render_video_from_trajectory(traj, str(out_win), progress_callback=_progress_cb)
+            video_url = render_video_from_trajectory(traj, str(out_win), progress_callback=_progress_cb, resolution=resolution, theme=theme)
+            try:
+                video_url = '/recordings/' + out_win.relative_to(RECORDINGS_DIR).as_posix()
+            except ValueError:
+                pass
+            write_profile(out_win, resolution, theme, camera)
 
             try:
                 with open(prog_win, "w", encoding="utf-8") as pf:
@@ -448,7 +460,7 @@ class GRFNativeRunner:
                 trajectory_file=str(traj_win), home_players=home_players,
                 away_players=away_players, home_formation=home_formation,
                 away_formation=away_formation, home_color=home_color,
-                away_color=away_color, output_mp4=output_mp4, mode="2d"
+                away_color=away_color, output_mp4=output_mp4, mode="2d", resolution=resolution, theme=theme, camera=camera
             )
 
         _home_color = home_color or team_color_from_name(home_team)
@@ -457,6 +469,9 @@ class GRFNativeRunner:
         payload = {
             "match_id": m_id,
             "mode": mode,
+            "resolution": resolution,
+            "theme": theme,
+            "camera": camera,
             "home_team": home_team,
             "away_team": away_team,
             "states_file": to_wsl_path(states_win) if states_win else None,
@@ -499,7 +514,10 @@ class GRFNativeRunner:
 
         if "MATCH_RENDER_RESULT_JSON:" in res.stdout:
             json_str = res.stdout.split("MATCH_RENDER_RESULT_JSON:")[1].splitlines()[0]
-            return json.loads(json_str)
+            result = json.loads(json_str)
+            if result.get('video_url') and out_win.is_file():
+                write_profile(out_win, resolution, theme, camera)
+            return result
 
         logger.error("GRF Renderer error:\nSTDOUT: %s\nSTDERR: %s", res.stdout, res.stderr)
         write_render_status(prog_win, {'status': 'failed', 'progress': 0,
