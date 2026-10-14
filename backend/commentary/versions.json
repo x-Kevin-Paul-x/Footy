@@ -1,0 +1,19 @@
+{
+  "pipeline_version": "1.0.0",
+  "llama_cpp": {
+    "verified": true,
+    "tag": "b11433"
+  },
+  "llm_model": {
+    "repo_id": "lmstudio-community/Qwen3.5-9B-GGUF",
+    "filename": "Qwen3.5-9B-Q4_K_M.gguf",
+    "size_bytes": 6046726880,
+    "verified": false
+  },
+  "tts_model": {
+    "repo_id": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+    "voice": "Ryan",
+    "sample_rate_native": 24000,
+    "verified": false
+  }
+}

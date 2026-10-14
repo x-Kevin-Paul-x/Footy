@@ -42,6 +42,9 @@ class MatchManifest:
     engine_fingerprint: Dict[str, Any] = field(default_factory=dict)
     video_url: Optional[str] = None
     created_at: Optional[str] = None
+    home_roster: List[Dict[str, Any]] = field(default_factory=list)
+    away_roster: List[Dict[str, Any]] = field(default_factory=list)
+    visual_identity: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.score is not None:
@@ -60,7 +63,12 @@ class MatchManifest:
             self.passes_completed = (int(self.passes_completed[0]), int(self.passes_completed[1]))
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        # Preserve legacy manifest digests when no identity was recorded.
+        for key in ('home_roster', 'away_roster', 'visual_identity'):
+            if not data[key]:
+                data.pop(key)
+        return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "MatchManifest":
@@ -95,6 +103,9 @@ class MatchManifest:
             engine_fingerprint=data.get("engine_fingerprint", {}),
             video_url=data.get("video_url"),
             created_at=data.get("created_at"),
+            home_roster=data.get("home_roster", []),
+            away_roster=data.get("away_roster", []),
+            visual_identity=data.get('visual_identity', {}),
         )
 
 
@@ -275,7 +286,11 @@ class MatchTrajectory:
         if not path.exists():
             raise FileNotFoundError(f"Trajectory file not found: {path}")
 
-        data = np.load(str(path), allow_pickle=True)
+        try:
+            with np.load(str(path), allow_pickle=False) as archive:
+                data = {name: archive[name] for name in archive.files}
+        except ValueError as exc:
+            raise ReplayIntegrityError('Unsafe or invalid trajectory array; convert legacy object metadata explicitly') from exc
         manifest_dict = json.loads(str(data["manifest"][0]))
         manifest = MatchManifest.from_dict(manifest_dict)
         seed = int(data["seed"][0]) if "seed" in data else 0

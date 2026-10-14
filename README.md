@@ -9,8 +9,8 @@ Footy runs 11v11 matches inside Google Research Football, manages entire multi-t
 Built with **FastAPI, React 19, SQLAlchemy, Google Research Football, TiKick, FFmpeg, and PyTorch**.
 
 [![CI](https://github.com/x-Kevin-Paul-x/Footy/actions/workflows/ci.yml/badge.svg)](https://github.com/x-Kevin-Paul-x/Footy/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/Tests-128%20passed%2C%209%20skipped-2ea44f?logo=pytest&logoColor=white)](backend/tests)
-[![Replay Frames](https://img.shields.io/badge/Replay%20Frames-1%2C634%20Validated-8A2BE2)](assets/readme/showcase-match.mp4)
+[![Tests](https://img.shields.io/badge/Tests-see%20dated%20verification-2ea44f?logo=pytest)](docs/verification_2026_10_13.md)
+[![Native HD](https://img.shields.io/badge/Native%20Replay-720p%20%7C%201080p-8A2BE2)](#matchday-in-footy)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Database](https://img.shields.io/badge/SQLite-WAL%20OK-003B57?logo=sqlite&logoColor=white)](#tests-and-verification)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -20,17 +20,63 @@ Built with **FastAPI, React 19, SQLAlchemy, Google Research Football, TiKick, FF
 
 <br/>
 
-![Burnley vs Bournemouth: a goal from the verified full-season recording](assets/matches/burnley-bournemouth.gif)
+![Fresh-season West Ham–Bournemouth replay with club kits, clay scoreboard and scorer camera transition](assets/readme/native-goal.gif)
 
-**Burnley 2–4 Bournemouth · Match #372 · Fresh 2026 season**
+**Club colours. Recorded players. A matchday broadcast in Footy's clay style.**
 
-[Watch the full match recording](assets/matches/full-match-recordings/burnley-2-4-bournemouth.mp4) · [Recorded replay timeline](assets/matches/full-match-recordings/burnley-2-4-bournemouth.timeline.json)
+[Explore the visual upgrades](#matchday-in-footy) · [Fresh-season match evidence](assets/matches/current-season/showcase.json) · [Watch West Ham 4–4 Bournemouth](assets/matches/current-season/west-ham-bournemouth.mp4)
 
-**11v11 Multi-Agent Physics** · **SHA-256 Verified Determinism** · **~10× Real-Time Sim** · **14 Interactive Surfaces**
+[Explore the read-only demo](https://x-kevin-paul-x.github.io/Footy/) · [Dated implementation and CI verification](docs/verification_2026_10_13.md)
 
-[Why Footy](#why-footy) · [One Match Flow](#one-match-through-footy) · [Engineering Snapshot](#engineering-snapshot) · [Performance](#simulation-performance) · [Showcase Match](#a-real-generated-match) · [The Platform](#the-platform) · [How It Works](#how-it-works) · [Footy vs GRF](#footy-vs-google-research-football) · [Quick Start](#quick-start)
+**11v11 Multi-Agent Physics** · **Seeded Replay Verification** · **Recorded Match Replays** · **15 Interactive Surfaces**
+
+[Matchday Visuals](#matchday-in-footy) · [Why Footy](#why-footy) · [One Match Flow](#one-match-through-footy) · [Engineering Snapshot](#engineering-snapshot) · [Performance](#simulation-performance) · [Showcase Match](#a-real-generated-match) · [The Platform](#the-platform) · [How It Works](#how-it-works) · [Footy vs GRF](#footy-vs-google-research-football) · [Quick Start](#quick-start)
 
 </div>
+
+---
+
+## Matchday in Footy
+
+The simulation now shares the frontend's claymorphism: rounded panels, soft shadows, Outfit and Inter typography, and midnight or warm studio themes. Club colours carry through the lineups, scoreboard and radar—Burnley's claret and Bournemouth's red replace generic blue and orange team panels.
+
+| Recorded Starting XI | Recorded Half-time Studio |
+| :---: | :---: |
+| ![West Ham and Bournemouth recorded lineups](assets/matches/current-season/start.png) | ![West Ham–Bournemouth recorded half-time card](assets/matches/current-season/half-time.png) |
+
+*These studio frames use the selected fresh match's recorded names, shirt numbers and statistics.*
+
+### From the studio to the pitch
+
+![West Ham–Bournemouth saved-state gameplay with club kits, Footy scoreboard and radar](assets/matches/current-season/gameplay.png)
+
+The gameplay screenshot and looping goal preview come from **West Ham 4–4 Bournemouth**, randomly selected from four completed fixtures in a fresh season run on **14 October 2026**. The full match uses recorded squad identities and the new native presentation. [Watch the full replay](assets/matches/current-season/west-ham-bournemouth.mp4).
+
+| Replay feature | What you can use |
+| :--- | :--- |
+| **Native HD** | 1280×720 or 1920×1080 framebuffers, checked at export; supported native playback remains 10 fps. |
+| **Studio themes** | Midnight navy with cyan/orange accents, or warm cream with navy/teal details. |
+| **Club kits** | Home/away kit selection, clash handling and distinct goalkeeper colours. |
+| **Player identity** | Recorded names, actual shirt numbers and stable skin/hair cosmetics, frozen into new match manifests. |
+| **Camera direction** | Broadcast, overhead, sideline, or a match director that eases into the recorded scorer after a goal. |
+| **Recorded replays** | Re-render an existing match with new presentation settings while preserving its score, events and ball paths. |
+
+In the match replay panel, choose **Adjust broadcast settings**, select picture quality, studio theme and a 3D camera, then generate the replay. Native kits, appearances and camera bindings require the [isolated native visual runtime](backend/native/README.md) and compatible saved state archives. Legacy recordings retain unknown IDs and numbers where those were never recorded.
+
+<details>
+<summary><strong>Recorded goal close-up and experimental motion</strong></summary>
+
+![Recorded Bournemouth goal presentation with club kits and scorer close-up](assets/matches/current-season/goal.png)
+
+This goal frame comes from the same fresh-season replay, using the selected match's frozen player and kit identities.
+
+- **30 fps optical-flow export:** a separate prototype preserves duration and event timestamps; fast motion can show interpolation artifacts.
+- **CC0 celebration clip:** a KayKit cheer has been converted and previewed on the native rig. It still needs artistic refinement before use in the production goal flow. [Asset, licence and conversion notes](backend/assets/animations/README.md).
+- **4K rendering:** a private full-match benchmark, currently outside the supported replay controls because of its rendering cost.
+
+</details>
+
+[Completed visual task list](docs/simulation_visual_tasks.md) · [Screenshots and provenance](docs/evidence/simulation_visuals/README.md) · [Native build guide](backend/native/README.md)
 
 ---
 
@@ -51,7 +97,7 @@ Manager Decisions (Arsenal vs Chelsea)
 SimulationSpec
       │  Seeded RNG, duration (1,200 steps), and render mode
       ▼
-22-Agent TiKick MARL Policy
+20-Outfield-Agent TiKick MARL Policy
       │  Multi-agent decentralized execution with tactical mirroring
       ▼
 Google Research Football
@@ -82,116 +128,97 @@ React 19 Analytics & Tables    Broadcast-Style 3D Replay (.mp4)
 
 | Engineering Surface | Metric / Evidence | Verification Standard |
 | :--- | :---: | :--- |
-| **Automated Backend Tests** | **128 passed, 9 skipped** | Full backend suite (137 collected cases) |
+| **Automated Backend Tests** | [Dated verification](docs/verification_2026_10_13.md) | Dated backend, frontend and native verification |
 | **Targeted Regression Suites** | **33 passed** | Season contracts, replay loading, squad data, and recording retention |
-| **API Surface** | **63 routes** | FastAPI REST endpoints, WebSocket channels, and media streaming |
-| **Relational Schema** | **41 ORM models** | SQLAlchemy 2.0 entities, SQLite WAL persistence, 5 Alembic revisions |
-| **Replay Validation** | **1,634 decoded frames** | H.264 High Profile @ 720p 15fps, verified against canonical score |
-| **Product Surfaces** | **14 React pages** | React 19, TypeScript, MUI, Recharts, TanStack Query, and Zustand |
+| **API Surface** | **74 routes** | FastAPI REST endpoints, WebSocket channels, and media streaming |
+| **Relational Schema** | **Versioned ORM schema** | SQLAlchemy 2.0 entities, SQLite WAL persistence, tested fresh/legacy Alembic upgrades |
+| **Replay Validation** | **12,004 native states checked** | Four fresh fixtures; canonical positions, scores, ownership and 30 goal frames verified |
+| **Product Surfaces** | **15 React pages** | React 19, TypeScript, MUI, Recharts, TanStack Query, and Zustand |
 | **Simulation Core** | **11v11 Multi-Agent** | Native Google Research Football environment + TiKick neural policy |
-| **Codebase Scale** | **33.2k LOC** | 21,681 lines Python (`backend/src` + `backend/tests`), 11,561 lines TS/TSX |
+| **Codebase Scale** | **40.4k LOC** | 27,637 lines Python (`backend/src` + `backend/tests`), 12,714 lines TS/TSX |
 
 ---
 
-## Simulation Performance
+## Simulation performance
 
-Footy incorporates a dedicated benchmark harness (`backend/benchmarks/`) measuring environment throughput, worker scaling, latency distributions, and deterministic execution invariance across both real physics simulation and high-concurrency worker orchestration.
+The current benchmark dispatches the actual GRF worker pool and records observed concurrency. This diagnostic uses two fixtures, 200 steps each, trajectory capture, and two repetitions. Cold batch time includes WSL startup and checkpoint loading; it is not a full-season throughput estimate.
 
-### Real 11v11 GRF Physics Stepping
-A full 90-minute football match corresponds to 1,200 to 3,000 environment steps (100 ms per step). Headless GRF simulation with neural policy inference achieves:
+| Requested / observed workers | Batch latency p50 | Steps/second including startup | Canonical hashes |
+| --- | ---: | ---: | --- |
+| 1 / 1 | 18.77 s | 21.32 | Repeatable |
+| 2 / 2 | 9.90 s | 40.41 | Repeatable and equal to one worker |
 
-| Concurrent Workers | Workload | Steps/sec | Real-Time Multiplier |
-| :---: | :---: | :---: | :---: |
-| **1** | Single Match (Headless) | **78.1 steps/s** | **7.81×** real-time |
-| **4** | Matchday Pool (4 fixtures) | **92.4 steps/s** | **9.24×** real-time |
-| **8** | Matchday Pool (8 fixtures) | **101.8 steps/s** | **10.18×** real-time |
-| **16** | Multiprocess Fixture Pool | **106.9 steps/s** | **10.69×** real-time |
+See [raw native benchmark](docs/evidence/native_benchmark.json). Synthetic concurrency checks are labelled separately and are not GRF performance results. Historical full-season timing is described below with its original workload.
 
-### Orchestration & Fixture Dispatch Benchmark (Synthetic Concurrency Harness)
-To evaluate the multiprocess worker pool, inter-process communication (IPC), and serialization overhead independently from C++ physics computation, Footy includes an isolated synthetic stress-harness:
+## Manager AI evidence
 
-| Workers | Batch Fixtures | Step Target | Replay Mode | Latency (p50) | Throughput | Determinism Check |
-| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **1** | 1 match | 100 steps | Headless | 20.3 ms | **4,931 steps/s** (49.3 fix/s) | ✅ SHA-256 Verified |
-| **1** | 1 match | 200 steps | Headless | 20.1 ms | **9,931 steps/s** (49.6 fix/s) | ✅ SHA-256 Verified |
-| **1** | 5 matches | 100 steps | Headless | 101.1 ms | **4,944 steps/s** (49.4 fix/s) | ✅ SHA-256 Verified |
-| **1** | 5 matches | 200 steps | Headless | 101.3 ms | **9,870 steps/s** (49.3 fix/s) | ✅ SHA-256 Verified |
-| **2** | 1 match | 100 steps | Headless | 20.5 ms | **4,872 steps/s** (48.7 fix/s) | ✅ SHA-256 Verified |
+The management DQN has 24 observation values and five scouting/transfer actions. It is separate from the TiKick policy controlling players. These measurements use the synthetic management environment, six clubs, twenty decisions per episode, and 30 held-out seeds (1000–1029).
 
-> [!NOTE]
-> **Key Profiling Insight:**
-> Profiling demonstrated that simulation throughput is primarily constrained by Python-side environment stepping and worker IPC rather than neural policy inference. GPU utilization remained low across scaling runs, which redirected core optimization work toward multiprocess worker isolation, zero-copy trajectory serialization, and bounded FFmpeg encoding pipelines rather than neural acceleration.
+| Policy | Mean reward ± standard deviation | Mean points | Mean rank |
+| --- | ---: | ---: | ---: |
+| DQN, training seed 42 | 78.10 ± 22.30 | 27.03 | 3.93 |
+| DQN, training seed 43 | 76.90 ± 20.93 | 26.43 | 3.90 |
+| DQN, training seed 44 | 79.20 ± 22.82 | 28.63 | 3.70 |
+| Existing DQN checkpoint | 78.30 ± 21.52 | 27.47 | 3.77 |
+| Random valid action | 80.87 ± 19.91 | 28.87 | 3.70 |
+| Do nothing | 70.97 ± 22.56 | 24.07 | 4.13 |
+| Youth focused | 80.47 ± 21.21 | 27.17 | 3.83 |
+| Rule based | 85.23 ± 20.62 | 30.33 | 3.57 |
+
+The DQN runs do not establish an advantage over random actions in this sample. The rule-based policy has the highest mean reward. [Raw episodes, seeds, model hashes and uncertainty](docs/evidence/manager_evaluation.json) and [reproduction commands](CONTRIBUTING.md) make that finding inspectable.
+
+![Seed 42 training reward curve](docs/evidence/training/seed_42/training_curve.svg)
+
+## Reliability and management updates
+
+- Accepted simulation and evaluation jobs have persisted IDs, exclusive database ownership, renewable leases, cancellation, and restart reconciliation.
+- Saves use SQLite's WAL-safe backup API. Their manifests retain referenced runtime recordings. Restoring a database snapshot invalidates previous job ownership.
+- Versioned migrations support fresh databases and existing installations, with consistent pre-migration backups and integrity checks.
+- Campaign reports, frozen squad/finance snapshots, and financial ledgers have explicit run identities. The Saved campaigns page exposes retained history.
+- Attendance credits cash; broadcasting allocations share a fixed pool; loans move players, split wages and return on expiry. Release clauses and sell-on fees have domain validation and regression coverage.
+- Owners distribute surplus cash above the configured annual retention cap to limit runaway transfer funds; the ledger shows those distributions.
+- Replay timelines record emitted frames, and publication checks fully decoded frame counts.
+
+## Known limitations
+
+- Native GRF substitutions remain unsupported; the legacy engine's substitutions and stored benches do not prove native substitution support.
+- Manager evaluation is synthetic. The tabular manager fallback remains active for decisions outside the five-action DQN path.
+- Scoring realism remains under investigation: the retained 380-fixture GRF season averaged 4.93 goals per match, versus 3.28 in the 2023/24 reference. [Calibration report and sources](docs/evidence/calibration.json).
+- `FOOTY_DYNAMIC_TACTICS=1` enables deterministic, conditional in-match changes and venue-dependent policy modulation. This experimental profile is opt-in and needs statistical calibration before becoming the default.
+- Saves preserve the database and retained artifacts. They do not resume an interrupted in-memory match or automatically reconstruct a live campaign from a snapshot.
+- The [read-only demo package](docs/demo/index.html) plays precomputed assets. Public hosting requires enabling GitHub Pages and running its deployment workflow.
+- Native Linux tests and the Windows/WSL integration checks have distinct runtime requirements. Skips and actual checks are recorded in [dated verification](docs/verification_2026_10_13.md).
 
 ---
 
 ## A Real Generated Match
 
-### Latest verified season: Burnley 2–4 Bournemouth
+### Fresh season showcase: West Ham 4–4 Bournemouth
 
-The October 2026 verification run completed all **380 fixtures in 38 minutes 38 seconds** using ten CPU workers and the official TiKick actor checkpoint. An additional native-state audit checked **1,140,380 saved states and all 1,874 goals** without a mismatch. The season simulation saves the authoritative native states; video generation later restores and renders those states without simulating the match again.
+On **14 October 2026**, Footy created a fresh season and completed four fixtures through the production GRF/TiKick pipeline with two CPU workers. Fixture simulation took **69.85 seconds**; the isolated run took **89.64 seconds** including setup and management processing. This is a four-match season sample, not a completed season.
 
-The GIF above shows a ten-second excerpt around Bournemouth's opening goal. Its source is the complete match #372 recording: **310.7 seconds, 1280×720, H.264, 10 fps, 37,349,145 bytes (35.62 MiB)**. The full MP4 and its goal timeline are preserved in [`assets/matches/full-match-recordings/`](assets/matches/full-match-recordings/).
+| Fixture | Recorded result |
+| :--- | :---: |
+| Arsenal vs Burnley | 2–1 |
+| Aston Villa vs Wolves | 7–5 |
+| West Ham vs Bournemouth | **4–4 · randomly selected** |
+| Brentford vs Tottenham | 5–2 |
 
-Runtime videos, trajectories and native state archives are saved under `backend/reports/recordings/<run_id>/` by default, or `$FOOTY_REPORTS_DIR/recordings/<run_id>/` when a custom reports directory is configured. Timed verification runs use `backend/verification/season_<timestamp>/reports/recordings/<run_id>/`.
+The showcase was selected uniformly from all four finished fixtures, without filtering teams or results. The [selection seed, fixture results, frozen rosters and verification evidence](assets/matches/current-season/showcase.json) are retained with the video.
 
-**Storage policy:** starting a new simulation deletes previous runtime run directories, including their videos and native archives. The current run and curated files under `assets/matches/` are preserved. `FOOTY_RUN_RETENTION=N` optionally retains N previous runs; the default is zero. Timed verification runs also clear previous verification recordings while keeping their audit summaries and databases.
+The full replay restores saved native states and applies **club kits, recorded shirt numbers and appearances, midnight studio cards, the clay scoreboard and radar, and scorer camera transitions**. Rendering leaves the original match events and ball paths intact.
 
-### Earlier standalone showcase
+[▶ Watch the complete West Ham–Bournemouth replay](assets/matches/current-season/west-ham-bournemouth.mp4) · [Recorded presentation timeline](assets/matches/current-season/west-ham-bournemouth.timeline.json) · [Asset provenance](assets/matches/current-season/README.md)
 
-This repository includes a verified match generated through the real `/api/v1/match/simulate-grf` endpoint on **6 September 2026**. Arsenal beat Chelsea **1–0**, with Arsenal Player 8 scoring at the 73rd minute.
+![Recorded full-time studio: West Ham 4–4 Bournemouth](assets/matches/current-season/full-time.png)
 
-<div align="center">
+**Full recording:** 1280×720, H.264, 10 fps, **3,109 decoded frames / 310.9 seconds**. The looping GIF preserves the recorded speed.
 
-### **Arsenal 1 – 0 Chelsea**
-**63% Possession** · **1–0 Shots** · **0.30–0.00 xG** · **1,634 Validated Frames** · **H.264 720p**
+**Replay verification:** all **12,004 saved states** across the four matches matched their canonical trajectories, including scores, player positions, ball coordinates and possession ownership. All **30 native goal frames** passed their checks, and every match reached native full time.
 
-[▶ Watch Complete 3D Replay (MP4)](assets/readme/showcase-match.mp4) · [Inspect Match JSON](assets/readme/showcase-match.json) · [Inspect Presentation Timeline](assets/readme/showcase-match.timeline.json)
+The [earlier complete-season audit](docs/fresh_season_verification.md) remains available as historical engineering evidence. The footage featured here uses the upgraded presentation.
 
-<br/>
-
-![Generated full-time broadcast card](assets/readme/match-fulltime.png)
-
-</div>
-
-<details>
-<summary><strong>🔍 Replay Validation Details</strong></summary>
-
-| Render Property | Verified Value |
-| :--- | ---: |
-| **Resolution** | 1280 × 720 |
-| **Frame Rate** | 15 fps |
-| **Video Codec** | H.264 High Profile |
-| **Duration** | 108.93 seconds |
-| **Frames Decoded** | 1,634 |
-| **Output File Size** | 3.60 MiB |
-| **Overlay Layers** | Lineup card, scorebug, match clock, minimap radar, event badges, full-time statistics |
-
-</details>
-
-<details>
-<summary><strong>⚡ Reproduce the Showcase Request</strong></summary>
-
-```powershell
-$body = @{
-  match_id        = "readme_showcase_arsenal_chelsea_20260906"
-  home_team_name  = "Arsenal"
-  away_team_name  = "Chelsea"
-  home_formation  = "4-3-3"
-  away_formation  = "4-2-3-1"
-  max_steps       = 1200
-  generate_video  = $true
-  record_dump     = $true
-  render_mode     = "3d"
-} | ConvertTo-Json
-
-Invoke-RestMethod `
-  -Method Post `
-  -Uri "http://localhost:5001/api/v1/match/simulate-grf" `
-  -ContentType "application/json" `
-  -Body $body
-```
-
-</details>
+Runtime recordings remain under `backend/reports/recordings/<run_id>/` or the configured `FOOTY_REPORTS_DIR`. This showcase was generated in an isolated verification folder; its curated video and images under `assets/matches/current-season/` are retained independently of runtime cleanup.
 
 ---
 
@@ -201,7 +228,7 @@ Invoke-RestMethod `
 | :--- | :--- |
 | **Match Engine** | Native GRF 11v11 physics, TiKick multi-agent policies, tactical formation transforms, seeded deterministic execution, event and touch attribution |
 | **Season Simulation** | Double round-robin scheduling, multi-matchday rounds, standings, player fatigue, training, finances, transfers, youth academy, season rollover |
-| **Replay System** | Versioned trajectory NPZ, optional GRF state/dump capture, 2D tactical pitch render, 3D broadcast render, FFmpeg encoding, presentation timelines |
+| **Replay System** | Saved native states, versioned trajectory NPZ, 2D tactical rendering, native 720p/1080p 3D replays, selectable studio themes and cameras, FFmpeg encoding, presentation timelines |
 | **Football Data** | Goals, shots, expected goals (xG), possession, passes, fouls, cards, substitutions, tactical lineups, player ratings, and historical career logs |
 | **Application Layer** | FastAPI REST and WebSocket services, SQLAlchemy 2.0 repositories, SQLite WAL persistence, TanStack React Query, and Zustand client state |
 | **Presentation Layer** | Premier League command center, league tables, player profiles, manager profiles, match center, analytics, AI benchmark suite, broadcast overlays |
@@ -211,8 +238,8 @@ Invoke-RestMethod `
 ## What Makes Footy Technically Interesting
 
 * **Real 11v11 Physics Simulation:** Matches run inside Google Research Football's native C++ simulation environment rather than resolving via statistical RNG.
-* **Multi-Agent Policy Integration:** TiKick neural policies drive 22 autonomous agents simultaneously with tactical formations and dynamic behavioral transforms.
-* **Deterministic Artifact Pipeline:** Seeded execution produces identical trajectory `.npz` files, state archives, and SHA-256 fingerprint verification across replay runs.
+* **Multi-Agent Policy Integration:** TiKick neural policies drive 20 outfield agents, alongside GRF goalkeepers, with tactical formations and dynamic behavioral transforms.
+* **Deterministic Artifact Pipeline:** Seeded canonical results are checked across repeated execution and worker counts. Replay restores authoritative native states; the scope and limitations of each check are recorded with its evidence.
 * **Failure-Aware Media Publication:** Replay video is encoded to isolated staging paths, drained for FFmpeg errors, verified for decoded frame counts, and atomically published.
 * **Full-Stack Simulation Observability:** Output flows directly from physics engine → typed canonical domain result → SQLite WAL → FastAPI WebSocket → React 19 visual analytics & 3D playback.
 
@@ -311,7 +338,7 @@ flowchart TB
 ### 2. Single Canonical Match Result
 * **Problem:** Having renderers re-parse scores from video frames or having the database calculate match stats independently causes data desyncs between UI tables and video cards.
 * **Decision:** `GRFMatchExecutor` emits a single typed `CanonicalMatchResult` contract owning the score, event stream, and statistical attribution.
-* **Why:** Renderers, SQLite repositories, and analytics consumers strictly ingest the canonical result, guaranteeing 100% agreement across all product surfaces.
+* **Why:** Renderers, SQLite repositories, and analytics consumers strictly ingest the canonical result, so covered tests can assert agreement across scores, events and replay presentation.
 
 ### 3. Run-Scoped Persistence
 * **Problem:** Re-running simulation seasons or executing concurrent benchmarks risks clobbering existing match records and media files on disk.
@@ -333,7 +360,7 @@ flowchart TB
 | **Simulation Context** | Isolated 90-second scenarios / individual games | Multi-season league with scheduling, fatigue, and transfers |
 | **Domain Model** | Raw observation vectors and action integers | Typed football domain models (clubs, players, events, xG) |
 | **Artifact Output** | Raw binary `.dump` / `.replay` files | Typed `.npz` trajectories, manifests, and presentation timelines |
-| **Visual Presentation** | Headless or basic OpenGL viewport | Broadcast-style 3D video with scorebugs, clock, and radar overlays |
+| **Visual Presentation** | Headless or basic OpenGL viewport | Clay-style studio cards, club kits and player identity, native HD, directed cameras, scoreboard and radar |
 | **Product Interface** | Python script execution | 14-page React 19 visual analytics & control center |
 | **Process Model** | Single environment loop | Multiprocess fixture pool with watchdog supervisor recovery |
 
@@ -365,7 +392,7 @@ git clone https://github.com/x-Kevin-Paul-x/Footy.git
 cd Footy
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -e ".[dev,ml,media]"
 
 # 2. Launch full stack concurrently (FastAPI on :5001 + React on :5173)
 npm install
@@ -381,7 +408,7 @@ npm run dev
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -e ".[dev,ml,media]"
 pip install -r requirements-dev.txt
 Copy-Item .env.example .env
 
@@ -411,16 +438,18 @@ npm run dev
 
 ## Tests and Verification
 
-All tests verified on the configured Windows/WSL host on **6 September 2026**:
+The October 2026 visual upgrade was checked on the configured Windows/WSL host. Counts below describe specific verification runs, rather than a permanent test-suite total.
 
-| Test Suite | Command | Result | Coverage Area |
-| :--- | :--- | :---: | :--- |
-| **Backend Integration Suite** | `pytest backend/tests -v` | **95 passed, 9 skipped** | Simulation lifecycle, determinism, and API |
-| **Targeted Regressions** | `pytest backend/tests/test_audit_regressions.py` | **23 passed** | Database schema constraints and run isolation |
-| **Frontend Jest Suite** | `npm test -- --runInBand` | **6 passed** | Client state transitions and utility transforms |
-| **TypeScript Typecheck** | `npx tsc --noEmit` | **Passed** | Strict typechecking across 37 TS/TSX modules |
-| **Production Build** | `npm run build` | **Passed** | 2,225 modules transformed in 4.51 seconds |
-| **SQLite Schema Health** | `PRAGMA integrity_check;` | **`ok`** | Zero orphaned rows or foreign-key violations |
+| Check | Result | Scope |
+| :--- | :--- | :--- |
+| **Backend suite** | **196 passed, 11 skipped** | Backend and commentary suites before the final recorded-name compatibility fix. |
+| **Final affected checks** | **29 passed** | Recorded names, defensive cosmetic freezing and related replay regressions after that fix. |
+| **Frontend** | **14 passed; build passed** | Replay settings and existing client checks; lint reported zero errors and 60 existing warnings. |
+| **Native presentation** | **17 checks** | 720p → 1080p → 720p contexts, cameras and isolated cheer previews; saved physics observations remained equal. |
+| **Complete replay export** | **3,108 frames** | Full native 1080p and private 4K benchmarks, plus the final 720p director export; source hashes unchanged. |
+| **Motion prototype** | **570 frames at 30 fps, 19 seconds** | Separate optical-flow output with unchanged source and event timing. |
+
+See the [visual upgrade checklist](docs/simulation_visual_tasks.md), [native proof and timings](docs/evidence/simulation_visuals/native-upgrade-proof.json), and [earlier dated project verification](docs/verification_2026_10_13.md). Rendering throughput in the benchmark is separate from the video's 10 fps playback rate.
 
 ---
 
@@ -460,27 +489,16 @@ Footy/
 * [04. Frontend Guide](docs/04_frontend_guide.md) — Component architecture, state management, and theme system
 * [05. Current Implementation Status](docs/05_current_status.md) — Verified test evidence and component health
 * [06. Setup & Execution](docs/06_setup_and_run.md) — WSL2 environment configuration and dependency setup
+* [Simulation Visual Upgrade Checklist](docs/simulation_visual_tasks.md) — Completed work, checks and prototype boundaries
+* [Native Visual Runtime](backend/native/README.md) — Build instructions for kits, appearances and cameras
+* [Broadcast Visual Evidence](docs/evidence/simulation_visuals/README.md) — Screenshots, provenance and native replay proof
 * [07. Backend Remediation Plan](docs/Backend_audit_PLAN.md) — Architectural roadmap and remediation tracking
 
 ---
 
-## Current Limitations
+## Further work
 
-Footy is under active engineering development. Known limitations are openly documented and actively remediated in the project backlog:
-
-<details>
-<summary><strong>🔍 Known Engineering Limitations & Active Remediation Work</strong></summary>
-
-* **Alembic Bootstrap:** Repairing fresh-database Alembic bootstrap sequence for zero-state database initialization.
-* **Durable Job Tracking:** Migrating background simulation and ML tasks to durable job IDs with heartbeat leases.
-* **Worker Queue Invariant:** Closing the worker dequeue-before-ownership window in the multiprocessing fixture pool.
-* **Frame-Accurate Timelines:** Standardizing presentation timeline generation across 2D trajectory and 3D dump renderers.
-* **Pickle Deserialization:** Replacing legacy pickle deserialization with explicit, typed schema validation.
-* **Path Containment:** Enforcing resolved path containment across all artifact export and media delivery endpoints.
-* **Multiprocess Scaling Harness:** Expanding synthetic benchmarks into distributed multi-node fixture execution.
-* **Domain/ORM Class Collision:** Renaming domain `Match` entity shadowing the ORM `Match` model in the API link persistence path.
-
-</details>
+The [known limitations](#known-limitations) describe current simulation and management constraints. Presentation work still includes refining the celebration retarget, evaluating smoother native motion, and deciding whether faster 4K rendering can justify a supported profile. The [visual checklist](docs/simulation_visual_tasks.md) separates delivered controls from those experimental prototypes.
 
 ---
 
@@ -492,6 +510,8 @@ Footy is under active engineering development. Known limitations are openly docu
 * **[FastAPI](https://fastapi.tiangolo.com/)** & **[SQLAlchemy](https://www.sqlalchemy.org/)** — Asynchronous API gateway and relational persistence.
 * **[React](https://react.dev/)** & **[MUI](https://mui.com/)** — Component framework and visual design system.
 * **[FFmpeg](https://ffmpeg.org/)** — Replay video transcoding and broadcast stream generation.
+* **KayKit** — CC0 cheer source for the isolated celebration prototype; [retained licence and conversion notes](backend/assets/animations/README.md).
+* **Outfit & Inter** — Broadcast typography bundled with [SIL Open Font License notices](backend/src/logic/broadcast_fonts/README.md).
 
 ---
 

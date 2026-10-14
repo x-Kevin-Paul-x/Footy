@@ -4,9 +4,21 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import aliased
 from database.session import SessionLocal, get_db_session
-from database.models import Match, MatchShots, MatchEvent, Team, Manager, Player, SimulationRun
+from database.models import Match, MatchShots, MatchEvent, Team, Manager, Player, SimulationRun, WorkJob
 
 logger = logging.getLogger("footy.database.match")
+
+
+def link_match_video(match_id, run_id, video_url):
+    details = get_match_details(match_id, simulation_run_id=run_id)
+    if details is None:
+        raise ValueError('Recording does not identify a match in the requested run')
+    with get_db_session() as db:
+        row = db.get(Match, details['match_id'])
+        if row is None or row.simulation_run_id != run_id:
+            raise ValueError('Match ownership changed before recording publication')
+        row.video_url = video_url
+        return row.match_id
 
 def save_match_to_db(
     match_data: Dict[str, Any],
@@ -57,6 +69,10 @@ def save_match_to_db(
     try:
         with get_db_session() as db:
             effective_run_id = simulation_run_id or match_data.get("simulation_run_id")
+            if effective_run_id:
+                job = db.query(WorkJob).filter(WorkJob.run_id == effective_run_id).first()
+                if job and (job.status != 'running' or job.cancel_requested):
+                    raise RuntimeError('Fixture publication rejected: job no longer owns the run')
             effective_video_url = video_url or match_data.get("video_url")
             # A match number is only unique inside a simulation run.  The legacy
             # season key remains for records created before run isolation.
@@ -429,7 +445,7 @@ def get_match_details(match_id: Any, simulation_run_id: Optional[str] = None) ->
         # Fetch Manager & Formations fallback
         home_mgr = db.query(Manager).filter(Manager.manager_id == home_team.manager_id).first() if home_team else None
         away_mgr = db.query(Manager).filter(Manager.manager_id == away_team.manager_id).first() if away_team else None
-        
+
         home_formation = home_mgr.formation if home_mgr else "4-3-3"
         away_formation = away_mgr.formation if away_mgr else "4-2-3-1"
         match_details["home_formation"] = home_formation
@@ -497,7 +513,7 @@ def get_match_details(match_id: Any, simulation_run_id: Optional[str] = None) ->
                         parts = det.split(" comes on for ")
                         p_in = parts[0].replace("Substitution:", "").strip()
                         p_out = parts[1].split("(")[0].strip()
-                    
+
                     if p_in and p_out:
                         subs_list.append({
                             "minute": e.get("minute", 0),

@@ -1,0 +1,45 @@
+{
+  "run_id": "run_1791240220_7b08d5",
+  "reference": {
+    "matches": 380,
+    "goals": 1246,
+    "goals_per_match": 3.278947368421053,
+    "goals_mean_ci95": [
+      3.112356408475461,
+      3.4455383283666445
+    ],
+    "home_win_rate": 0.4605263157894737,
+    "draw_rate": 0.21578947368421053,
+    "away_win_rate": 0.3236842105263158,
+    "competition": "Premier League",
+    "season": "2023/24",
+    "source": "https://www.football-data.co.uk/mmz4281/2324/E0.csv",
+    "official_goals_confirmation": "https://www.premierleague.com/en/news/4316617",
+    "dataset_sha256": "b2e057b0ed959f198b0f63d2391c01239f3608e6de5db68edab3f88e04d07ff3",
+    "shots_per_match": 27.58421052631579,
+    "yellow_cards_per_match": 4.173684210526316,
+    "red_cards_per_match": 0.15,
+    "xg": null,
+    "injuries": null
+  },
+  "simulation": {
+    "matches": 380,
+    "goals": 1874,
+    "goals_per_match": 4.931578947368421,
+    "goals_mean_ci95": [
+      4.71699715305581,
+      5.146160741681032
+    ],
+    "home_win_rate": 0.36578947368421055,
+    "draw_rate": 0.24473684210526317,
+    "away_win_rate": 0.3894736842105263
+  },
+  "differences": {
+    "goals_per_match": 1.6526315789473682,
+    "home_win_rate": -0.09473684210526312,
+    "draw_rate": 0.02894736842105264,
+    "away_win_rate": 0.06578947368421051
+  },
+  "status": "measured_discrepancies",
+  "note": "Scores are authoritative; this audit never changes the engine or results."
+}

@@ -1,8 +1,9 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ main, 'codex/**' ]
   pull_request:
     branches: [ main ]
 
@@ -23,17 +24,32 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
           # Architecture tests import the TiKick policy backend. CI only needs
           # CPU inference dependencies, avoiding the CUDA runtime download.
           pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e '.[dev,media,ml]'
 
-      - name: Run Backend Regression & Architecture Tests
-        env:
-          PYTHONPATH: backend/src
+      - name: Install media CLI
         run: |
-          pytest backend/tests/test_audit_regressions.py backend/tests/test_architectural_contracts.py backend/tests/test_api_endpoints.py -v
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Lint and scoped typing
+        run: |
+          ruff check backend/src backend/tests backend/benchmarks
+          mypy
+
+      - name: Run complete portable backend suite with coverage
+        env:
+          FOOTY_REPORTS_DIR: ${{ runner.temp }}/footy-reports
+        run: |
+          pytest backend/tests backend/commentary/tests --cov=backend/src --cov-report=term-missing --cov-report=xml -ra
+
+      - name: Preserve coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: coverage.xml
 
   frontend-check:
     name: Frontend Typecheck & Build
@@ -53,13 +69,42 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: TypeScript Check
         run: npx tsc --noEmit
+
+      - name: Frontend lint
+        run: npm run lint
 
       - name: Frontend Jest Tests
         run: npm test -- --runInBand
 
       - name: Production Build
         run: npm run build
+
+  pages-demo:
+    name: Publish read-only demo
+    if: github.event_name == 'workflow_dispatch'
+    needs: [backend-test, frontend-check]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/export_demo.py --output demo
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: demo
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

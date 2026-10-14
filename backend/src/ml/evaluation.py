@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -73,6 +74,8 @@ def summarize_episode_results(policy_name: str, episodes_data: List[Dict[str, An
         "episodes": n,
         "avg_reward": avg_reward,
         "std_reward": std_reward,
+        "reward_ci95": [avg_reward - 1.96 * std_reward / math.sqrt(n), avg_reward + 1.96 * std_reward / math.sqrt(n)],
+        "seeds": [e['seed'] for e in episodes_data if 'seed' in e],
         "median_reward": sorted(rewards)[n // 2],
         "best_reward": max(rewards),
         "worst_reward": min(rewards),
@@ -142,7 +145,7 @@ def build_evaluation_report(
 
 def save_evaluation_report(report: Dict[str, Any], output_dir: str) -> str:
     os.makedirs(output_dir, exist_ok=True)
-    filename = f"evaluation_{int(datetime.now().timestamp())}.json"
+    filename = f"evaluation_{int(datetime.now().timestamp())}_{uuid.uuid4().hex[:8]}.json"
     file_path = Path(output_dir) / filename
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)

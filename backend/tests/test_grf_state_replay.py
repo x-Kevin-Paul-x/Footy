@@ -107,7 +107,9 @@ def test_grf_state_archive_legacy_pickle_fallback(tmp_path):
     with open(legacy_file, "wb") as f:
         pickle.dump(raw_states, f)
 
-    reader = GRFStateArchiveReader(str(legacy_file))
+    with pytest.raises(ReplayIntegrityError):
+        GRFStateArchiveReader(str(legacy_file))
+    reader = GRFStateArchiveReader(str(legacy_file), trusted_legacy=True)
     assert reader.total_steps == 3
     assert reader.get_state(0) == b"legacy_state_001"
     assert reader.get_state(2) == b"legacy_state_003"
@@ -521,7 +523,7 @@ def test_trajectory_schema_on_load_enforcement(tmp_path):
         actions=np.zeros((10, 20), dtype=np.uint8),
         scores=np.zeros((10, 2), dtype=np.uint8),
         seed=np.array([42], dtype=np.int64),
-        manifest=np.array([json.dumps(manifest_dict)], dtype=object)
+        manifest=np.array([json.dumps(manifest_dict)])
     )
 
     with pytest.raises(ReplayIntegrityError, match="declared schema 'FOOTY_TRAJECTORY_V2'"):
@@ -545,7 +547,7 @@ def test_trajectory_schema_on_load_rejects_v1_with_v2_arrays(tmp_path):
         actions=np.zeros((10, 20), dtype=np.uint8),
         scores=np.zeros((10, 2), dtype=np.uint8),
         seed=np.array([42], dtype=np.int64),
-        manifest=np.array([json.dumps(manifest_dict)], dtype=object),
+        manifest=np.array([json.dumps(manifest_dict)]),
         game_mode=np.zeros(10, dtype=np.int8),
         ball_owned_team=np.zeros(10, dtype=np.int8),
         ball_owned_player=np.zeros(10, dtype=np.int8),
@@ -572,7 +574,7 @@ def test_trajectory_schema_on_load_rejects_unknown_schema(tmp_path):
         actions=np.zeros((10, 20), dtype=np.uint8),
         scores=np.zeros((10, 2), dtype=np.uint8),
         seed=np.array([42], dtype=np.int64),
-        manifest=np.array([json.dumps(manifest_dict)], dtype=object)
+        manifest=np.array([json.dumps(manifest_dict)])
     )
 
     with pytest.raises(ReplayIntegrityError, match="Unsupported trajectory schema version: 'FOOTY_TRAJECTORY_V999'"):

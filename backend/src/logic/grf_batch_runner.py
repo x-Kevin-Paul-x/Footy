@@ -71,14 +71,17 @@ class GRFBatchRunner:
         fixtures: List[Dict[str, Any]],
         max_steps: Optional[int] = None,
         run_id: Optional[str] = None,
-        render_mode: Optional[str] = None
+        render_mode: Optional[str] = None,
+        worker_count: Optional[int] = None,
+        output_root: Optional[Path] = None,
+        record_states: bool = True
     ) -> List[Dict[str, Any]]:
         from database.db_setup import get_current_simulation_run
         eff_run_id = run_id or get_current_simulation_run()
         eff_render_mode = str(render_mode or os.getenv("FOOTY_DEFAULT_RENDER_MODE", "3d")).lower()
         is_3d = (eff_render_mode == "3d")
 
-        run_dir = RECORDINGS_DIR / eff_run_id
+        run_dir = Path(output_root or RECORDINGS_DIR) / eff_run_id
         run_dir.mkdir(parents=True, exist_ok=True)
         steps = max_steps or self.max_steps
 
@@ -111,11 +114,13 @@ class GRFBatchRunner:
                 "output_mp4": to_wsl_path(mp4_win),
                 "run_id": eff_run_id,
                 "trace_dump": None,
-                "states_file": to_wsl_path(run_dir / f"trace_{m_id}.grfstate") if is_3d else None,
+                "states_file": to_wsl_path(run_dir / f"trace_{m_id}.grfstate") if is_3d and record_states else None,
                 "record_dump": False,
                 "record_3d_video": is_3d and bool(fix.get("render_video_sync", os.getenv("FOOTY_SYNC_VIDEO_RENDER", "0") in ("1", "true", "True"))),
                 "render_mode": eff_render_mode,
                 "seed_val": fix.get("seed_val"),
+                "apply_tactical_bias": fix.get('apply_tactical_bias', False),
+                "tactical_changes": fix.get('tactical_changes', []),
                 "created_at": fix.get("created_at"),
             })
 
@@ -126,7 +131,10 @@ class GRFBatchRunner:
 
         sync_video = any(f.get("record_3d_video") for f in wsl_fixtures)
         # Decoupled simulation throughput: 8 workers for headless simulation, 2 workers if synchronous 3D rendering requested
-        num_workers = min(2, len(fixtures)) if sync_video else min(max(1, FOOTY_PARALLEL_WORKERS), len(fixtures))
+        requested = worker_count if worker_count is not None else FOOTY_PARALLEL_WORKERS
+        if requested < 1 or requested > 64:
+            raise ValueError('Worker count must be between 1 and 64')
+        num_workers = min(2, len(fixtures)) if sync_video else min(requested, len(fixtures))
 
         try:
             payload_win.write_text(json.dumps({
@@ -135,6 +143,7 @@ class GRFBatchRunner:
                 "tikick_dir": tikick_wsl,
                 "max_steps": steps,
                 "num_workers": num_workers,
+                "replay_mode": "full_state" if is_3d and record_states else "trajectory",
             }), encoding="utf-8")
 
             if sync_video:

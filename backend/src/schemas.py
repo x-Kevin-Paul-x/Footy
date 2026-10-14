@@ -40,6 +40,37 @@ class SimulationStatusResponse(BaseModel):
     status: str
     message: str
     run_id: Optional[str] = None
+    job_id: Optional[str] = None
+    status_url: Optional[str] = None
+
+
+class SimulationSubmission(BaseModel):
+    season_year: int = Field(default=2026, ge=2000, le=2200)
+    render_mode: Literal['2d', '3d'] = '3d'
+    seasons: Optional[int] = Field(default=None, ge=1, le=10)
+
+
+class EvaluationSubmission(BaseModel):
+    models: List[str] = Field(default_factory=lambda: ['dqn_best.pt'], min_length=1, max_length=4)
+    episodes: int = Field(default=10, ge=1, le=500)
+    teams: int = Field(default=6, ge=4, le=20)
+    season_length: int = Field(default=20, ge=1, le=100)
+    fast_mode: Literal[True] = True
+    seed: int = Field(default=1000, ge=0, le=2**31-1000)
+    seeds: Optional[List[int]] = Field(default=None, min_length=1, max_length=500)
+
+
+class JobResponse(BaseModel):
+    job_id: str
+    kind: str
+    run_id: Optional[str] = None
+    status: Literal['queued', 'running', 'completed', 'failed', 'cancelled', 'interrupted']
+    created_at: str
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    cancel_requested: bool = False
+    error_message: Optional[str] = None
+    result: Optional[Dict[str, Any]] = None
 
 class SaveStateItem(BaseModel):
     save_id: str
@@ -53,12 +84,16 @@ class SaveStateResponse(BaseModel):
     save_id: Optional[str] = None
 
 class WebSocketEventFrame(BaseModel):
+    schema_version: Literal['1'] = '1'
+    sequence: int = 0
+    timestamp: Optional[str] = None
     event: str  # e.g., 'MATCH_TICK', 'GOAL_SCORED', 'SEASON_END', 'LOG'
     message: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
 
 
 class MatchSimulationRequest(BaseModel):
+    run_id: Optional[str] = Field(default=None, max_length=128, pattern=r'^[A-Za-z0-9_.-]+$')
     match_id: Optional[str] = Field(default=None, max_length=128, pattern=r"^[A-Za-z0-9_.-]+$")
     home_team_name: str = Field(default="Arsenal", min_length=1, max_length=100)
     away_team_name: str = Field(default="Chelsea", min_length=1, max_length=100)
@@ -99,6 +134,9 @@ class MatchRenderRequest(BaseModel):
     match_id: Optional[str] = Field(default=None, max_length=128)
     render_mode: Literal["3d", "2d", "auto"] = "auto"
     force: bool = False
+    resolution: Literal['720p', '1080p'] = '720p'
+    theme: Literal['dark', 'light'] = 'dark'
+    camera: Literal['wide', 'bird', 'tele', 'director'] = 'wide'
 
 
 class MatchRenderResponse(BaseModel):

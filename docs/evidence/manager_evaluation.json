@@ -1,0 +1,4285 @@
+{
+  "generated_at": "2026-10-13T02:56:54.632302",
+  "config": {
+    "models": [
+      "dqn_seed_42.pt",
+      "dqn_seed_43.pt",
+      "dqn_seed_44.pt",
+      "dqn_best.pt"
+    ],
+    "episodes": 30,
+    "seed": 1000,
+    "teams": 6,
+    "season_length": 20,
+    "fast_mode": true,
+    "seeds": [
+      1000,
+      1001,
+      1002,
+      1003,
+      1004,
+      1005,
+      1006,
+      1007,
+      1008,
+      1009,
+      1010,
+      1011,
+      1012,
+      1013,
+      1014,
+      1015,
+      1016,
+      1017,
+      1018,
+      1019,
+      1020,
+      1021,
+      1022,
+      1023,
+      1024,
+      1025,
+      1026,
+      1027,
+      1028,
+      1029
+    ],
+    "environment_version": 1,
+    "engine": "synthetic_management"
+  },
+  "runtime": {
+    "elapsed_seconds": 8.93,
+    "python": "3.12.10"
+  },
+  "model_path": "dqn_seed_42.pt;dqn_seed_43.pt;dqn_seed_44.pt;dqn_best.pt",
+  "policy_models": {
+    "trained_dqn_seed_42": {
+      "model_id": "dqn_seed_42.pt",
+      "sha256": "aa0a4e2e11b4a07aa6d3f4ec03d930c20bd81d40feabd2be0ef44517f8882f87",
+      "observation_dim": 24,
+      "action_dim": 5
+    },
+    "trained_dqn_seed_43": {
+      "model_id": "dqn_seed_43.pt",
+      "sha256": "4084f231c8fc25e361c26240a87b1e1b4c1211ba244f230e972a43405eb12349",
+      "observation_dim": 24,
+      "action_dim": 5
+    },
+    "trained_dqn_seed_44": {
+      "model_id": "dqn_seed_44.pt",
+      "sha256": "ea112368a09b31c0d9026eae8d8ff8854aca33f78eee079061ac0b7aa603321c",
+      "observation_dim": 24,
+      "action_dim": 5
+    },
+    "trained_dqn_best": {
+      "model_id": "dqn_best.pt",
+      "sha256": "85871970eaa1858ffd0c90671ea5e8435ec72ec68a43d23802d27948c422de6f",
+      "observation_dim": 24,
+      "action_dim": 5
+    }
+  },
+  "policies": {
+    "trained_dqn_seed_42": {
+      "policy_name": "trained_dqn_seed_42",
+      "episodes": 30,
+      "avg_reward": 78.1,
+      "std_reward": 22.302989336260136,
+      "reward_ci95": [
+        70.11897776527898,
+        86.081022234721
+      ],
+      "seeds": [
+        1000,
+        1001,
+        1002,
+        1003,
+        1004,
+        1005,
+        1006,
+        1007,
+        1008,
+        1009,
+        1010,
+        1011,
+        1012,
+        1013,
+        1014,
+        1015,
+        1016,
+        1017,
+        1018,
+        1019,
+        1020,
+        1021,
+        1022,
+        1023,
+        1024,
+        1025,
+        1026,
+        1027,
+        1028,
+        1029
+      ],
+      "median_reward": 82.0,
+      "best_reward": 114.0,
+      "worst_reward": 37.0,
+      "avg_position": 3.933333333333333,
+      "best_position": 3,
+      "avg_points": 27.033333333333335,
+      "avg_budget": 41418974.6,
+      "avg_squad_size": 27.066666666666666,
+      "top_4_rate": 0.7666666666666667,
+      "title_rate": 0.0,
+      "position_histogram": {
+        "3": 9,
+        "5": 7,
+        "4": 14
+      },
+      "action_distribution": {
+        "do_nothing": 185,
+        "scout_or_youth": 357,
+        "buy_cheap": 28,
+        "buy_value": 30,
+        "buy_star": 0
+      }
+    },
+    "trained_dqn_seed_43": {
+      "policy_name": "trained_dqn_seed_43",
+      "episodes": 30,
+      "avg_reward": 76.9,
+      "std_reward": 20.932192113265792,
+      "reward_ci95": [
+        69.40951125166796,
+        84.39048874833205
+      ],
+      "seeds": [
+        1000,
+        1001,
+        1002,
+        1003,
+        1004,
+        1005,
+        1006,
+        1007,
+        1008,
+        1009,
+        1010,
+        1011,
+        1012,
+        1013,
+        1014,
+        1015,
+        1016,
+        1017,
+        1018,
+        1019,
+        1020,
+        1021,
+        1022,
+        1023,
+        1024,
+        1025,
+        1026,
+        1027,
+        1028,
+        1029
+      ],
+      "median_reward": 78.0,
+      "best_reward": 109.0,
+      "worst_reward": 35.0,
+      "avg_position": 3.9,
+      "best_position": 3,
+      "avg_points": 26.433333333333334,
+      "avg_budget": 41552307.93333333,
+      "avg_squad_size": 27.1,
+      "top_4_rate": 0.8,
+      "title_rate": 0.0,
+      "position_histogram": {
+        "3": 9,
+        "4": 15,
+        "5": 6
+      },
+      "action_distribution": {
+        "do_nothing": 365,
+        "scout_or_youth": 173,
+        "buy_cheap": 26,
+        "buy_value": 36,
+        "buy_star": 0
+      }
+    },
+    "trained_dqn_seed_44": {
+      "policy_name": "trained_dqn_seed_44",
+      "episodes": 30,
+      "avg_reward": 79.2,
+      "std_reward": 22.817244940322368,
+      "reward_ci95": [
+        71.03495376076235,
+        87.36504623923766
+      ],
+      "seeds": [
+        1000,
+        1001,
+        1002,
+        1003,
+        1004,
+        1005,
+        1006,
+        1007,
+        1008,
+        1009,
+        1010,
+        1011,
+        1012,
+        1013,
+        1014,
+        1015,
+        1016,
+        1017,
+        1018,
+        1019,
+        1020,
+        1021,
+        1022,
+        1023,
+        1024,
+        1025,
+        1026,
+        1027,
+        1028,
+        1029
+      ],
+      "median_reward": 83.0,
+      "best_reward": 117.0,
+      "worst_reward": 32.0,
+      "avg_position": 3.7,
+      "best_position": 2,
+      "avg_points": 28.633333333333333,
+      "avg_budget": 17552307.933333334,
+      "avg_squad_size": 28.766666666666666,
+      "top_4_rate": 0.8333333333333334,
+      "title_rate": 0.0,
+      "position_histogram": {
+        "3": 10,
+        "5": 5,
+        "2": 2,
+        "4": 13
+      },
+      "action_distribution": {
+        "do_nothing": 199,
+        "scout_or_youth": 289,
+        "buy_cheap": 41,
+        "buy_value": 71,
+        "buy_star": 0
+      }
+    },
+    "trained_dqn_best": {
+      "policy_name": "trained_dqn_best",
+      "episodes": 30,
+      "avg_reward": 78.3,
+      "std_reward": 21.52386272644078,
+      "reward_ci95": [
+        70.59778464192138,
+        86.00221535807862
+      ],
+      "seeds": [
+        1000,
+        1001,
+        1002,
+        1003,
+        1004,
+        1005,
+        1006,
+        1007,
+        1008,
+        1009,
+        1010,
+        1011,
+        1012,
+        1013,
+        1014,
+        1015,
+        1016,
+        1017,
+        1018,
+        1019,
+        1020,
+        1021,
+        1022,
+        1023,
+        1024,
+        1025,
+        1026,
+        1027,
+        1028,
+        1029
+      ],
+      "median_reward": 77.0,
+      "best_reward": 114.0,
+      "worst_reward": 37.0,
+      "avg_position": 3.7666666666666666,
+      "best_position": 3,
+      "avg_points": 27.466666666666665,
+      "avg_budget": 42918974.6,
+      "avg_squad_size": 31.6,
+      "top_4_rate": 0.8666666666666667,
+      "title_rate": 0.0,
+      "position_histogram": {
+        "3": 11,
+        "5": 4,
+        "4": 15
+      },
+      "action_distribution": {
+        "do_nothing": 378,
+        "scout_or_youth": 19,
+        "buy_cheap": 203,
+        "buy_value": 0,
+        "buy_star": 0
+      }
+    },
+    "random": {
+      "policy_name": "random",
+      "episodes": 30,
+      "avg_reward": 80.86666666666666,
+      "std_reward": 19.90767579491779,
+      "reward_ci95": [
+        73.74279637442096,
+        87.99053695891236
+      ],
+      "seeds": [
+        1000,
+        1001,
+        1002,
+        1003,
+        1004,
+        1005,
+        1006,
+        1007,
+        1008,
+        1009,
+        1010,
+        1011,
+        1012,
+        1013,
+        1014,
+        1015,
+        1016,
+        1017,
+        1018,
+        1019,
+        1020,
+        1021,
+        1022,
+        1023,
+        1024,
+        1025,
+        1026,
+        1027,
+        1028,
+        1029
+      ],
+      "median_reward": 82.0,
+      "best_reward": 109.0,
+      "worst_reward": 32.0,
+      "avg_position": 3.7,
+      "best_position": 3,
+      "avg_points": 28.866666666666667,
+      "avg_budget": 12402307.933333334,
+      "avg_squad_size": 28.7,
+      "top_4_rate": 0.9,
+      "title_rate": 0.0,
+      "position_histogram": {
+        "3": 12,
+        "5": 3,
+        "4": 15
+      },
+      "action_distribution": {
+        "do_nothing": 264,
+        "scout_or_youth": 222,
+        "buy_cheap": 60,
+        "buy_value": 40,
+        "buy_star": 14
+      }
+    },
+    "do_nothing": {
+      "policy_name": "do_nothing",
+      "episodes": 30,
+      "avg_reward": 70.96666666666667,
+      "std_reward": 22.558787398459362,
+      "reward_ci95": [
+        62.89410827097501,
+        79.03922506235833
+      ],
+      "seeds": [
+        1000,
+        1001,
+        1002,
+        1003,
+        1004,
+        1005,
+        1006,
+        1007,
+        1008,
+        1009,
+        1010,
+        1011,
+        1012,
+        1013,
+        1014,
+        1015,
+        1016,
+        1017,
+        1018,
+        1019,
+        1020,
+        1021,
+        1022,
+        1023,
+        1024,
+        1025,
+        1026,
+        1027,
+        1028,
+        1029
+      ],
+      "median_reward": 77.0,
+      "best_reward": 105.0,
+      "worst_reward": 39.0,
+      "avg_position": 4.133333333333334,
+      "best_position": 3,
+      "avg_points": 24.066666666666666,
+      "avg_budget": 69102307.93333334,
+      "avg_squad_size": 25.133333333333333,
+      "top_4_rate": 0.6333333333333333,
+      "title_rate": 0.0,
+      "position_histogram": {
+        "3": 7,
+        "4": 12,
+        "5": 11
+      },
+      "action_distribution": {
+        "do_nothing": 600,
+        "scout_or_youth": 0,
+        "buy_cheap": 0,
+        "buy_value": 0,
+        "buy_star": 0
+      }
+    },
+    "youth_focus": {
+      "policy_name": "youth_focus",
+      "episodes": 30,
+      "avg_reward": 80.46666666666667,
+      "std_reward": 21.21435572646242,
+      "reward_ci95": [
+        72.87520696610939,
+        88.05812636722395
+      ],
+      "seeds": [
+        1000,
+        1001,
+        1002,
+        1003,
+        1004,
+        1005,
+        1006,
+        1007,
+        1008,
+        1009,
+        1010,
+        1011,
+        1012,
+        1013,
+        1014,
+        1015,
+        1016,
+        1017,
+        1018,
+        1019,
+        1020,
+        1021,
+        1022,
+        1023,
+        1024,
+        1025,
+        1026,
+        1027,
+        1028,
+        1029
+      ],
+      "median_reward": 81.0,
+      "best_reward": 115.0,
+      "worst_reward": 37.0,
+      "avg_position": 3.8333333333333335,
+      "best_position": 3,
+      "avg_points": 27.166666666666668,
+      "avg_budget": 59102307.93333333,
+      "avg_squad_size": 25.133333333333333,
+      "top_4_rate": 0.8333333333333334,
+      "title_rate": 0.0,
+      "position_histogram": {
+        "3": 10,
+        "4": 15,
+        "5": 5
+      },
+      "action_distribution": {
+        "do_nothing": 0,
+        "scout_or_youth": 600,
+        "buy_cheap": 0,
+        "buy_value": 0,
+        "buy_star": 0
+      }
+    },
+    "rule_based": {
+      "policy_name": "rule_based",
+      "episodes": 30,
+      "avg_reward": 85.23333333333333,
+      "std_reward": 20.616632982995927,
+      "reward_ci95": [
+        77.8557659695333,
+        92.61090069713337
+      ],
+      "seeds": [
+        1000,
+        1001,
+        1002,
+        1003,
+        1004,
+        1005,
+        1006,
+        1007,
+        1008,
+        1009,
+        1010,
+        1011,
+        1012,
+        1013,
+        1014,
+        1015,
+        1016,
+        1017,
+        1018,
+        1019,
+        1020,
+        1021,
+        1022,
+        1023,
+        1024,
+        1025,
+        1026,
+        1027,
+        1028,
+        1029
+      ],
+      "median_reward": 87.0,
+      "best_reward": 115.0,
+      "worst_reward": 32.0,
+      "avg_position": 3.566666666666667,
+      "best_position": 2,
+      "avg_points": 30.333333333333332,
+      "avg_budget": 6668974.6,
+      "avg_squad_size": 29.933333333333334,
+      "top_4_rate": 0.9,
+      "title_rate": 0.0,
+      "position_histogram": {
+        "3": 12,
+        "5": 3,
+        "2": 2,
+        "4": 13
+      },
+      "action_distribution": {
+        "do_nothing": 213,
+        "scout_or_youth": 242,
+        "buy_cheap": 61,
+        "buy_value": 84,
+        "buy_star": 0
+      }
+    }
+  },
+  "comparisons": {
+    "trained_dqn_seed_43": {
+      "reward_delta": 1.1999999999999886,
+      "points_delta": 0.6000000000000014,
+      "position_delta": -0.033333333333333215,
+      "top_4_rate_delta": -0.033333333333333326,
+      "title_rate_delta": 0.0,
+      "budget_delta": -133333.33333332837,
+      "squad_size_delta": -0.03333333333333499
+    },
+    "trained_dqn_seed_44": {
+      "reward_delta": -1.1000000000000085,
+      "points_delta": -1.5999999999999979,
+      "position_delta": -0.23333333333333295,
+      "top_4_rate_delta": -0.06666666666666665,
+      "title_rate_delta": 0.0,
+      "budget_delta": 23866666.666666668,
+      "squad_size_delta": -1.6999999999999993
+    },
+    "trained_dqn_best": {
+      "reward_delta": -0.20000000000000284,
+      "points_delta": -0.43333333333333,
+      "position_delta": -0.16666666666666652,
+      "top_4_rate_delta": -0.09999999999999998,
+      "title_rate_delta": 0.0,
+      "budget_delta": -1500000.0,
+      "squad_size_delta": -4.533333333333335
+    },
+    "random": {
+      "reward_delta": -2.7666666666666657,
+      "points_delta": -1.8333333333333321,
+      "position_delta": -0.23333333333333295,
+      "top_4_rate_delta": -0.1333333333333333,
+      "title_rate_delta": 0.0,
+      "budget_delta": 29016666.666666668,
+      "squad_size_delta": -1.6333333333333329
+    },
+    "do_nothing": {
+      "reward_delta": 7.133333333333326,
+      "points_delta": 2.9666666666666686,
+      "position_delta": 0.20000000000000062,
+      "top_4_rate_delta": 0.13333333333333341,
+      "title_rate_delta": 0.0,
+      "budget_delta": -27683333.333333336,
+      "squad_size_delta": 1.9333333333333336
+    },
+    "youth_focus": {
+      "reward_delta": -2.3666666666666742,
+      "points_delta": -0.13333333333333286,
+      "position_delta": -0.09999999999999964,
+      "top_4_rate_delta": -0.06666666666666665,
+      "title_rate_delta": 0.0,
+      "budget_delta": -17683333.33333333,
+      "squad_size_delta": 1.9333333333333336
+    },
+    "rule_based": {
+      "reward_delta": -7.13333333333334,
+      "points_delta": -3.299999999999997,
+      "position_delta": -0.36666666666666625,
+      "top_4_rate_delta": -0.1333333333333333,
+      "title_rate_delta": 0.0,
+      "budget_delta": 34750000.0,
+      "squad_size_delta": -2.866666666666667
+    }
+  },
+  "summary": {
+    "primary_policy": "trained_dqn_seed_42",
+    "best_policy_by_reward": "rule_based",
+    "best_policy_by_position": "rule_based"
+  },
+  "episodes": {
+    "trained_dqn_seed_42": [
+      {
+        "reward": 114.0,
+        "final_position": 3,
+        "final_points": 40,
+        "final_budget": 56576382.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 3,
+          "1": 16,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1000
+      },
+      {
+        "reward": 38.0,
+        "final_position": 5,
+        "final_points": 19,
+        "final_budget": 4368679.0,
+        "final_squad_size": 31,
+        "actions": {
+          "0": 12,
+          "1": 5,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1001
+      },
+      {
+        "reward": 88.0,
+        "final_position": 4,
+        "final_points": 29,
+        "final_budget": 67420511.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 0,
+          "1": 19,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1002
+      },
+      {
+        "reward": 90.0,
+        "final_position": 4,
+        "final_points": 28,
+        "final_budget": 64252035.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 0,
+          "1": 19,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1003
+      },
+      {
+        "reward": 104.0,
+        "final_position": 3,
+        "final_points": 37,
+        "final_budget": 26022428.0,
+        "final_squad_size": 25,
+        "actions": {
+          "0": 14,
+          "1": 3,
+          "2": 0,
+          "3": 3,
+          "4": 0
+        },
+        "seed": 1004
+      },
+      {
+        "reward": 62.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 62841979.0,
+        "final_squad_size": 29,
+        "actions": {
+          "0": 1,
+          "1": 18,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1005
+      },
+      {
+        "reward": 78.0,
+        "final_position": 4,
+        "final_points": 24,
+        "final_budget": 62022543.0,
+        "final_squad_size": 23,
+        "actions": {
+          "0": 8,
+          "1": 11,
+          "2": 1,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1006
+      },
+      {
+        "reward": 78.0,
+        "final_position": 4,
+        "final_points": 25,
+        "final_budget": 18324743.0,
+        "final_squad_size": 30,
+        "actions": {
+          "0": 12,
+          "1": 6,
+          "2": 2,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1007
+      },
+      {
+        "reward": 92.0,
+        "final_position": 3,
+        "final_points": 32,
+        "final_budget": 67269572.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 0,
+          "1": 19,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1008
+      },
+      {
+        "reward": 100.0,
+        "final_position": 3,
+        "final_points": 35,
+        "final_budget": 11185017.0,
+        "final_squad_size": 24,
+        "actions": {
+          "0": 14,
+          "1": 4,
+          "2": 0,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1009
+      },
+      {
+        "reward": 102.0,
+        "final_position": 3,
+        "final_points": 34,
+        "final_budget": 89560830.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 4,
+          "1": 15,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1010
+      },
+      {
+        "reward": 37.0,
+        "final_position": 5,
+        "final_points": 16,
+        "final_budget": 42747273.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 6,
+          "1": 11,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1011
+      },
+      {
+        "reward": 61.0,
+        "final_position": 5,
+        "final_points": 20,
+        "final_budget": 37429483.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 3,
+          "1": 14,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1012
+      },
+      {
+        "reward": 83.0,
+        "final_position": 4,
+        "final_points": 28,
+        "final_budget": 62517609.0,
+        "final_squad_size": 30,
+        "actions": {
+          "0": 5,
+          "1": 13,
+          "2": 1,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1013
+      },
+      {
+        "reward": 63.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 61694717.0,
+        "final_squad_size": 25,
+        "actions": {
+          "0": 4,
+          "1": 13,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1014
+      },
+      {
+        "reward": 80.0,
+        "final_position": 4,
+        "final_points": 27,
+        "final_budget": 4926458.0,
+        "final_squad_size": 31,
+        "actions": {
+          "0": 1,
+          "1": 16,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1015
+      },
+      {
+        "reward": 84.0,
+        "final_position": 4,
+        "final_points": 30,
+        "final_budget": 46467114.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 0,
+          "1": 19,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1016
+      },
+      {
+        "reward": 111.0,
+        "final_position": 3,
+        "final_points": 39,
+        "final_budget": 62101105.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 0,
+          "1": 19,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1017
+      },
+      {
+        "reward": 103.0,
+        "final_position": 3,
+        "final_points": 34,
+        "final_budget": 50878173.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 1,
+          "1": 18,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1018
+      },
+      {
+        "reward": 46.0,
+        "final_position": 5,
+        "final_points": 20,
+        "final_budget": 3598595.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 17,
+          "1": 0,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1019
+      },
+      {
+        "reward": 108.0,
+        "final_position": 3,
+        "final_points": 39,
+        "final_budget": 13626286.0,
+        "final_squad_size": 23,
+        "actions": {
+          "0": 2,
+          "1": 17,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1020
+      },
+      {
+        "reward": 81.0,
+        "final_position": 4,
+        "final_points": 24,
+        "final_budget": 74285602.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 11,
+          "1": 8,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1021
+      },
+      {
+        "reward": 61.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 13773442.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 11,
+          "1": 6,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1022
+      },
+      {
+        "reward": 58.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 60073719.0,
+        "final_squad_size": 30,
+        "actions": {
+          "0": 8,
+          "1": 9,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1023
+      },
+      {
+        "reward": 45.0,
+        "final_position": 5,
+        "final_points": 19,
+        "final_budget": 12568126.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 4,
+          "1": 14,
+          "2": 2,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1024
+      },
+      {
+        "reward": 49.0,
+        "final_position": 5,
+        "final_points": 18,
+        "final_budget": 3664741.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 12,
+          "1": 3,
+          "2": 3,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1025
+      },
+      {
+        "reward": 104.0,
+        "final_position": 3,
+        "final_points": 37,
+        "final_budget": 5433151.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 9,
+          "1": 10,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1026
+      },
+      {
+        "reward": 59.0,
+        "final_position": 5,
+        "final_points": 20,
+        "final_budget": 3723382.0,
+        "final_squad_size": 24,
+        "actions": {
+          "0": 14,
+          "1": 4,
+          "2": 1,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1027
+      },
+      {
+        "reward": 82.0,
+        "final_position": 4,
+        "final_points": 26,
+        "final_budget": 55589355.0,
+        "final_squad_size": 29,
+        "actions": {
+          "0": 6,
+          "1": 11,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1028
+      },
+      {
+        "reward": 82.0,
+        "final_position": 4,
+        "final_points": 27,
+        "final_budget": 97626188.0,
+        "final_squad_size": 24,
+        "actions": {
+          "0": 3,
+          "1": 17,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1029
+      }
+    ],
+    "trained_dqn_seed_43": [
+      {
+        "reward": 104.0,
+        "final_position": 3,
+        "final_points": 35,
+        "final_budget": 76576382.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 8,
+          "1": 12,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1000
+      },
+      {
+        "reward": 58.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 32868679.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1001
+      },
+      {
+        "reward": 74.0,
+        "final_position": 4,
+        "final_points": 24,
+        "final_budget": 73920511.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 13,
+          "1": 6,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1002
+      },
+      {
+        "reward": 102.0,
+        "final_position": 3,
+        "final_points": 34,
+        "final_budget": 68752035.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 9,
+          "1": 10,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1003
+      },
+      {
+        "reward": 105.0,
+        "final_position": 3,
+        "final_points": 35,
+        "final_budget": 78522428.0,
+        "final_squad_size": 22,
+        "actions": {
+          "0": 14,
+          "1": 6,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1004
+      },
+      {
+        "reward": 62.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 50841979.0,
+        "final_squad_size": 30,
+        "actions": {
+          "0": 12,
+          "1": 6,
+          "2": 0,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1005
+      },
+      {
+        "reward": 53.0,
+        "final_position": 5,
+        "final_points": 20,
+        "final_budget": 70522543.0,
+        "final_squad_size": 22,
+        "actions": {
+          "0": 18,
+          "1": 2,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1006
+      },
+      {
+        "reward": 78.0,
+        "final_position": 4,
+        "final_points": 25,
+        "final_budget": 29324743.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1007
+      },
+      {
+        "reward": 90.0,
+        "final_position": 4,
+        "final_points": 28,
+        "final_budget": 57269572.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 15,
+          "1": 3,
+          "2": 0,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1008
+      },
+      {
+        "reward": 101.0,
+        "final_position": 3,
+        "final_points": 33,
+        "final_budget": 42685017.0,
+        "final_squad_size": 23,
+        "actions": {
+          "0": 14,
+          "1": 5,
+          "2": 1,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1009
+      },
+      {
+        "reward": 102.0,
+        "final_position": 3,
+        "final_points": 34,
+        "final_budget": 70560830.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 1,
+          "1": 17,
+          "2": 0,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1010
+      },
+      {
+        "reward": 95.0,
+        "final_position": 3,
+        "final_points": 35,
+        "final_budget": 11247273.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 6,
+          "1": 10,
+          "2": 1,
+          "3": 3,
+          "4": 0
+        },
+        "seed": 1011
+      },
+      {
+        "reward": 56.0,
+        "final_position": 5,
+        "final_points": 20,
+        "final_budget": 10429483.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 12,
+          "1": 4,
+          "2": 1,
+          "3": 3,
+          "4": 0
+        },
+        "seed": 1012
+      },
+      {
+        "reward": 63.0,
+        "final_position": 4,
+        "final_points": 22,
+        "final_budget": 51017609.0,
+        "final_squad_size": 30,
+        "actions": {
+          "0": 10,
+          "1": 8,
+          "2": 0,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1013
+      },
+      {
+        "reward": 58.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 18194717.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 8,
+          "1": 8,
+          "2": 0,
+          "3": 4,
+          "4": 0
+        },
+        "seed": 1014
+      },
+      {
+        "reward": 69.0,
+        "final_position": 4,
+        "final_points": 24,
+        "final_budget": 14426458.0,
+        "final_squad_size": 30,
+        "actions": {
+          "0": 13,
+          "1": 5,
+          "2": 1,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1015
+      },
+      {
+        "reward": 74.0,
+        "final_position": 4,
+        "final_points": 30,
+        "final_budget": 5467114.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 1,
+          "1": 13,
+          "2": 3,
+          "3": 3,
+          "4": 0
+        },
+        "seed": 1016
+      },
+      {
+        "reward": 109.0,
+        "final_position": 3,
+        "final_points": 38,
+        "final_budget": 49101105.0,
+        "final_squad_size": 29,
+        "actions": {
+          "0": 9,
+          "1": 9,
+          "2": 0,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1017
+      },
+      {
+        "reward": 91.0,
+        "final_position": 4,
+        "final_points": 28,
+        "final_budget": 75378173.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 15,
+          "1": 5,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1018
+      },
+      {
+        "reward": 59.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 8598595.0,
+        "final_squad_size": 29,
+        "actions": {
+          "0": 13,
+          "1": 2,
+          "2": 5,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1019
+      },
+      {
+        "reward": 104.0,
+        "final_position": 3,
+        "final_points": 37,
+        "final_budget": 9126286.0,
+        "final_squad_size": 25,
+        "actions": {
+          "0": 7,
+          "1": 10,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1020
+      },
+      {
+        "reward": 81.0,
+        "final_position": 4,
+        "final_points": 24,
+        "final_budget": 54785602.0,
+        "final_squad_size": 29,
+        "actions": {
+          "0": 14,
+          "1": 3,
+          "2": 1,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1021
+      },
+      {
+        "reward": 35.0,
+        "final_position": 5,
+        "final_points": 15,
+        "final_budget": 38273442.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 17,
+          "1": 1,
+          "2": 2,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1022
+      },
+      {
+        "reward": 58.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 69573719.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 13,
+          "1": 6,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1023
+      },
+      {
+        "reward": 45.0,
+        "final_position": 5,
+        "final_points": 19,
+        "final_budget": 1568126.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 17,
+          "1": 0,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1024
+      },
+      {
+        "reward": 54.0,
+        "final_position": 5,
+        "final_points": 18,
+        "final_budget": 33164741.0,
+        "final_squad_size": 23,
+        "actions": {
+          "0": 15,
+          "1": 4,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1025
+      },
+      {
+        "reward": 104.0,
+        "final_position": 3,
+        "final_points": 37,
+        "final_budget": 9433151.0,
+        "final_squad_size": 29,
+        "actions": {
+          "0": 10,
+          "1": 6,
+          "2": 4,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1026
+      },
+      {
+        "reward": 59.0,
+        "final_position": 5,
+        "final_points": 20,
+        "final_budget": 18723382.0,
+        "final_squad_size": 24,
+        "actions": {
+          "0": 15,
+          "1": 2,
+          "2": 3,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1027
+      },
+      {
+        "reward": 82.0,
+        "final_position": 4,
+        "final_points": 26,
+        "final_budget": 49089355.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 14,
+          "1": 4,
+          "2": 0,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1028
+      },
+      {
+        "reward": 82.0,
+        "final_position": 4,
+        "final_points": 27,
+        "final_budget": 67126188.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 12,
+          "1": 6,
+          "2": 0,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1029
+      }
+    ],
+    "trained_dqn_seed_44": [
+      {
+        "reward": 109.0,
+        "final_position": 3,
+        "final_points": 40,
+        "final_budget": 19576382.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 13,
+          "1": 2,
+          "2": 2,
+          "3": 3,
+          "4": 0
+        },
+        "seed": 1000
+      },
+      {
+        "reward": 32.0,
+        "final_position": 5,
+        "final_points": 16,
+        "final_budget": 4868679.0,
+        "final_squad_size": 31,
+        "actions": {
+          "0": 13,
+          "1": 4,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1001
+      },
+      {
+        "reward": 117.0,
+        "final_position": 2,
+        "final_points": 45,
+        "final_budget": 12920511.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 10,
+          "1": 4,
+          "2": 2,
+          "3": 4,
+          "4": 0
+        },
+        "seed": 1002
+      },
+      {
+        "reward": 89.0,
+        "final_position": 4,
+        "final_points": 30,
+        "final_budget": 6752035.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 4,
+          "1": 10,
+          "2": 2,
+          "3": 4,
+          "4": 0
+        },
+        "seed": 1003
+      },
+      {
+        "reward": 112.0,
+        "final_position": 2,
+        "final_points": 41,
+        "final_budget": 522428.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 5,
+          "1": 10,
+          "2": 1,
+          "3": 4,
+          "4": 0
+        },
+        "seed": 1004
+      },
+      {
+        "reward": 57.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 41341979.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 7,
+          "1": 9,
+          "2": 2,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1005
+      },
+      {
+        "reward": 68.0,
+        "final_position": 4,
+        "final_points": 24,
+        "final_budget": 20022543.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 0,
+          "1": 15,
+          "2": 2,
+          "3": 3,
+          "4": 0
+        },
+        "seed": 1006
+      },
+      {
+        "reward": 87.0,
+        "final_position": 3,
+        "final_points": 31,
+        "final_budget": 2324743.0,
+        "final_squad_size": 30,
+        "actions": {
+          "0": 8,
+          "1": 10,
+          "2": 1,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1007
+      },
+      {
+        "reward": 97.0,
+        "final_position": 3,
+        "final_points": 37,
+        "final_budget": 44769572.0,
+        "final_squad_size": 29,
+        "actions": {
+          "0": 4,
+          "1": 12,
+          "2": 2,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1008
+      },
+      {
+        "reward": 104.0,
+        "final_position": 3,
+        "final_points": 37,
+        "final_budget": 2185017.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 10,
+          "1": 6,
+          "2": 2,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1009
+      },
+      {
+        "reward": 97.0,
+        "final_position": 3,
+        "final_points": 34,
+        "final_budget": 32560830.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 9,
+          "1": 5,
+          "2": 2,
+          "3": 4,
+          "4": 0
+        },
+        "seed": 1010
+      },
+      {
+        "reward": 37.0,
+        "final_position": 5,
+        "final_points": 16,
+        "final_budget": 42747273.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 6,
+          "1": 11,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1011
+      },
+      {
+        "reward": 56.0,
+        "final_position": 5,
+        "final_points": 20,
+        "final_budget": 6429483.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 4,
+          "1": 12,
+          "2": 1,
+          "3": 3,
+          "4": 0
+        },
+        "seed": 1012
+      },
+      {
+        "reward": 58.0,
+        "final_position": 4,
+        "final_points": 22,
+        "final_budget": 45017609.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 12,
+          "1": 4,
+          "2": 2,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1013
+      },
+      {
+        "reward": 58.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 29194717.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 2,
+          "1": 14,
+          "2": 1,
+          "3": 3,
+          "4": 0
+        },
+        "seed": 1014
+      },
+      {
+        "reward": 87.0,
+        "final_position": 4,
+        "final_points": 29,
+        "final_budget": 426458.0,
+        "final_squad_size": 30,
+        "actions": {
+          "0": 13,
+          "1": 5,
+          "2": 0,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1015
+      },
+      {
+        "reward": 79.0,
+        "final_position": 4,
+        "final_points": 30,
+        "final_budget": 24467114.0,
+        "final_squad_size": 31,
+        "actions": {
+          "0": 5,
+          "1": 11,
+          "2": 2,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1016
+      },
+      {
+        "reward": 97.0,
+        "final_position": 3,
+        "final_points": 37,
+        "final_budget": 23101105.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 5,
+          "1": 9,
+          "2": 3,
+          "3": 3,
+          "4": 0
+        },
+        "seed": 1017
+      },
+      {
+        "reward": 100.0,
+        "final_position": 3,
+        "final_points": 35,
+        "final_budget": 10378173.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 4,
+          "1": 11,
+          "2": 2,
+          "3": 3,
+          "4": 0
+        },
+        "seed": 1018
+      },
+      {
+        "reward": 59.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 98595.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 3,
+          "1": 15,
+          "2": 1,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1019
+      },
+      {
+        "reward": 108.0,
+        "final_position": 3,
+        "final_points": 39,
+        "final_budget": 3626286.0,
+        "final_squad_size": 24,
+        "actions": {
+          "0": 17,
+          "1": 1,
+          "2": 0,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1020
+      },
+      {
+        "reward": 71.0,
+        "final_position": 4,
+        "final_points": 24,
+        "final_budget": 29285602.0,
+        "final_squad_size": 31,
+        "actions": {
+          "0": 4,
+          "1": 10,
+          "2": 2,
+          "3": 4,
+          "4": 0
+        },
+        "seed": 1021
+      },
+      {
+        "reward": 79.0,
+        "final_position": 4,
+        "final_points": 25,
+        "final_budget": 3273442.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 11,
+          "1": 7,
+          "2": 0,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1022
+      },
+      {
+        "reward": 58.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 65573719.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 5,
+          "1": 14,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1023
+      },
+      {
+        "reward": 72.0,
+        "final_position": 4,
+        "final_points": 25,
+        "final_budget": 3068126.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 6,
+          "1": 13,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1024
+      },
+      {
+        "reward": 49.0,
+        "final_position": 5,
+        "final_points": 18,
+        "final_budget": 9164741.0,
+        "final_squad_size": 24,
+        "actions": {
+          "0": 2,
+          "1": 16,
+          "2": 0,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1025
+      },
+      {
+        "reward": 104.0,
+        "final_position": 3,
+        "final_points": 37,
+        "final_budget": 1433151.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 8,
+          "1": 10,
+          "2": 1,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1026
+      },
+      {
+        "reward": 59.0,
+        "final_position": 5,
+        "final_points": 20,
+        "final_budget": 3223382.0,
+        "final_squad_size": 23,
+        "actions": {
+          "0": 6,
+          "1": 13,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1027
+      },
+      {
+        "reward": 93.0,
+        "final_position": 3,
+        "final_points": 33,
+        "final_budget": 1089355.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 2,
+          "1": 12,
+          "2": 2,
+          "3": 4,
+          "4": 0
+        },
+        "seed": 1028
+      },
+      {
+        "reward": 83.0,
+        "final_position": 4,
+        "final_points": 30,
+        "final_budget": 37126188.0,
+        "final_squad_size": 29,
+        "actions": {
+          "0": 1,
+          "1": 14,
+          "2": 2,
+          "3": 3,
+          "4": 0
+        },
+        "seed": 1029
+      }
+    ],
+    "trained_dqn_best": [
+      {
+        "reward": 114.0,
+        "final_position": 3,
+        "final_points": 40,
+        "final_budget": 61576382.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 13,
+          "1": 2,
+          "2": 5,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1000
+      },
+      {
+        "reward": 37.0,
+        "final_position": 5,
+        "final_points": 16,
+        "final_budget": 16868679.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 16,
+          "1": 0,
+          "2": 4,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1001
+      },
+      {
+        "reward": 74.0,
+        "final_position": 4,
+        "final_points": 24,
+        "final_budget": 70420511.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 13,
+          "1": 1,
+          "2": 6,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1002
+      },
+      {
+        "reward": 102.0,
+        "final_position": 3,
+        "final_points": 34,
+        "final_budget": 66752035.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 12,
+          "1": 2,
+          "2": 6,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1003
+      },
+      {
+        "reward": 104.0,
+        "final_position": 3,
+        "final_points": 37,
+        "final_budget": 45522428.0,
+        "final_squad_size": 31,
+        "actions": {
+          "0": 10,
+          "1": 0,
+          "2": 10,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1004
+      },
+      {
+        "reward": 63.0,
+        "final_position": 4,
+        "final_points": 22,
+        "final_budget": 73841979.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 16,
+          "1": 0,
+          "2": 4,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1005
+      },
+      {
+        "reward": 68.0,
+        "final_position": 4,
+        "final_points": 24,
+        "final_budget": 35522543.0,
+        "final_squad_size": 31,
+        "actions": {
+          "0": 10,
+          "1": 0,
+          "2": 10,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1006
+      },
+      {
+        "reward": 87.0,
+        "final_position": 3,
+        "final_points": 31,
+        "final_budget": 12324743.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 14,
+          "1": 2,
+          "2": 4,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1007
+      },
+      {
+        "reward": 102.0,
+        "final_position": 3,
+        "final_points": 37,
+        "final_budget": 65769572.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 11,
+          "1": 2,
+          "2": 7,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1008
+      },
+      {
+        "reward": 99.0,
+        "final_position": 3,
+        "final_points": 37,
+        "final_budget": 13185017.0,
+        "final_squad_size": 31,
+        "actions": {
+          "0": 10,
+          "1": 0,
+          "2": 10,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1009
+      },
+      {
+        "reward": 102.0,
+        "final_position": 3,
+        "final_points": 34,
+        "final_budget": 90060830.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 12,
+          "1": 2,
+          "2": 6,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1010
+      },
+      {
+        "reward": 44.0,
+        "final_position": 5,
+        "final_points": 20,
+        "final_budget": 42247273.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 11,
+          "1": 0,
+          "2": 9,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1011
+      },
+      {
+        "reward": 51.0,
+        "final_position": 5,
+        "final_points": 20,
+        "final_budget": 34429483.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 10,
+          "1": 0,
+          "2": 10,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1012
+      },
+      {
+        "reward": 63.0,
+        "final_position": 4,
+        "final_points": 22,
+        "final_budget": 75017609.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 16,
+          "1": 0,
+          "2": 4,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1013
+      },
+      {
+        "reward": 58.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 58194717.0,
+        "final_squad_size": 31,
+        "actions": {
+          "0": 10,
+          "1": 0,
+          "2": 10,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1014
+      },
+      {
+        "reward": 74.0,
+        "final_position": 4,
+        "final_points": 24,
+        "final_budget": 22926458.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 16,
+          "1": 0,
+          "2": 4,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1015
+      },
+      {
+        "reward": 84.0,
+        "final_position": 4,
+        "final_points": 30,
+        "final_budget": 53967114.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 15,
+          "1": 0,
+          "2": 5,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1016
+      },
+      {
+        "reward": 109.0,
+        "final_position": 3,
+        "final_points": 38,
+        "final_budget": 68601105.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 13,
+          "1": 2,
+          "2": 5,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1017
+      },
+      {
+        "reward": 101.0,
+        "final_position": 3,
+        "final_points": 33,
+        "final_budget": 55878173.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 11,
+          "1": 4,
+          "2": 5,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1018
+      },
+      {
+        "reward": 59.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 1598595.0,
+        "final_squad_size": 31,
+        "actions": {
+          "0": 13,
+          "1": 0,
+          "2": 7,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1019
+      },
+      {
+        "reward": 103.0,
+        "final_position": 3,
+        "final_points": 39,
+        "final_budget": 4126286.0,
+        "final_squad_size": 31,
+        "actions": {
+          "0": 10,
+          "1": 0,
+          "2": 10,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1020
+      },
+      {
+        "reward": 81.0,
+        "final_position": 4,
+        "final_points": 24,
+        "final_budget": 72285602.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 14,
+          "1": 0,
+          "2": 6,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1021
+      },
+      {
+        "reward": 61.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 14773442.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 13,
+          "1": 0,
+          "2": 7,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1022
+      },
+      {
+        "reward": 58.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 70573719.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 15,
+          "1": 0,
+          "2": 5,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1023
+      },
+      {
+        "reward": 72.0,
+        "final_position": 4,
+        "final_points": 25,
+        "final_budget": 3568126.0,
+        "final_squad_size": 31,
+        "actions": {
+          "0": 14,
+          "1": 0,
+          "2": 6,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1024
+      },
+      {
+        "reward": 44.0,
+        "final_position": 5,
+        "final_points": 18,
+        "final_budget": 17164741.0,
+        "final_squad_size": 31,
+        "actions": {
+          "0": 10,
+          "1": 0,
+          "2": 10,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1025
+      },
+      {
+        "reward": 104.0,
+        "final_position": 3,
+        "final_points": 37,
+        "final_budget": 433151.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 13,
+          "1": 0,
+          "2": 7,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1026
+      },
+      {
+        "reward": 72.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 3723382.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 14,
+          "1": 0,
+          "2": 6,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1027
+      },
+      {
+        "reward": 82.0,
+        "final_position": 4,
+        "final_points": 26,
+        "final_budget": 62589355.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 13,
+          "1": 1,
+          "2": 6,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1028
+      },
+      {
+        "reward": 77.0,
+        "final_position": 4,
+        "final_points": 27,
+        "final_budget": 73626188.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 10,
+          "1": 1,
+          "2": 9,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1029
+      }
+    ],
+    "random": [
+      {
+        "reward": 109.0,
+        "final_position": 3,
+        "final_points": 40,
+        "final_budget": 30576382.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 7,
+          "1": 8,
+          "2": 3,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1000
+      },
+      {
+        "reward": 32.0,
+        "final_position": 5,
+        "final_points": 16,
+        "final_budget": 19368679.0,
+        "final_squad_size": 30,
+        "actions": {
+          "0": 6,
+          "1": 11,
+          "2": 3,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1001
+      },
+      {
+        "reward": 78.0,
+        "final_position": 4,
+        "final_points": 29,
+        "final_budget": 18920511.0,
+        "final_squad_size": 29,
+        "actions": {
+          "0": 8,
+          "1": 8,
+          "2": 2,
+          "3": 1,
+          "4": 1
+        },
+        "seed": 1002
+      },
+      {
+        "reward": 80.0,
+        "final_position": 4,
+        "final_points": 28,
+        "final_budget": 24752035.0,
+        "final_squad_size": 30,
+        "actions": {
+          "0": 5,
+          "1": 10,
+          "2": 4,
+          "3": 0,
+          "4": 1
+        },
+        "seed": 1003
+      },
+      {
+        "reward": 108.0,
+        "final_position": 3,
+        "final_points": 39,
+        "final_budget": 22428.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 11,
+          "1": 3,
+          "2": 2,
+          "3": 4,
+          "4": 0
+        },
+        "seed": 1004
+      },
+      {
+        "reward": 56.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 40341979.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 4,
+          "1": 11,
+          "2": 3,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1005
+      },
+      {
+        "reward": 77.0,
+        "final_position": 4,
+        "final_points": 26,
+        "final_budget": 22543.0,
+        "final_squad_size": 24,
+        "actions": {
+          "0": 11,
+          "1": 7,
+          "2": 0,
+          "3": 1,
+          "4": 1
+        },
+        "seed": 1006
+      },
+      {
+        "reward": 87.0,
+        "final_position": 3,
+        "final_points": 31,
+        "final_budget": 8824743.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 7,
+          "1": 9,
+          "2": 4,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1007
+      },
+      {
+        "reward": 93.0,
+        "final_position": 3,
+        "final_points": 35,
+        "final_budget": 5269572.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 10,
+          "1": 7,
+          "2": 0,
+          "3": 2,
+          "4": 1
+        },
+        "seed": 1008
+      },
+      {
+        "reward": 98.0,
+        "final_position": 3,
+        "final_points": 34,
+        "final_budget": 1685017.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 9,
+          "1": 7,
+          "2": 2,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1009
+      },
+      {
+        "reward": 97.0,
+        "final_position": 3,
+        "final_points": 34,
+        "final_budget": 28560830.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 9,
+          "1": 5,
+          "2": 4,
+          "3": 1,
+          "4": 1
+        },
+        "seed": 1010
+      },
+      {
+        "reward": 95.0,
+        "final_position": 3,
+        "final_points": 35,
+        "final_budget": 247273.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 13,
+          "1": 4,
+          "2": 1,
+          "3": 1,
+          "4": 1
+        },
+        "seed": 1011
+      },
+      {
+        "reward": 56.0,
+        "final_position": 5,
+        "final_points": 20,
+        "final_budget": 17429483.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 5,
+          "1": 10,
+          "2": 3,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1012
+      },
+      {
+        "reward": 58.0,
+        "final_position": 4,
+        "final_points": 22,
+        "final_budget": 24517609.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 7,
+          "1": 9,
+          "2": 3,
+          "3": 0,
+          "4": 1
+        },
+        "seed": 1013
+      },
+      {
+        "reward": 53.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 27194717.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 5,
+          "1": 10,
+          "2": 3,
+          "3": 1,
+          "4": 1
+        },
+        "seed": 1014
+      },
+      {
+        "reward": 80.0,
+        "final_position": 4,
+        "final_points": 27,
+        "final_budget": 3926458.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 6,
+          "1": 10,
+          "2": 3,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1015
+      },
+      {
+        "reward": 83.0,
+        "final_position": 4,
+        "final_points": 30,
+        "final_budget": 467114.0,
+        "final_squad_size": 30,
+        "actions": {
+          "0": 14,
+          "1": 3,
+          "2": 1,
+          "3": 1,
+          "4": 1
+        },
+        "seed": 1016
+      },
+      {
+        "reward": 102.0,
+        "final_position": 3,
+        "final_points": 37,
+        "final_budget": 21101105.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 10,
+          "1": 5,
+          "2": 4,
+          "3": 0,
+          "4": 1
+        },
+        "seed": 1017
+      },
+      {
+        "reward": 104.0,
+        "final_position": 3,
+        "final_points": 37,
+        "final_budget": 2378173.0,
+        "final_squad_size": 30,
+        "actions": {
+          "0": 10,
+          "1": 7,
+          "2": 1,
+          "3": 1,
+          "4": 1
+        },
+        "seed": 1018
+      },
+      {
+        "reward": 59.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 598595.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 11,
+          "1": 6,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1019
+      },
+      {
+        "reward": 108.0,
+        "final_position": 3,
+        "final_points": 39,
+        "final_budget": 126286.0,
+        "final_squad_size": 24,
+        "actions": {
+          "0": 10,
+          "1": 8,
+          "2": 0,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1020
+      },
+      {
+        "reward": 71.0,
+        "final_position": 4,
+        "final_points": 24,
+        "final_budget": 23785602.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 8,
+          "1": 9,
+          "2": 0,
+          "3": 2,
+          "4": 1
+        },
+        "seed": 1021
+      },
+      {
+        "reward": 79.0,
+        "final_position": 4,
+        "final_points": 25,
+        "final_budget": 2773442.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 10,
+          "1": 8,
+          "2": 0,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1022
+      },
+      {
+        "reward": 88.0,
+        "final_position": 4,
+        "final_points": 30,
+        "final_budget": 73719.0,
+        "final_squad_size": 31,
+        "actions": {
+          "0": 15,
+          "1": 1,
+          "2": 1,
+          "3": 2,
+          "4": 1
+        },
+        "seed": 1023
+      },
+      {
+        "reward": 72.0,
+        "final_position": 4,
+        "final_points": 25,
+        "final_budget": 3568126.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 7,
+          "1": 12,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1024
+      },
+      {
+        "reward": 44.0,
+        "final_position": 5,
+        "final_points": 18,
+        "final_budget": 3164741.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 3,
+          "1": 12,
+          "2": 2,
+          "3": 3,
+          "4": 0
+        },
+        "seed": 1025
+      },
+      {
+        "reward": 104.0,
+        "final_position": 3,
+        "final_points": 37,
+        "final_budget": 433151.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 13,
+          "1": 4,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1026
+      },
+      {
+        "reward": 80.0,
+        "final_position": 4,
+        "final_points": 25,
+        "final_budget": 223382.0,
+        "final_squad_size": 25,
+        "actions": {
+          "0": 14,
+          "1": 3,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1027
+      },
+      {
+        "reward": 93.0,
+        "final_position": 3,
+        "final_points": 33,
+        "final_budget": 7089355.0,
+        "final_squad_size": 30,
+        "actions": {
+          "0": 8,
+          "1": 8,
+          "2": 2,
+          "3": 1,
+          "4": 1
+        },
+        "seed": 1028
+      },
+      {
+        "reward": 82.0,
+        "final_position": 4,
+        "final_points": 27,
+        "final_budget": 54626188.0,
+        "final_squad_size": 29,
+        "actions": {
+          "0": 8,
+          "1": 7,
+          "2": 3,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1029
+      }
+    ],
+    "do_nothing": [
+      {
+        "reward": 102.0,
+        "final_position": 3,
+        "final_points": 34,
+        "final_budget": 82576382.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1000
+      },
+      {
+        "reward": 58.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 32868679.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1001
+      },
+      {
+        "reward": 74.0,
+        "final_position": 4,
+        "final_points": 24,
+        "final_budget": 94920511.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1002
+      },
+      {
+        "reward": 98.0,
+        "final_position": 3,
+        "final_points": 32,
+        "final_budget": 91752035.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1003
+      },
+      {
+        "reward": 105.0,
+        "final_position": 3,
+        "final_points": 35,
+        "final_budget": 81522428.0,
+        "final_squad_size": 22,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1004
+      },
+      {
+        "reward": 39.0,
+        "final_position": 5,
+        "final_points": 16,
+        "final_budget": 89841979.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1005
+      },
+      {
+        "reward": 53.0,
+        "final_position": 5,
+        "final_points": 20,
+        "final_budget": 71522543.0,
+        "final_squad_size": 22,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1006
+      },
+      {
+        "reward": 78.0,
+        "final_position": 4,
+        "final_points": 25,
+        "final_budget": 29324743.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1007
+      },
+      {
+        "reward": 39.0,
+        "final_position": 5,
+        "final_points": 16,
+        "final_budget": 94769572.0,
+        "final_squad_size": 25,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1008
+      },
+      {
+        "reward": 101.0,
+        "final_position": 3,
+        "final_points": 33,
+        "final_budget": 49185017.0,
+        "final_squad_size": 22,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1009
+      },
+      {
+        "reward": 100.0,
+        "final_position": 3,
+        "final_points": 33,
+        "final_budget": 115060830.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1010
+      },
+      {
+        "reward": 39.0,
+        "final_position": 5,
+        "final_points": 17,
+        "final_budget": 74247273.0,
+        "final_squad_size": 24,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1011
+      },
+      {
+        "reward": 76.0,
+        "final_position": 4,
+        "final_points": 22,
+        "final_budget": 70429483.0,
+        "final_squad_size": 23,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1012
+      },
+      {
+        "reward": 67.0,
+        "final_position": 4,
+        "final_points": 23,
+        "final_budget": 91017609.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1013
+      },
+      {
+        "reward": 39.0,
+        "final_position": 5,
+        "final_points": 16,
+        "final_budget": 94194717.0,
+        "final_squad_size": 22,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1014
+      },
+      {
+        "reward": 79.0,
+        "final_position": 4,
+        "final_points": 26,
+        "final_budget": 38926458.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1015
+      },
+      {
+        "reward": 80.0,
+        "final_position": 4,
+        "final_points": 27,
+        "final_budget": 73967114.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1016
+      },
+      {
+        "reward": 102.0,
+        "final_position": 3,
+        "final_points": 35,
+        "final_budget": 89601105.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1017
+      },
+      {
+        "reward": 91.0,
+        "final_position": 4,
+        "final_points": 28,
+        "final_budget": 77878173.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1018
+      },
+      {
+        "reward": 51.0,
+        "final_position": 5,
+        "final_points": 20,
+        "final_budget": 29598595.0,
+        "final_squad_size": 24,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1019
+      },
+      {
+        "reward": 85.0,
+        "final_position": 4,
+        "final_points": 25,
+        "final_budget": 40126286.0,
+        "final_squad_size": 22,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1020
+      },
+      {
+        "reward": 77.0,
+        "final_position": 4,
+        "final_points": 23,
+        "final_budget": 96285602.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1021
+      },
+      {
+        "reward": 40.0,
+        "final_position": 5,
+        "final_points": 15,
+        "final_budget": 42773442.0,
+        "final_squad_size": 25,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1022
+      },
+      {
+        "reward": 43.0,
+        "final_position": 5,
+        "final_points": 19,
+        "final_budget": 90573719.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1023
+      },
+      {
+        "reward": 39.0,
+        "final_position": 5,
+        "final_points": 16,
+        "final_budget": 27568126.0,
+        "final_squad_size": 25,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1024
+      },
+      {
+        "reward": 54.0,
+        "final_position": 5,
+        "final_points": 18,
+        "final_budget": 53164741.0,
+        "final_squad_size": 22,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1025
+      },
+      {
+        "reward": 78.0,
+        "final_position": 4,
+        "final_points": 23,
+        "final_budget": 28433151.0,
+        "final_squad_size": 25,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1026
+      },
+      {
+        "reward": 64.0,
+        "final_position": 5,
+        "final_points": 20,
+        "final_budget": 27723382.0,
+        "final_squad_size": 22,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1027
+      },
+      {
+        "reward": 94.0,
+        "final_position": 3,
+        "final_points": 32,
+        "final_budget": 87089355.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1028
+      },
+      {
+        "reward": 84.0,
+        "final_position": 4,
+        "final_points": 28,
+        "final_budget": 106126188.0,
+        "final_squad_size": 24,
+        "actions": {
+          "0": 20,
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1029
+      }
+    ],
+    "youth_focus": [
+      {
+        "reward": 114.0,
+        "final_position": 3,
+        "final_points": 40,
+        "final_budget": 72576382.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1000
+      },
+      {
+        "reward": 64.0,
+        "final_position": 4,
+        "final_points": 23,
+        "final_budget": 22868679.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1001
+      },
+      {
+        "reward": 74.0,
+        "final_position": 4,
+        "final_points": 24,
+        "final_budget": 84920511.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1002
+      },
+      {
+        "reward": 102.0,
+        "final_position": 3,
+        "final_points": 34,
+        "final_budget": 81752035.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1003
+      },
+      {
+        "reward": 115.0,
+        "final_position": 3,
+        "final_points": 40,
+        "final_budget": 71522428.0,
+        "final_squad_size": 22,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1004
+      },
+      {
+        "reward": 62.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 79841979.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1005
+      },
+      {
+        "reward": 78.0,
+        "final_position": 4,
+        "final_points": 24,
+        "final_budget": 61522543.0,
+        "final_squad_size": 22,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1006
+      },
+      {
+        "reward": 92.0,
+        "final_position": 3,
+        "final_points": 31,
+        "final_budget": 19324743.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1007
+      },
+      {
+        "reward": 47.0,
+        "final_position": 5,
+        "final_points": 20,
+        "final_budget": 84769572.0,
+        "final_squad_size": 25,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1008
+      },
+      {
+        "reward": 109.0,
+        "final_position": 3,
+        "final_points": 37,
+        "final_budget": 39185017.0,
+        "final_squad_size": 22,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1009
+      },
+      {
+        "reward": 102.0,
+        "final_position": 3,
+        "final_points": 34,
+        "final_budget": 105060830.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1010
+      },
+      {
+        "reward": 37.0,
+        "final_position": 5,
+        "final_points": 16,
+        "final_budget": 64247273.0,
+        "final_squad_size": 24,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1011
+      },
+      {
+        "reward": 61.0,
+        "final_position": 5,
+        "final_points": 20,
+        "final_budget": 60429483.0,
+        "final_squad_size": 23,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1012
+      },
+      {
+        "reward": 83.0,
+        "final_position": 4,
+        "final_points": 28,
+        "final_budget": 81017609.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1013
+      },
+      {
+        "reward": 61.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 84194717.0,
+        "final_squad_size": 22,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1014
+      },
+      {
+        "reward": 74.0,
+        "final_position": 4,
+        "final_points": 24,
+        "final_budget": 28926458.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1015
+      },
+      {
+        "reward": 84.0,
+        "final_position": 4,
+        "final_points": 30,
+        "final_budget": 63967114.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1016
+      },
+      {
+        "reward": 104.0,
+        "final_position": 3,
+        "final_points": 36,
+        "final_budget": 79601105.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1017
+      },
+      {
+        "reward": 101.0,
+        "final_position": 3,
+        "final_points": 33,
+        "final_budget": 67878173.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1018
+      },
+      {
+        "reward": 64.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 19598595.0,
+        "final_squad_size": 24,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1019
+      },
+      {
+        "reward": 113.0,
+        "final_position": 3,
+        "final_points": 39,
+        "final_budget": 30126286.0,
+        "final_squad_size": 22,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1020
+      },
+      {
+        "reward": 81.0,
+        "final_position": 4,
+        "final_points": 24,
+        "final_budget": 86285602.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1021
+      },
+      {
+        "reward": 66.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 32773442.0,
+        "final_squad_size": 25,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1022
+      },
+      {
+        "reward": 58.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 80573719.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1023
+      },
+      {
+        "reward": 77.0,
+        "final_position": 4,
+        "final_points": 25,
+        "final_budget": 17568126.0,
+        "final_squad_size": 25,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1024
+      },
+      {
+        "reward": 54.0,
+        "final_position": 5,
+        "final_points": 18,
+        "final_budget": 43164741.0,
+        "final_squad_size": 22,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1025
+      },
+      {
+        "reward": 109.0,
+        "final_position": 3,
+        "final_points": 37,
+        "final_budget": 18433151.0,
+        "final_squad_size": 25,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1026
+      },
+      {
+        "reward": 64.0,
+        "final_position": 5,
+        "final_points": 20,
+        "final_budget": 17723382.0,
+        "final_squad_size": 22,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1027
+      },
+      {
+        "reward": 82.0,
+        "final_position": 4,
+        "final_points": 26,
+        "final_budget": 77089355.0,
+        "final_squad_size": 26,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1028
+      },
+      {
+        "reward": 82.0,
+        "final_position": 4,
+        "final_points": 27,
+        "final_budget": 96126188.0,
+        "final_squad_size": 24,
+        "actions": {
+          "0": 0,
+          "1": 20,
+          "2": 0,
+          "3": 0,
+          "4": 0
+        },
+        "seed": 1029
+      }
+    ],
+    "rule_based": [
+      {
+        "reward": 109.0,
+        "final_position": 3,
+        "final_points": 40,
+        "final_budget": 13076382.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 0,
+          "1": 15,
+          "2": 2,
+          "3": 3,
+          "4": 0
+        },
+        "seed": 1000
+      },
+      {
+        "reward": 32.0,
+        "final_position": 5,
+        "final_points": 16,
+        "final_budget": 368679.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 11,
+          "1": 5,
+          "2": 3,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1001
+      },
+      {
+        "reward": 115.0,
+        "final_position": 2,
+        "final_points": 44,
+        "final_budget": 7920511.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 0,
+          "1": 14,
+          "2": 2,
+          "3": 4,
+          "4": 0
+        },
+        "seed": 1002
+      },
+      {
+        "reward": 89.0,
+        "final_position": 4,
+        "final_points": 30,
+        "final_budget": 4752035.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 0,
+          "1": 14,
+          "2": 2,
+          "3": 4,
+          "4": 0
+        },
+        "seed": 1003
+      },
+      {
+        "reward": 112.0,
+        "final_position": 2,
+        "final_points": 41,
+        "final_budget": 22428.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 11,
+          "1": 3,
+          "2": 2,
+          "3": 4,
+          "4": 0
+        },
+        "seed": 1004
+      },
+      {
+        "reward": 79.0,
+        "final_position": 4,
+        "final_points": 26,
+        "final_budget": 37841979.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 0,
+          "1": 16,
+          "2": 2,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1005
+      },
+      {
+        "reward": 77.0,
+        "final_position": 4,
+        "final_points": 26,
+        "final_budget": 22543.0,
+        "final_squad_size": 29,
+        "actions": {
+          "0": 10,
+          "1": 3,
+          "2": 4,
+          "3": 3,
+          "4": 0
+        },
+        "seed": 1006
+      },
+      {
+        "reward": 87.0,
+        "final_position": 3,
+        "final_points": 31,
+        "final_budget": 324743.0,
+        "final_squad_size": 31,
+        "actions": {
+          "0": 11,
+          "1": 6,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1007
+      },
+      {
+        "reward": 109.0,
+        "final_position": 3,
+        "final_points": 40,
+        "final_budget": 269572.0,
+        "final_squad_size": 31,
+        "actions": {
+          "0": 13,
+          "1": 1,
+          "2": 1,
+          "3": 5,
+          "4": 0
+        },
+        "seed": 1008
+      },
+      {
+        "reward": 98.0,
+        "final_position": 3,
+        "final_points": 34,
+        "final_budget": 185017.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 13,
+          "1": 2,
+          "2": 3,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1009
+      },
+      {
+        "reward": 97.0,
+        "final_position": 3,
+        "final_points": 34,
+        "final_budget": 28060830.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 0,
+          "1": 14,
+          "2": 2,
+          "3": 4,
+          "4": 0
+        },
+        "seed": 1010
+      },
+      {
+        "reward": 95.0,
+        "final_position": 3,
+        "final_points": 35,
+        "final_budget": 247273.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 12,
+          "1": 4,
+          "2": 0,
+          "3": 4,
+          "4": 0
+        },
+        "seed": 1011
+      },
+      {
+        "reward": 49.0,
+        "final_position": 5,
+        "final_points": 18,
+        "final_budget": 429483.0,
+        "final_squad_size": 30,
+        "actions": {
+          "0": 13,
+          "1": 0,
+          "2": 4,
+          "3": 3,
+          "4": 0
+        },
+        "seed": 1012
+      },
+      {
+        "reward": 58.0,
+        "final_position": 4,
+        "final_points": 22,
+        "final_budget": 39017609.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 0,
+          "1": 16,
+          "2": 2,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1013
+      },
+      {
+        "reward": 67.0,
+        "final_position": 4,
+        "final_points": 22,
+        "final_budget": 194717.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 14,
+          "1": 0,
+          "2": 1,
+          "3": 5,
+          "4": 0
+        },
+        "seed": 1014
+      },
+      {
+        "reward": 87.0,
+        "final_position": 4,
+        "final_points": 29,
+        "final_budget": 426458.0,
+        "final_squad_size": 30,
+        "actions": {
+          "0": 13,
+          "1": 5,
+          "2": 0,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1015
+      },
+      {
+        "reward": 98.0,
+        "final_position": 3,
+        "final_points": 36,
+        "final_budget": 4467114.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 0,
+          "1": 15,
+          "2": 2,
+          "3": 3,
+          "4": 0
+        },
+        "seed": 1016
+      },
+      {
+        "reward": 102.0,
+        "final_position": 3,
+        "final_points": 37,
+        "final_budget": 20101105.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 0,
+          "1": 15,
+          "2": 2,
+          "3": 3,
+          "4": 0
+        },
+        "seed": 1017
+      },
+      {
+        "reward": 106.0,
+        "final_position": 3,
+        "final_points": 38,
+        "final_budget": 8378173.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 0,
+          "1": 15,
+          "2": 2,
+          "3": 3,
+          "4": 0
+        },
+        "seed": 1018
+      },
+      {
+        "reward": 59.0,
+        "final_position": 4,
+        "final_points": 21,
+        "final_budget": 98595.0,
+        "final_squad_size": 27,
+        "actions": {
+          "0": 10,
+          "1": 7,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1019
+      },
+      {
+        "reward": 108.0,
+        "final_position": 3,
+        "final_points": 39,
+        "final_budget": 126286.0,
+        "final_squad_size": 25,
+        "actions": {
+          "0": 17,
+          "1": 0,
+          "2": 1,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1020
+      },
+      {
+        "reward": 80.0,
+        "final_position": 4,
+        "final_points": 26,
+        "final_budget": 9285602.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 0,
+          "1": 14,
+          "2": 2,
+          "3": 4,
+          "4": 0
+        },
+        "seed": 1021
+      },
+      {
+        "reward": 79.0,
+        "final_position": 4,
+        "final_points": 25,
+        "final_budget": 273442.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 12,
+          "1": 5,
+          "2": 1,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1022
+      },
+      {
+        "reward": 84.0,
+        "final_position": 4,
+        "final_points": 29,
+        "final_budget": 21073719.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 0,
+          "1": 15,
+          "2": 2,
+          "3": 3,
+          "4": 0
+        },
+        "seed": 1023
+      },
+      {
+        "reward": 72.0,
+        "final_position": 4,
+        "final_points": 25,
+        "final_budget": 68126.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 14,
+          "1": 3,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1024
+      },
+      {
+        "reward": 49.0,
+        "final_position": 5,
+        "final_points": 18,
+        "final_budget": 164741.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 12,
+          "1": 2,
+          "2": 4,
+          "3": 2,
+          "4": 0
+        },
+        "seed": 1025
+      },
+      {
+        "reward": 104.0,
+        "final_position": 3,
+        "final_points": 37,
+        "final_budget": 433151.0,
+        "final_squad_size": 28,
+        "actions": {
+          "0": 13,
+          "1": 4,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1026
+      },
+      {
+        "reward": 80.0,
+        "final_position": 4,
+        "final_points": 25,
+        "final_budget": 223382.0,
+        "final_squad_size": 25,
+        "actions": {
+          "0": 14,
+          "1": 3,
+          "2": 2,
+          "3": 1,
+          "4": 0
+        },
+        "seed": 1027
+      },
+      {
+        "reward": 99.0,
+        "final_position": 3,
+        "final_points": 36,
+        "final_budget": 89355.0,
+        "final_squad_size": 32,
+        "actions": {
+          "0": 0,
+          "1": 14,
+          "2": 2,
+          "3": 4,
+          "4": 0
+        },
+        "seed": 1028
+      },
+      {
+        "reward": 77.0,
+        "final_position": 4,
+        "final_points": 30,
+        "final_budget": 2126188.0,
+        "final_squad_size": 31,
+        "actions": {
+          "0": 0,
+          "1": 12,
+          "2": 3,
+          "3": 5,
+          "4": 0
+        },
+        "seed": 1029
+      }
+    ]
+  }
+}

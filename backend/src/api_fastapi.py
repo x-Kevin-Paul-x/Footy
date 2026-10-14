@@ -5,6 +5,7 @@ import sys
 import asyncio
 import io
 import re
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pathlib import Path
@@ -15,13 +16,13 @@ if sys.platform == "win32":
     if hasattr(sys.stderr, "reconfigure"):
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, BackgroundTasks, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse, Response
 from urllib.parse import unquote
 
-# DB query functions (these currently use raw sqlite)
+# Database repositories and ORM models
 from database.session import get_db_session
 from database.models import Match, Team, Player, Manager as DBManager, TransferHistory, MatchEvent, SimulationRun
 from database.team_db import get_all_teams
@@ -53,7 +54,28 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 ensure_report_directories()
 
-app = FastAPI(title="Footy API", description="FastAPI Backend for Footy Simulation")
+@asynccontextmanager
+async def lifespan(application):
+    await start_job_dispatcher()
+    try:
+        yield
+    finally:
+        await stop_job_dispatcher()
+
+
+app = FastAPI(title="Footy API", description="FastAPI Backend for Footy Simulation", lifespan=lifespan)
+
+
+@app.exception_handler(HTTPException)
+async def api_error(request: Request, exc: HTTPException):
+    return JSONResponse(status_code=exc.status_code,
+                        content={'status': 'error', 'message': str(exc.detail), 'detail': exc.detail},
+                        headers=exc.headers)
+
+
+def run_server():
+    import uvicorn
+    uvicorn.run('api_fastapi:app', host='127.0.0.1', port=API_PORT, reload=API_DEBUG)
 
 # Middleware to safely handle client disconnects (browser refresh / cancelled streaming)
 @app.middleware("http")
@@ -138,14 +160,13 @@ def find_match_video_and_url(match_id: Any) -> tuple[Optional[Path], Optional[st
 # Resilient Video Streaming endpoint with run-scoped path and Range support
 @app.get("/recordings/{filename:path}")
 async def stream_recording(filename: str, request: Request):
-    # Safely resolve path preventing directory traversal
-    clean_rel = os.path.normpath(filename).replace("\\", "/").lstrip("/")
-    if ".." in clean_rel:
-        raise HTTPException(status_code=400, detail="Invalid path traversal")
-
-    file_path = RECORDINGS_DIR / clean_rel
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail=f"Recording not found: {clean_rel}")
+    from logic.safe_paths import contained_path
+    try:
+        file_path = contained_path(RECORDINGS_DIR, filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail='Recording not found')
 
     clean_name = file_path.name
     if clean_name.endswith('.mp4'):
@@ -257,7 +278,10 @@ class ConnectionManager:
                 self.disconnect(connection)
 
     async def broadcast_event(self, event: str, message: Optional[str] = None, data: Optional[Dict[str, Any]] = None):
-        payload = json.dumps({"event": event, "message": message, "data": data})
+        from logic.events import event_timestamp
+        self.sequence = getattr(self, 'sequence', 0) + 1
+        payload = WebSocketEventFrame(event=event, message=message, data=data,
+                                      sequence=self.sequence, timestamp=event_timestamp()).model_dump_json()
         await self.broadcast(payload)
 
 manager = ConnectionManager()
@@ -288,7 +312,7 @@ from schemas import (
     MatchSimulationResponse,
     MatchRenderRequest,
     MatchRenderResponse,
-    SimulationSettings
+    SimulationSettings, SimulationSubmission, EvaluationSubmission, JobResponse
 )
 import shutil
 from database.session import DB_FILE
@@ -303,51 +327,100 @@ def _set_simulation_running(value: bool):
     global simulation_started
     simulation_started = value
 
-async def run_simulation_task():
-    """Runs the simulation as a background task asynchronously with lock protection."""
-    global simulation_started
-    if simulation_lock.locked() or simulation_started:
-        logger.warning("Simulation task requested while another simulation is in progress.")
-        await manager.broadcast_event("WARNING", message="Simulation already running.")
-        return
+def process_simulation_job(job):
+    from database.db_setup import clean_old_simulation_data
+    run_id = job['run_id']
+    run_dir = RECORDINGS_DIR / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    clean_old_simulation_data(preserve_run_id=run_id)
+    return footy_main.main(run_id, job['payload']['render_mode'], job.get('emit'), job['payload']['season_year'], job['payload']['seasons'])
 
-    simulation_started = True
+
+def process_evaluation_job(job):
+    from logic.evaluation_service import evaluate
+    return evaluate(job['payload'], ML_MODELS_DIR, ML_REPORTS_DIR, job['job_id'])
+
+
+def job_processors():
+    return {'simulation': process_simulation_job, 'evaluation': process_evaluation_job}
+
+
+async def run_simulation_task(job_id):
+    from logic.job_runner import execute_job
+    await execute_job(job_id, process_simulation_job, manager.broadcast_event)
+
+
+async def start_job_dispatcher():
+    from database.db_setup import create_tables
+    from logic.job_runner import dispatch_pending
+    await asyncio.to_thread(create_tables)
+    app.state.job_dispatcher = asyncio.create_task(dispatch_pending(job_processors(), manager.broadcast_event))
+
+
+async def stop_job_dispatcher():
+    from logic.job_runner import shutdown
+    dispatcher = getattr(app.state, 'job_dispatcher', None)
+    if dispatcher:
+        dispatcher.cancel()
+        await asyncio.gather(dispatcher, return_exceptions=True)
+    await shutdown()
+
+
+@app.get('/api/v1/jobs/{job_id}', response_model=JobResponse)
+async def job_status(job_id: str):
+    from database.jobs import get_job
     try:
-        async with simulation_lock:
-            logger.info("Starting background simulation task with run isolation")
-            from database.db_setup import init_simulation_run
-            settings_path = REPORTS_DIR / "simulation_settings.json"
-            render_mode = "3d"
-            if settings_path.exists():
-                try:
-                    with open(settings_path, "r", encoding="utf-8") as sf:
-                        s_data = json.load(sf)
-                        render_mode = s_data.get("default_render_mode", "3d")
-                except Exception:
-                    pass
+        return get_job(job_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail='Job not found')
 
-            run_id = init_simulation_run(season_year=2026, render_mode=render_mode, total_matches=380)
-            ensure_report_directories()
 
-            await manager.broadcast_event(
-                "SIMULATION_START",
-                message=f"Simulation run {run_id} starting ({render_mode.upper()} mode)...",
-                data={"run_id": run_id, "render_mode": render_mode}
-            )
+@app.get('/api/v1/simulation/runs')
+async def list_simulation_runs():
+    from database.models import CampaignSnapshot
+    with get_db_session() as db:
+        runs = db.query(SimulationRun).order_by(SimulationRun.created_at.desc()).all()
+        return {'runs': [{'run_id': run.run_id, 'season_year': run.season_year, 'created_at': run.created_at,
+                          'status': run.status, 'matches_played': run.matches_played,
+                          'seasons': [s[0] for s in db.query(CampaignSnapshot.season_year).filter_by(run_id=run.run_id).all()]}
+                         for run in runs]}
 
-            loop = asyncio.get_running_loop()
-            try:
-                await loop.run_in_executor(None, footy_main.main, run_id, render_mode)
-                await manager.broadcast_event(
-                    "SIMULATION_COMPLETE",
-                    message="Simulation completed successfully!",
-                    data={"run_id": run_id}
-                )
-            except Exception as e:
-                logger.error(f"Simulation failed with error {e}")
-                await manager.broadcast_event("SIMULATION_ERROR", message=f"Simulation failed: {e}")
-    finally:
-        _set_simulation_running(False)
+
+@app.get('/api/v1/simulation/runs/{run_id}/seasons/{year}')
+async def campaign_snapshot(run_id: str, year: int):
+    from database.campaign_db import get_campaign
+    snapshot = get_campaign(run_id, year)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail='Campaign snapshot not found')
+    return snapshot
+
+
+@app.get('/api/v1/simulation/runs/{run_id}/finances/{team_name}')
+async def campaign_finances(run_id: str, team_name: str):
+    from database.campaign_db import financial_ledger
+    with get_db_session() as db:
+        if db.get(SimulationRun, run_id) is None:
+            raise HTTPException(status_code=404, detail='Run not found')
+    return financial_ledger(run_id, team_name)
+
+
+@app.post('/api/v1/jobs/{job_id}/cancel', response_model=JobResponse)
+async def request_job_cancel(job_id: str):
+    from database.jobs import cancel_job
+    try:
+        return cancel_job(job_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail='Job not found')
+
+
+@app.get('/api/v1/simulation/runs/{run_id}')
+async def simulation_run_status(run_id: str):
+    with get_db_session() as db:
+        run = db.get(SimulationRun, run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail='Run not found')
+        return {key: getattr(run, key) for key in ('run_id', 'season_year', 'created_at', 'status',
+                'render_mode', 'total_matches', 'matches_played', 'error_message', 'cancel_requested')}
 
 
 @app.get("/api/v1/simulation/current-run")
@@ -369,7 +442,9 @@ async def get_current_run():
                     "status": run_obj.status,
                     "render_mode": run_obj.render_mode,
                     "total_matches": run_obj.total_matches,
-                    "matches_played": run_obj.matches_played
+                    "matches_played": run_obj.matches_played,
+                    "error_message": run_obj.error_message,
+                    "cancel_requested": run_obj.cancel_requested
                 }
     except Exception as e:
         logger.warning(f"Failed to fetch current run: {e}")
@@ -395,13 +470,26 @@ async def websocket_endpoint(websocket: WebSocket):
     finally:
         manager.disconnect(websocket)
 
-@app.post("/api/v1/run-simulation", response_model=SimulationStatusResponse)
-@app.post("/run-simulation", response_model=SimulationStatusResponse, deprecated=True)
-async def trigger_simulation(background_tasks: BackgroundTasks):
-    if simulation_lock.locked() or simulation_started:
-        return SimulationStatusResponse(status="busy", message="Simulation is already running")
-    background_tasks.add_task(run_simulation_task)
-    return SimulationStatusResponse(status="success", message="Simulation started in the background")
+@app.post('/api/v1/run-simulation', response_model=SimulationStatusResponse, status_code=202)
+@app.post('/run-simulation', response_model=SimulationStatusResponse, status_code=202, deprecated=True)
+async def trigger_simulation(request: Request, background_tasks: BackgroundTasks,
+                             body: SimulationSubmission = Body(default=SimulationSubmission())):
+    from database.jobs import submit_job, JobBusyError
+    from database.db_setup import create_tables
+    await asyncio.to_thread(create_tables)
+    try:
+        from config import NUM_SEASONS
+        seasons = body.seasons if body.seasons is not None else max(1, min(10, NUM_SEASONS))
+        job = submit_job('simulation', {**body.model_dump(), 'seasons': seasons, 'total_matches': 380 * seasons},
+                         request.headers.get('Idempotency-Key'))
+    except JobBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    background_tasks.add_task(run_simulation_task, job['job_id'])
+    return SimulationStatusResponse(status='success', message='Simulation accepted', run_id=job['run_id'],
+                                    job_id=job['job_id'], status_url=f"/api/v1/jobs/{job['job_id']}")
+
 
 @app.get("/api/v1/health")
 @app.get("/health", deprecated=True)
@@ -440,10 +528,16 @@ async def create_save():
         from database.session import init_db
         if not os.path.exists(DB_FILE):
             init_db()
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        import uuid
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:8]
         save_id = f"save_{timestamp}"
         target_path = SAVES_DIR / f"{save_id}.db"
-        shutil.copy2(DB_FILE, target_path)
+        from database.session import backup_database
+        backup_database(str(target_path))
+        with get_db_session() as db:
+            run_ids = [row[0] for row in db.query(SimulationRun.run_id).all()]
+        target_path.with_suffix('.manifest.json').write_text(
+            json.dumps({'save_version': 1, 'snapshot_scope': 'database', 'run_ids': run_ids}), encoding='utf-8')
         return SaveStateResponse(status="success", message="Save state created successfully", save_id=save_id)
     except Exception as e:
         logger.error(f"Error creating save state: {e}")
@@ -453,21 +547,38 @@ async def create_save():
 @app.post("/load/{save_id}", response_model=SaveStateResponse, deprecated=True)
 async def load_save(save_id: str):
     try:
-        clean_save_id = os.path.basename(save_id.strip())
+        clean_save_id = save_id.strip()
         if not re.fullmatch(r"[A-Za-z0-9_.-]+", clean_save_id):
             raise HTTPException(status_code=400, detail="Invalid save_id.")
         source_path = SAVES_DIR / f"{clean_save_id}.db"
         if not source_path.exists():
             raise HTTPException(status_code=404, detail="Save state file not found.")
-        if simulation_lock.locked() or simulation_started:
-            raise HTTPException(status_code=409, detail="Cannot load save state while simulation is running.")
-        shutil.copy2(source_path, DB_FILE)
+        from database.jobs import has_active_jobs, invalidate_restored_jobs
+        from database.admin_lock import administration_lock
+        from database.session import restore_database
+        with administration_lock():
+            if simulation_lock.locked() or simulation_started or has_active_jobs():
+                raise HTTPException(status_code=409, detail="Cannot load save state while jobs are active.")
+            restore_database(str(source_path))
+            invalidate_restored_jobs()
         return SaveStateResponse(status="success", message=f"Loaded save state '{clean_save_id}' successfully.", save_id=clean_save_id)
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error loading save state: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to load save state: {e}")
+
+
+@app.delete('/api/v1/saves/{save_id}', response_model=SaveStateResponse)
+async def delete_save(save_id: str):
+    if not re.fullmatch(r'[A-Za-z0-9_-]+', save_id):
+        raise HTTPException(status_code=400, detail='Invalid save ID')
+    path = SAVES_DIR / f'{save_id}.db'
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail='Save not found')
+    path.unlink()
+    path.with_suffix('.manifest.json').unlink(missing_ok=True)
+    return SaveStateResponse(status='success', message='Save deleted', save_id=save_id)
 
 @app.get("/api/v1/teams", response_model=List[TeamRead])
 @app.get("/teams", response_model=List[TeamRead], deprecated=True)
@@ -540,6 +651,8 @@ async def get_season_report_detail(season_year: int):
         if not report_data:
             raise HTTPException(status_code=404, detail="Report not found for given year.")
         return report_data
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching season report details: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -569,6 +682,8 @@ async def get_transfer_report_detail(season_year: int):
         if not report_data:
             raise HTTPException(status_code=404, detail="Transfer report not found for given year.")
         return report_data
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching transfer report details: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -744,7 +859,7 @@ def build_live_season_report_from_db(year: int) -> dict:
 @app.get("/api/v1/season-report/{year}")
 @app.get("/api/v1/get-season-report/{year}")
 @app.get("/get-season-report/{year}", deprecated=True)
-async def get_season_report(year: int):
+async def get_season_report(year: int, run_id: Optional[str] = None):
     """
     Return the season report JSON but augment it with DB-backed transfer history if available.
     This keeps the season report authoritative while ensuring completed transfers persistently
@@ -752,92 +867,17 @@ async def get_season_report(year: int):
     """
     try:
         # Dynamically build live season report from the database in real-time
-        data = build_live_season_report_from_db(year)
+        data = get_season_report_by_year(year, simulation_run_id=run_id) if run_id else build_live_season_report_from_db(year)
         if not data or not data.get("table"):
             return JSONResponse(status_code=404, content={"status": "error", "message": f"Season report for {year} not found."})
 
-        conn = None
-        try:
-            import sqlite3
-            from database.db_setup import DB_FILE
-
-            conn = sqlite3.connect(DB_FILE)
-            cur = conn.cursor()
-
-            cur.execute(
-                "SELECT transfer_id, player_id, from_team_id, to_team_id, amount, day, season_year FROM TransferHistory WHERE season_year = ? ORDER BY transfer_id ASC",
-                (year,),
-            )
-            rows = cur.fetchall()
-
-            db_transfers = []
-            for tr in rows:
-                transfer_id, player_id, from_team_id, to_team_id, amount, day, season_year_row = tr
-
-                # Resolve human-readable names where possible
-                player_name = None
-                from_team_name = None
-                to_team_name = None
-
-                try:
-                    cur.execute("SELECT name FROM Player WHERE player_id = ?", (player_id,))
-                    pr = cur.fetchone()
-                    if pr:
-                        player_name = pr[0]
-                except Exception:
-                    player_name = None
-
-                try:
-                    cur.execute("SELECT name FROM Team WHERE team_id = ?", (from_team_id,))
-                    fr = cur.fetchone()
-                    if fr:
-                        from_team_name = fr[0]
-                except Exception:
-                    from_team_name = None
-
-                try:
-                    cur.execute("SELECT name FROM Team WHERE team_id = ?", (to_team_id,))
-                    trn = cur.fetchone()
-                    if trn:
-                        to_team_name = trn[0]
-                except Exception:
-                    to_team_name = None
-
-                db_transfers.append({
-                    "transfer_id": int(transfer_id),
-                    "player_id": int(player_id) if player_id is not None else None,
-                    "player": player_name or f"player[{player_id}]",
-                    "from_team_id": int(from_team_id) if from_team_id is not None else None,
-                    "from_team": from_team_name or f"team[{from_team_id}]",
-                    "to_team_id": int(to_team_id) if to_team_id is not None else None,
-                    "to_team": to_team_name or f"team[{to_team_id}]",
-                    "amount": float(amount),
-                    "day": int(day),
-                    "season_year": int(season_year_row),
-                })
-
-            # Attach DB transfers into the report under a common key expected by frontend
-            if "transfers" not in data or not isinstance(data.get("transfers"), dict):
-                data["transfers"] = {}
-
-            # Prefer existing 'all_completed_transfers' if present, but override with DB-backed list when available
-            if db_transfers:
-                data["transfers"]["all_completed_transfers"] = db_transfers
-
-            # Add a small summary from DB counts if useful
-            try:
-                cur.execute("SELECT COUNT(*) FROM TransferHistory WHERE season_year = ?", (year,))
-                count = cur.fetchone()[0]
-                data["transfers"]["db_transfers_count"] = int(count)
-            except Exception:
-                data["transfers"]["db_transfers_count"] = None
-
-        except Exception as e:
-            # Non-fatal: log and return original report if DB read fails
-            logger.warning("Failed to read TransferHistory from DB: %s", e)
-        finally:
-            if conn:
-                conn.close()
+        from database.transfer_repository import season_transfers
+        db_transfers = season_transfers(year, run_id=run_id)
+        if not isinstance(data.get('transfers'), dict):
+            data['transfers'] = {}
+        if db_transfers:
+            data['transfers']['all_completed_transfers'] = db_transfers
+        data['transfers']['db_transfers_count'] = len(db_transfers)
 
         return JSONResponse(status_code=200, content=data)
     except Exception as e:
@@ -960,115 +1000,31 @@ async def get_ml_models():
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
-ml_eval_lock = asyncio.Lock()
-ml_eval_started = False
-
-
-async def run_ml_eval_task(episodes: int, teams: int, season_length: int, fast_mode: bool, models: list):
-    """Run the DQN benchmark evaluation in the background and broadcast the result report."""
-    global ml_eval_started
+@app.post('/api/v1/run-ml-eval', response_model=SimulationStatusResponse, status_code=202)
+@app.post('/run-ml-eval', response_model=SimulationStatusResponse, status_code=202, deprecated=True)
+async def trigger_ml_evaluation(request: Request, background_tasks: BackgroundTasks, body: EvaluationSubmission):
+    from database.jobs import submit_job, JobBusyError
+    from database.db_setup import create_tables
+    from logic.evaluation_service import resolve_model
+    from logic.job_runner import execute_job
+    payload = body.model_dump()
+    if body.seeds is not None and (len(set(body.seeds)) != len(body.seeds) or any(s < 0 or s >= 2**31 for s in body.seeds)):
+        raise HTTPException(status_code=422, detail='Seeds must be distinct nonnegative 32-bit integers')
     try:
-        async with ml_eval_lock:
-            _ = int(episodes), int(teams), int(season_length), bool(fast_mode)
-            if not models:
-                models = [str(ML_MODELS_DIR / "dqn_best.pt")]
-
-            from ml.train_rl import run_episode
-            from ml.footy_env import FootyEnv
-            from ml.dqn_agent import DQNAgent
-            from ml.evaluation import (
-                build_evaluation_report,
-                save_evaluation_report,
-                summarize_episode_results,
-            )
-            import time
-
-            env = FootyEnv(num_teams=teams, season_length=season_length, fast_mode=fast_mode)
-            start_time = time.time()
-            summaries = {}
-            policy_models = {}
-
-            if len(models) == 1:
-                model_path = models[0]
-                agent = DQNAgent(obs_dim=env.obs_dim, action_dim=env.action_dim)
-                if Path(model_path).exists():
-                    agent.load(model_path)
-                policies_to_test = ["trained", "random", "do_nothing", "youth_focus"]
-                for pol in policies_to_test:
-                    episodes_data = [
-                        run_episode(env, agent=agent, policy=pol, training=False, epsilon=0.0)
-                        for _ in range(episodes)
-                    ]
-                    summaries[pol] = summarize_episode_results(pol, episodes_data)
-                policy_models["trained"] = model_path
-                primary_name = "trained"
-            else:
-                for m_path in models:
-                    p_name = f"model_{Path(m_path).stem}"
-                    agent = DQNAgent(obs_dim=env.obs_dim, action_dim=env.action_dim)
-                    if Path(m_path).exists():
-                        agent.load(m_path)
-                    policy_models[p_name] = m_path
-                    episodes_data = [
-                        run_episode(env, agent=agent, policy="trained", training=False, epsilon=0.0)
-                        for _ in range(episodes)
-                    ]
-                    summaries[p_name] = summarize_episode_results(p_name, episodes_data)
-                base_data = [run_episode(env, policy="random") for _ in range(episodes)]
-                summaries["baseline_random"] = summarize_episode_results("baseline_random", base_data)
-                primary_name = list(summaries.keys())[0]
-
-            runtime = {
-                "elapsed_seconds": round(time.time() - start_time, 2),
-                "episodes_per_policy": episodes,
-            }
-            cfg = {
-                "num_teams": teams,
-                "season_length": season_length,
-                "fast_mode": fast_mode,
-            }
-            report = build_evaluation_report(
-                model_path=";".join(models),
-                config=cfg,
-                runtime=runtime,
-                policy_summaries=summaries,
-                primary_policy_name=primary_name,
-                policy_models=policy_models,
-            )
-            out_dir = str(REPORTS_DIR / "ml_reports")
-            report_file = save_evaluation_report(report, out_dir)
-            report["report_name"] = Path(report_file).name
-            await manager.broadcast_event("ML_EVAL_COMPLETE", message="ML evaluation completed", data=report)
-    except Exception as e:
-        logger.exception("Error running ML evaluation")
-        await manager.broadcast_event("ML_EVAL_ERROR", message=f"ML evaluation failed: {e}")
-    finally:
-        ml_eval_started = False
-
-
-@app.post("/api/v1/run-ml-eval")
-@app.post("/run-ml-eval", deprecated=True)
-async def trigger_ml_evaluation(request: Request):
-    """Trigger a benchmark evaluation in the background (non-blocking)."""
-    global ml_eval_started
-    if ml_eval_lock.locked() or ml_eval_started:
-        return JSONResponse(status_code=409, content={"status": "busy", "message": "ML evaluation already running."})
-
+        for model in body.models:
+            resolve_model(model, ML_MODELS_DIR)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    await asyncio.to_thread(create_tables)
     try:
-        body = await request.json() if request.headers.get("content-type") == "application/json" else {}
-        models = body.get("models", [str(ML_MODELS_DIR / "dqn_best.pt")])
-        episodes = int(body.get("episodes", 10))
-        teams = int(body.get("teams", 6))
-        season_length = int(body.get("season_length", 20))
-        fast_mode = bool(body.get("fast_mode", True))
-
-        ml_eval_started = True
-        asyncio.create_task(run_ml_eval_task(episodes, teams, season_length, fast_mode, models))
-        return JSONResponse(status_code=202, content={"status": "accepted", "message": "ML evaluation started in the background."})
-    except Exception as e:
-        ml_eval_started = False
-        logger.exception("Error parsing ML evaluation request")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        job = submit_job('evaluation', payload, request.headers.get('Idempotency-Key'))
+    except JobBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    background_tasks.add_task(execute_job, job['job_id'], process_evaluation_job, manager.broadcast_event)
+    return SimulationStatusResponse(status='accepted', message='Evaluation accepted', job_id=job['job_id'],
+                                    status_url=f"/api/v1/jobs/{job['job_id']}")
 
 
 @app.get("/api/v1/matches/{match_id}")
@@ -1095,13 +1051,16 @@ async def get_engine_status():
         sim = get_grf_simulator()
         is_grf_ready = sim is not None and sim.is_available()
         engine_in_use = "GRF+TiKick" if is_grf_ready else "heuristic"
-        
+
         return JSONResponse(status_code=200, content={
             "engine_mode": ENGINE_MODE,
             "engine_in_use": engine_in_use,
             "grf_available": is_grf_ready,
             "device": getattr(sim, "device", "cpu") if sim else "none",
             "checkpoint_found": os.path.exists(str(TIKICK_CHECKPOINT_PATH)),
+            'capabilities': {'native_substitutions': False, 'tactical_schedule': True,
+                             'dynamic_season_tactics_enabled': os.getenv('FOOTY_DYNAMIC_TACTICS', '0') == '1',
+                             'manager_evaluation_engine': 'synthetic_management'},
             "baller_dir": str(BALLER_DIR),
             "recordings_dir": str(RECORDINGS_DIR)
         })
@@ -1277,10 +1236,14 @@ async def render_match_replay(match_id: str, req: Optional[MatchRenderRequest] =
         clean_id = str(match_id)
         req_mode = req.render_mode if req else "auto"
         force = req.force if req else False
+        resolution = req.resolution if req else '720p'
+        theme = req.theme if req else 'dark'
+        camera = req.camera if req else 'wide'
+        from logic.replay.presentation import profile_matches
 
         # If already exists and not forcing, return immediately
         v_target, video_url = find_match_video_and_url(clean_id)
-        if v_target and not force:
+        if v_target and not force and profile_matches(v_target, resolution, theme, camera) and (req_mode == 'auto' or v_target.name.endswith(f'_{req_mode}.mp4')):
             return MatchRenderResponse(
                 match_id=clean_id,
                 status="ready",
@@ -1322,6 +1285,9 @@ async def render_match_replay(match_id: str, req: Optional[MatchRenderRequest] =
             output_mp4=str(output_path),
             mode=req_mode,
             force=force,
+            resolution=resolution,
+            theme=theme,
+            camera=camera,
         )
 
         v_url = result.get("video_url")
@@ -1330,7 +1296,7 @@ async def render_match_replay(match_id: str, req: Optional[MatchRenderRequest] =
             match_id=clean_id,
             status=status_str,
             video_url=v_url,
-            render_mode_used=result.get("mode_used", req_mode),
+            render_mode_used=result.get("render_mode_used", req_mode),
             message=result.get("message", "Render completed successfully.")
         )
     except HTTPException:
@@ -1350,7 +1316,7 @@ async def simulate_grf_match(req: MatchSimulationRequest):
     try:
         from models.team import Team
         from models.player import FootballPlayer
-        from models.match import Match, get_grf_simulator
+        from models.match import get_grf_simulator
         from models.manager import Manager
         from database.match_db import get_match_details
         from logic.grf_native_runner import GRFNativeRunner, team_color_from_name
@@ -1448,8 +1414,10 @@ async def simulate_grf_match(req: MatchSimulationRequest):
 
         # Execute authentic GRF simulation (Phase A - pure physics, fast)
         native_runner = GRFNativeRunner()
+        if not await asyncio.to_thread(native_runner.is_available):
+            raise HTTPException(status_code=503, detail='Native GRF runtime is unavailable; configure the Windows/WSL bridge before requesting a new match.')
         from database.db_setup import get_current_simulation_run
-        effective_run_id = (existing_match.get("simulation_run_id") if existing_match else None) or get_current_simulation_run()
+        effective_run_id = req.run_id or (existing_match.get("simulation_run_id") if existing_match else None) or get_current_simulation_run()
 
         grf_out = await asyncio.to_thread(
             native_runner.simulate,
@@ -1482,23 +1450,16 @@ async def simulate_grf_match(req: MatchSimulationRequest):
         real_xg    = grf_out.get("xg", [round(h_score * 0.45, 2), round(a_score * 0.45, 2)])
         video_url  = grf_out.get("video_url")
 
-        # Canonical video persistence in DB
-        if video_url and req.match_id:
+        # Only an explicitly identified run-scoped row can receive this artifact.
+        if video_url and req.match_id and existing_match:
+            from database.match_db import link_match_video
             try:
-                with get_db_session() as db:
-                    m_row = db.query(Match).filter(
-                        (Match.match_id == int(req.match_id) if str(req.match_id).isdigit() else False) |
-                        (Match.match_number == int(req.match_id) if str(req.match_id).isdigit() else False)
-                    ).first()
-                    if m_row:
-                        m_row.video_url = video_url
-                        m_row.simulation_run_id = effective_run_id
-                        db.commit()
-            except Exception as e:
-                logger.warning("Failed to link match video in DB: %s", e)
+                link_match_video(req.match_id, effective_run_id, video_url)
+            except ValueError as exc:
+                raise HTTPException(status_code=409, detail=str(exc))
 
         # Fallback background rendering if video was requested but not generated during live sim
-        elif should_render_video:
+        if should_render_video and not video_url:
             from logic.grf_native_runner import to_win_path
             trace_path = to_win_path(grf_out.get('trace_npz') or grf_out.get('trajectory_file'))
             if trace_path is None:
@@ -1522,7 +1483,7 @@ async def simulate_grf_match(req: MatchSimulationRequest):
 
             async def _bg_render():
                 try:
-                    await asyncio.to_thread(
+                    rendered = await asyncio.to_thread(
                         native_runner.render_replay,
                         match_id=match_id_str,
                         home_team=h_team,
@@ -1538,6 +1499,12 @@ async def simulate_grf_match(req: MatchSimulationRequest):
                         away_color=a_color,
                         mode=req.render_mode or "auto",
                     )
+                    ready_url = rendered.get('video_url') if isinstance(rendered, dict) else rendered
+                    if ready_url and existing_match:
+                        from database.match_db import link_match_video
+                        link_match_video(req.match_id, effective_run_id, ready_url)
+                    prog_file.write_text(json.dumps({'status': 'complete', 'completed': True,
+                                                     'progress': 100, 'video_url': ready_url}), encoding='utf-8')
                 except Exception as ex:
                     logger.error("Background video render failed for %s: %s", match_id_str, ex)
                     try:
@@ -1547,8 +1514,7 @@ async def simulate_grf_match(req: MatchSimulationRequest):
                         pass
 
             asyncio.create_task(_bg_render())
-            pending_video = trace_path.parent / f"match_{match_id_str}_{'2d' if req.render_mode == '2d' else '3d'}.mp4"
-            video_url = '/recordings/' + pending_video.relative_to(RECORDINGS_DIR).as_posix()
+            video_url = None
 
         return MatchSimulationResponse(
             match_id=match_id_str,
@@ -1582,14 +1548,14 @@ async def get_team_history(team_name):
             return JSONResponse(status_code=200, content={"history": [], "team_name": team_name})
 
         report_files = [f for f in os.listdir(SEASON_REPORTS_DIR) if f.startswith("season_report_") and f.endswith(".json")]
-        
+
         for report_file in report_files:
             try:
                 year = int(report_file.replace("season_report_", "").replace(".json", ""))
                 report_path = os.path.join(SEASON_REPORTS_DIR, report_file)
                 with open(report_path, 'r') as f:
                     data = json.load(f)
-                
+
                 # Find team in table
                 table = data.get("table", [])
                 for pos, (name, stats) in enumerate(table, 1):
@@ -1609,7 +1575,7 @@ async def get_team_history(team_name):
             except Exception as e:
                 logger.warning("Error processing %s: %s", report_file, e)
                 continue
-        
+
         # Sort by season
         history.sort(key=lambda x: x["season"])
         return JSONResponse(status_code=200, content={"history": history, "team_name": team_name})

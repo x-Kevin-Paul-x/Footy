@@ -20,13 +20,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    with op.batch_alter_table('Match', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('home_yellow_cards', sa.Integer(), nullable=False, server_default='0'))
-        batch_op.add_column(sa.Column('away_yellow_cards', sa.Integer(), nullable=False, server_default='0'))
-        batch_op.add_column(sa.Column('home_red_cards', sa.Integer(), nullable=False, server_default='0'))
-        batch_op.add_column(sa.Column('away_red_cards', sa.Integer(), nullable=False, server_default='0'))
-        batch_op.add_column(sa.Column('home_injuries', sa.Integer(), nullable=False, server_default='0'))
-        batch_op.add_column(sa.Column('away_injuries', sa.Integer(), nullable=False, server_default='0'))
+    existing = {c['name'] for c in sa.inspect(op.get_bind()).get_columns('Match')}
+    missing = [name for name in ('home_yellow_cards', 'away_yellow_cards', 'home_red_cards', 'away_red_cards', 'home_injuries', 'away_injuries') if name not in existing]
+    if missing:
+        with op.batch_alter_table('Match', schema=None) as batch_op:
+            for name in missing:
+                batch_op.add_column(sa.Column(name, sa.Integer(), nullable=False, server_default='0'))
 
 
 def downgrade() -> None:

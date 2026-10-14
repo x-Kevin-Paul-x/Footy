@@ -39,6 +39,7 @@ const YouthAcademy = lazy(() => import("./pages/YouthAcademy"));
 const SeasonReports = lazy(() => import("./pages/SeasonReports"));
 const StatisticsAnalytics = lazy(() => import("./pages/StatisticsAnalytics"));
 const MlBenchmarks = lazy(() => import("./pages/MlBenchmarks"));
+const RunHistory = lazy(() => import('./pages/RunHistory'));
 
 import Toast from "./components/Toast";
 import LiveSeasonUpdates from "./components/LiveSeasonUpdates";
@@ -59,6 +60,7 @@ const sections = [
   { label: "Season", path: "/season-reports" },
   { label: "Analytics", path: "/statistics-analytics" },
   { label: "AI Benchmarks", path: "/ai-benchmarks" },
+  { label: "Saved campaigns", path: "/saved-campaigns" },
 ];
 
 function AppBreadcrumbs() {
@@ -377,6 +379,7 @@ function MainLayout({ mode, setMode, toast, setToast }: {
             <Route path="/season-reports" element={<SeasonReports />} />
             <Route path="/statistics-analytics" element={<StatisticsAnalytics />} />
             <Route path="/ai-benchmarks" element={<MlBenchmarks />} />
+            <Route path="/saved-campaigns" element={<RunHistory />} />
             <Route path="*" element={<Placeholder title="Not Found" />} />
           </Routes>
         </Suspense>

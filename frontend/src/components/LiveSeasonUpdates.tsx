@@ -12,7 +12,7 @@ export default function LiveSeasonUpdates() {
   const { data: run } = useQuery({
     queryKey: ['liveSimulationRun'],
     queryFn: getCurrentSimulationRun,
-    refetchInterval: query => ['running', 'cancelling'].includes(query.state.data?.status ?? '') ? 2000 : 10000,
+    refetchInterval: query => ['queued', 'running', 'cancelling'].includes(query.state.data?.status ?? '') ? 2000 : 10000,
     refetchIntervalInBackground: true,
   });
 
@@ -31,7 +31,7 @@ export default function LiveSeasonUpdates() {
     return () => { cancelled = true; };
   }, [run?.run_id, run?.matches_played, run?.status, refresh, queryClient]);
 
-  if (!run || !['running', 'cancelling'].includes(run.status)) return null;
+  if (!run || !['queued', 'running', 'cancelling'].includes(run.status)) return null;
   const progress = run.total_matches > 0 ? run.matches_played / run.total_matches * 100 : 0;
   return <Box sx={{ mb: 2, p: 2, borderRadius: 3, bgcolor: 'background.paper' }} role="status">
     <Typography fontWeight={700} mb={1}>

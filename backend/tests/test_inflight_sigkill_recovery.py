@@ -42,20 +42,35 @@ TIKICK_DIR = os.getenv("FOOTY_TIKICK_DIR", str(REPO_ROOT / "third_party" / "tiki
 TEST_DIR = Path(tempfile.gettempdir()) / "test_inflight_recovery"
 
 
-def killer_thread_func(parent_pid: int, delay_sec: float = 1.5):
+def killer_thread_func(parent_pid: int, delay_sec: float = 1.5, outcome=None):
     """Background watchdog that finds child worker processes and sends SIGKILL to one."""
     time.sleep(delay_sec)
     try:
         parent = psutil.Process(parent_pid)
-        children = parent.children(recursive=True)
-        # Filter for python worker processes
-        workers = [c for c in children if "python" in c.name().lower() or "python3" in c.name().lower()]
-        if workers:
-            victim = workers[0]
-            print(f"\n[WATCHDOG] Sending SIGKILL to in-flight worker PID {victim.pid}...")
-            os.kill(victim.pid, getattr(signal, "SIGKILL", signal.SIGTERM))
-            print(f"[WATCHDOG] SIGKILL delivered successfully to PID {victim.pid}.\n")
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            # Python also launches a resource tracker. Killing that helper would
+            # leave the pool untouched and falsely certify worker recovery.
+            workers = []
+            for child in parent.children():
+                try:
+                    if 'spawn_main' in ' '.join(child.cmdline()):
+                        workers.append(child)
+                except psutil.NoSuchProcess:
+                    continue
+            if workers:
+                victim = workers[0]
+                print(f"\n[WATCHDOG] Sending SIGKILL to in-flight worker PID {victim.pid}...")
+                os.kill(victim.pid, getattr(signal, "SIGKILL", signal.SIGTERM))
+                if outcome is not None:
+                    outcome['victim_pid'] = victim.pid
+                print(f"[WATCHDOG] SIGKILL delivered successfully to PID {victim.pid}.\n")
+                return
+            time.sleep(0.05)
+        raise RuntimeError('No spawned pool worker found for the crash injection')
     except Exception as ex:
+        if outcome is not None:
+            outcome['error'] = str(ex)
         print(f"[WATCHDOG] Failed to deliver SIGKILL: {ex}")
 
 
@@ -94,7 +109,8 @@ def test_inflight_sigkill_recovery():
 
     # 2. Run multi-fixture batch on 4 workers with active SIGKILL injection
     print("\n[+] 2. Running 6-fixture batch on 4-worker pool with SIGKILL injection...")
-    killer = threading.Thread(target=killer_thread_func, args=(os.getpid(), 1.5))
+    injection = {}
+    killer = threading.Thread(target=killer_thread_func, args=(os.getpid(), 1.5, injection))
     killer.daemon = True
     killer.start()
 
@@ -128,6 +144,7 @@ def test_inflight_sigkill_recovery():
     )
     t_total = time.perf_counter() - t0
     killer.join(timeout=1.0)
+    assert injection.get('victim_pid'), f"Worker crash was not injected: {injection}"
 
     # 3. Validate results
     print(f"\n[+] 3. Batch completed in {t_total:.2f}s ({len(res_batch)} matches returned).")

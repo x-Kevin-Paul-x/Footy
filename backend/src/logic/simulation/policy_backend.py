@@ -67,6 +67,17 @@ class PolicyBackend(ABC):
         pass
 
 
+class PolicyActions(np.ndarray):
+    """Actions carry stable policy provenance into every executor entry point."""
+    def __new__(cls, actions, provenance):
+        value = np.asarray(actions).view(cls)
+        value.policy_provenance = provenance
+        return value
+
+    def __array_finalize__(self, source):
+        self.policy_provenance = getattr(source, 'policy_provenance', None)
+
+
 class CPUSinglePolicy(PolicyBackend):
     """
     Independent per-worker CPU policy.
@@ -106,7 +117,10 @@ class CPUSinglePolicy(PolicyBackend):
             actions_t, _, self.rnn_states = self.policy(
                 obs_t, self.rnn_states, self.masks, self.avail, deterministic=True
             )
-        return actions_t.detach().cpu().numpy().reshape(-1)
+        provenance = {'name': 'TiKick actor', 'checkpoint_sha256': self.checkpoint_sha256,
+                      'direct_actions': 19, 'builtin_ai_allowed': True,
+                      'available_actions': 20, 'inference_profile': 'tikick_kaggle'}
+        return PolicyActions(actions_t.detach().cpu().numpy().reshape(-1), provenance)
 
     def reset_match(self, match_id: str, seed_val: Optional[int] = None):
         self.rnn_states = torch.zeros((20, 1, 256), dtype=torch.float32, device=self.device)

@@ -1,0 +1,122 @@
+{
+  "backend_commentary": {
+    "tests": 188,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 11,
+    "seconds": 312.38
+  },
+  "native_linux": {
+    "distinct_tests": 9,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "runs": {
+      "baseline": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "seconds": 854.65
+      },
+      "extended": {
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 279.184
+      },
+      "strengthened_worker_sigkill": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "time": 46.615
+      }
+    },
+    "note": "Extended suite SIGKILL result superseded by a rerun selecting a real spawned worker and requiring proof of delivery."
+  },
+  "frontend": {
+    "tests": 13,
+    "suites": 6,
+    "failures": 0
+  },
+  "native_scope": {
+    "seeds": [
+      42,
+      1337,
+      4242,
+      7777,
+      9999,
+      12345
+    ],
+    "worker_counts": [
+      1,
+      8,
+      12,
+      16
+    ],
+    "steps": 1200,
+    "worker_assignment_ids": [
+      0,
+      3,
+      7,
+      11
+    ],
+    "crash_steps": [
+      300,
+      600,
+      900
+    ],
+    "additional_certification_worker_counts": [
+      8,
+      10,
+      12,
+      14,
+      16
+    ],
+    "broadcast_publication_and_cache_verified": true
+  },
+  "date": "2026-10-13",
+  "lint": "ruff runtime/syntax and scoped mypy passed",
+  "verification_limits": "Windows native-import skips are separate from direct Linux verification; synthetic management results are not GRF realism.",
+  "legacy_archive_additional_check": {
+    "tests": 42,
+    "passed": 41,
+    "skipped": 1
+  },
+  "dependency_audit": {
+    "root_vulnerabilities": 0,
+    "frontend_vulnerabilities": 0
+  },
+  "editable_install": "imports and fresh migrations verified outside repository root",
+  "pre_commit": "installed; all-file and staged-file gates passed",
+  "github_ci": {
+    "run_id": 38470716998,
+    "commit": "76ad78282369f4713f3b74636f934e34375fd685",
+    "conclusion": "success",
+    "backend_passed": 170,
+    "backend_skipped": 22,
+    "coverage_percent": 44,
+    "frontend_passed": 13,
+    "url": "https://github.com/x-Kevin-Paul-x/Footy/actions/runs/38470716998"
+  },
+  "portability_additional_checks": {
+    "passed": 51,
+    "native_api_tests_included": true,
+    "report_error_suite_passed": 14
+  },
+  "demo": {
+    "url": "https://x-kevin-paul-x.github.io/Footy/",
+    "deployment": "success",
+    "browser_data_loaded": true,
+    "video_duration_seconds": 310.7,
+    "playback_verified": true,
+    "media_error": null
+  },
+  "release": {
+    "version": "v0.1.0",
+    "status": "draft",
+    "assets": "three generated manager checkpoints, manifest, checksums"
+  }
+}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { resolveSimulationSocketUrl } from '../services/api';
 
 export interface SimulationEvent {
   event: string;
@@ -6,15 +7,7 @@ export interface SimulationEvent {
   data?: Record<string, unknown> | null;
 }
 
-const defaultSocketUrl = () => {
-  const apiBase = window.localStorage.getItem('footy_api_url')?.trim()
-    || import.meta.env.VITE_API_BASE_URL?.trim()
-    || (import.meta.env.DEV ? 'http://localhost:5001' : window.location.origin);
-  const socketUrl = new URL(apiBase);
-  socketUrl.protocol = socketUrl.protocol === 'https:' ? 'wss:' : 'ws:';
-  socketUrl.pathname = '/ws';
-  return socketUrl.toString();
-};
+const defaultSocketUrl = resolveSimulationSocketUrl;
 
 export function useSimulationSocket(url?: string) {
   const [isConnected, setIsConnected] = useState(false);

@@ -1,0 +1,8 @@
+{
+  "source": "backend\\verification\\tmp\\native-benchmark\\artifacts\\bench_1_2_200_trajectory_0\\trace_bench_fix_1.npz",
+  "source_sha256": "f7aec5e018a544c0cc3c639eacf701652804f1c83de8fcea4150e7ecc64a3aa3",
+  "physics_sha256": "492ae0ef44142e613bf9888dbee2944e869df7ceb1e261eb63da76a447527575",
+  "steps": 200,
+  "source_unchanged": true,
+  "results_unchanged": true
+}

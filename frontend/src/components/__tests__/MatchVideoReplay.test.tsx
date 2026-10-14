@@ -44,3 +44,15 @@ test('failed render leaves loading and offers a generation retry', async () => {
   expect(document.querySelector('video')).toBeNull();
   expect(screen.getByRole('button', { name: /Generate 3D Broadcast Replay/ })).toBeInTheDocument();
 });
+
+test('replay generation carries picture quality and clay theme choices', async () => {
+  status.mockResolvedValue({ status: 'failed', completed: true });
+  const generate = jest.fn();
+  render(<MatchVideoReplay {...props} onGenerateReplay={generate} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: '1080p Full HD' })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: '1080p Full HD' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Warm clay' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Match director' }));
+  fireEvent.click(screen.getByRole('button', { name: /Generate 3D Broadcast Replay/ }));
+  expect(generate).toHaveBeenCalledWith('3d', { resolution: '1080p', theme: 'light', camera: 'director' });
+});

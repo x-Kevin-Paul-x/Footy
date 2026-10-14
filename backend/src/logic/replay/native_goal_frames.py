@@ -54,7 +54,7 @@ class NativeGoalFrames:
                 raise ReplayIntegrityError('Restored native goal frame diverges')
             frame = render_restored_native_frame(env)
             if frame.shape[:2] != (height, width):
-                frame = cv2.resize(frame, (width, height))
+                raise ReplayIntegrityError('Native goal framebuffer does not match the requested resolution')
             minute = max(1, min(90, int((duration - item['steps_left']) * 90 / duration) + 1))
             frame = draw_hud(frame=cv2.cvtColor(frame, cv2.COLOR_RGB2BGR),
                              home_team=home_team, away_team=away_team, score=tuple(observation['score']),

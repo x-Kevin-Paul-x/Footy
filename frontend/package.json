@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -n BACKEND,FRONTEND -c blue,green --restart-tries -1 --restart-after 1500 \"cd .. && .venv\\Scripts\\python.exe -m uvicorn api_fastapi:app --app-dir backend/src --reload --reload-dir backend/src --port 5001\" \"vite\"",
+    "dev": "concurrently -n BACKEND,FRONTEND -c blue,green \"node ../scripts/run-backend.cjs\" \"vite\"",
     "dev:frontend": "vite",
-    "dev:backend": "cd .. && .venv\\Scripts\\python.exe -m uvicorn api_fastapi:app --app-dir backend/src --reload --reload-dir backend/src --port 5001",
+    "dev:backend": "node ../scripts/run-backend.cjs",
     "test": "jest --watchAll=false",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
@@ -53,5 +53,11 @@
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.30.1",
     "vite": "^6.3.5"
+  },
+  "overrides": {
+    "@istanbuljs/load-nyc-config": {
+      "js-yaml": "^4.1.1"
+    },
+    "brace-expansion@<2": "1.1.21"
   }
 }

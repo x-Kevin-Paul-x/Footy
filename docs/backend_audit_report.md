@@ -1,3 +1,5 @@
+> Historical September 2026 audit context. For current implementation and evidence, see [current status](05_current_status.md) and [dated verification](verification_2026_10_13.md).
+
 # Backend Audit Verification Report
 
 Verified: **6 September 2026**

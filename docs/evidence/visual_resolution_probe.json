@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-13",
+  "method": "Fresh process per resolution; reset native GRF environment and redraw one RGB frame. No match or policy changed.",
+  "production_native_resolution": [
+    1280,
+    720
+  ],
+  "production_export_max": [
+    1920,
+    1080
+  ],
+  "production_1080p_method": "720p native scene upscaled in replay renderer",
+  "native_single_frame_probes": [
+    {
+      "requested": [
+        1920,
+        1080
+      ],
+      "frame_shape": [
+        1080,
+        1920,
+        3
+      ],
+      "nonuniform": true
+    },
+    {
+      "requested": [
+        3840,
+        2160
+      ],
+      "frame_shape": [
+        2160,
+        3840,
+        3
+      ],
+      "nonuniform": true
+    }
+  ],
+  "limits": "This proves frame dimensions only. Full-match throughput, frame pacing, overlay scaling and old archive compatibility at higher resolutions remain to be tested. Same-process GRF environment reuse retained a 720p graphics buffer in the initial probe."
+}

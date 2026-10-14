@@ -12,6 +12,7 @@ import json
 import zlib
 import pickle
 import hashlib
+import struct
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Iterator, Tuple
 
@@ -19,6 +20,31 @@ from logic.replay_schema import GRF_STATE_SCHEMA_VERSION, REPLAY_FORMAT_VERSION,
 
 MAGIC_HEADER_V1 = b"FOOTY_GRF_STATE_V1\n"
 MAGIC_HEADER_V2 = f"{REPLAY_FORMAT_VERSION}\n".encode("utf-8")
+MAGIC_HEADER_V3 = b"FOOTY_GRF_STATE_V3\n"
+MAX_CHUNK_BYTES = 256 * 1024 * 1024
+
+
+class _BytesOnlyUnpickler(pickle.Unpickler):
+    def find_class(self, module, name):
+        raise ReplayIntegrityError('Executable pickle content is forbidden')
+
+    def persistent_load(self, pid):
+        raise ReplayIntegrityError('Persistent pickle references are forbidden')
+
+
+def _legacy_bytes(data):
+    states = _BytesOnlyUnpickler(io.BytesIO(data)).load()
+    if not isinstance(states, list) or any(not isinstance(state, bytes) for state in states):
+        raise ReplayIntegrityError('Legacy archive must contain only a list of byte states')
+    return states
+
+
+def _decompress_chunk(data):
+    decoder = zlib.decompressobj()
+    decoded = decoder.decompress(data, MAX_CHUNK_BYTES + 1)
+    if len(decoded) > MAX_CHUNK_BYTES or not decoder.eof or decoder.unused_data:
+        raise ReplayIntegrityError('Invalid or oversized compressed chunk')
+    return decoded
 DEFAULT_CHUNK_SIZE = 200
 
 
@@ -58,7 +84,7 @@ class GRFStateArchiveWriter:
         self._file = open(self.tmp_filepath, "wb")
 
         # Reserve space for header by writing V2 magic and 16KB placeholder for metadata
-        self._file.write(MAGIC_HEADER_V2)
+        self._file.write(MAGIC_HEADER_V3)
         self._header_placeholder_pos = self._file.tell()
         placeholder = b"\x00" * 16384
         self._file.write(placeholder)
@@ -73,6 +99,11 @@ class GRFStateArchiveWriter:
         if self._is_closed:
             raise RuntimeError("Cannot append to a closed GRFStateArchiveWriter.")
 
+        if not isinstance(state_bytes, bytes) or len(state_bytes) > MAX_CHUNK_BYTES:
+            raise ValueError('Engine states must be bounded byte strings')
+        if sum(map(len, self._buffer)) + len(state_bytes) > MAX_CHUNK_BYTES:
+            self._flush_chunk()
+            raise ValueError('Chunk exceeds configured size; reduce chunk_size')
         self._buffer.append(state_bytes)
         self._global_sha256.update(state_bytes)
         self._total_steps += 1
@@ -85,7 +116,7 @@ class GRFStateArchiveWriter:
         if not self._buffer:
             return
 
-        chunk_data = pickle.dumps(self._buffer, protocol=pickle.HIGHEST_PROTOCOL)
+        chunk_data = b''.join(struct.pack('<Q', len(state)) + state for state in self._buffer)
         chunk_sha = hashlib.sha256(chunk_data).hexdigest()
         compressed = zlib.compress(chunk_data, level=self.compression_level)
 
@@ -109,14 +140,14 @@ class GRFStateArchiveWriter:
         data_end_pos = self._file.tell()
 
         header_dict = {
-            "version": 2,
+            "version": 3,
             "match_id": self.match_id,
             "total_steps": self._total_steps,
             "chunk_size": self.chunk_size,
             "compression": "zlib",
             "sim_fps": SIM_FPS,
             "sim_step_seconds": SIM_STEP_SECONDS,
-            "state_schema": GRF_STATE_SCHEMA_VERSION,
+            "state_schema": "grf_length_prefixed_zlib_v3",
             "sha256": self._global_sha256.hexdigest(),
             "data_start_pos": self._data_start_pos,
             "data_end_pos": data_end_pos,
@@ -177,7 +208,7 @@ class GRFStateArchiveReader:
     Supports legacy pickle archives (.pkl) and V1/V2 .grfstate formats transparently.
     """
 
-    def __init__(self, filepath: str):
+    def __init__(self, filepath: str, *, trusted_legacy: bool = False):
         self.filepath = str(filepath)
         if not os.path.exists(self.filepath):
             raise FileNotFoundError(f"GRF state archive not found: {self.filepath}")
@@ -188,17 +219,19 @@ class GRFStateArchiveReader:
         self._cached_chunk_states: List[bytes] = []
         self._file = open(self.filepath, "rb")
 
-        magic_candidate = self._file.read(len(MAGIC_HEADER_V2))
-        if magic_candidate == MAGIC_HEADER_V2:
+        magic_candidate = self._file.readline(64)
+        if magic_candidate in (MAGIC_HEADER_V2, MAGIC_HEADER_V3):
             header_raw = self._file.read(16384).decode("utf-8").strip()
             self.header = json.loads(header_raw)
-            self.version = 2
+            self.version = 3 if magic_candidate == MAGIC_HEADER_V3 else 2
         elif magic_candidate == MAGIC_HEADER_V1:
             header_raw = self._file.read(8192).decode("utf-8").strip()
             self.header = json.loads(header_raw)
             self.version = 1
         else:
-            # Legacy pickle format fallback
+            if not trusted_legacy:
+                self.close()
+                raise ReplayIntegrityError('Unknown archive format; use the explicit trusted legacy converter')
             self._is_legacy_pickle = True
 
         if not self._is_legacy_pickle:
@@ -207,9 +240,20 @@ class GRFStateArchiveReader:
             self.chunk_size = self.header.get("chunk_size", DEFAULT_CHUNK_SIZE)
             self.sha256 = self.header.get("sha256", "")
             self.chunk_offsets = self.header.get("chunk_offsets", [])
+            size = os.path.getsize(self.filepath)
+            if not isinstance(self.total_steps, int) or not 0 <= self.total_steps <= 10_000_000 or not isinstance(self.chunk_size, int) or self.chunk_size < 1:
+                self.close()
+                raise ReplayIntegrityError('Invalid archive dimensions')
+            if sum(c[2] for c in self.chunk_offsets) != self.total_steps:
+                self.close()
+                raise ReplayIntegrityError('Chunk index does not match state count')
+            for entry in self.chunk_offsets:
+                if len(entry) not in (3, 4) or entry[0] < self._file.tell() or entry[1] < 0 or entry[1] > MAX_CHUNK_BYTES or entry[0] + entry[1] > size:
+                    self.close()
+                    raise ReplayIntegrityError('Invalid archive chunk bounds')
         else:
             self._file.seek(0)
-            self._legacy_states = pickle.load(self._file)
+            self._legacy_states = _legacy_bytes(self._file.read(MAX_CHUNK_BYTES + 1))
             self.total_steps = len(self._legacy_states)
             self.match_id = ""
             self.version = 0
@@ -224,6 +268,28 @@ class GRFStateArchiveReader:
 
     def __len__(self) -> int:
         return self.total_steps
+
+    def _decode_chunk(self, data, count):
+        if len(data) > MAX_CHUNK_BYTES:
+            raise ReplayIntegrityError('Archive chunk is oversized')
+        if self.version < 3:
+            states = _legacy_bytes(data)
+        else:
+            states, offset = [], 0
+            for _ in range(count):
+                if offset + 8 > len(data):
+                    raise ReplayIntegrityError('Truncated state length')
+                length = struct.unpack_from('<Q', data, offset)[0]
+                offset += 8
+                if length > MAX_CHUNK_BYTES or offset + length > len(data):
+                    raise ReplayIntegrityError('Invalid state length')
+                states.append(data[offset:offset + length])
+                offset += length
+            if offset != len(data):
+                raise ReplayIntegrityError('Unexpected trailing state data')
+        if len(states) != count:
+            raise ReplayIntegrityError('Chunk state count mismatch')
+        return states
 
     def close(self) -> None:
         """Close internal open file handle."""
@@ -254,7 +320,7 @@ class GRFStateArchiveReader:
         if self._cached_chunk_idx != chunk_idx:
             if chunk_idx >= len(self.chunk_offsets):
                 raise IndexError(f"Chunk index {chunk_idx} not found in archive index.")
-            
+
             chunk_entry = self.chunk_offsets[chunk_idx]
             file_off = chunk_entry[0]
             comp_len = chunk_entry[1]
@@ -262,7 +328,7 @@ class GRFStateArchiveReader:
 
             self._file.seek(file_off)
             comp_data = self._file.read(comp_len)
-            decomp_data = zlib.decompress(comp_data)
+            decomp_data = _decompress_chunk(comp_data)
 
             # Per-chunk integrity verification
             if chunk_sha:
@@ -272,7 +338,7 @@ class GRFStateArchiveReader:
                         f"Chunk {chunk_idx} SHA256 checksum mismatch (expected {chunk_sha}, computed {calc_sha})"
                     )
 
-            self._cached_chunk_states = pickle.loads(decomp_data)
+            self._cached_chunk_states = self._decode_chunk(decomp_data, chunk_entry[2])
             self._cached_chunk_idx = chunk_idx
 
         return self._cached_chunk_states[offset_in_chunk]
@@ -292,14 +358,14 @@ class GRFStateArchiveReader:
 
             self._file.seek(file_off)
             comp_data = self._file.read(comp_len)
-            decomp_data = zlib.decompress(comp_data)
+            decomp_data = _decompress_chunk(comp_data)
 
             if chunk_sha:
                 calc_sha = hashlib.sha256(decomp_data).hexdigest()
                 if calc_sha != chunk_sha:
                     raise ReplayIntegrityError(f"Chunk {chunk_idx} SHA256 checksum mismatch")
 
-            states = pickle.loads(decomp_data)
+            states = self._decode_chunk(decomp_data, chunk_entry[2])
             for s in states:
                 yield s
 
@@ -330,10 +396,11 @@ class GRFStateArchiveReader:
         # Reject stale V1 schema strings or missing schema fields to prevent cross-version replay corruption.
         if not self._is_legacy_pickle:
             schema = self.header.get("state_schema")
-            if schema != GRF_STATE_SCHEMA_VERSION:
+            expected_schema = "grf_length_prefixed_zlib_v3" if self.version == 3 else GRF_STATE_SCHEMA_VERSION
+            if schema != expected_schema:
                 raise ReplayIntegrityError(
                     f"State archive schema version mismatch: found '{schema}', "
-                    f"expected '{GRF_STATE_SCHEMA_VERSION}'. Archive may be from an incompatible version."
+                    f"expected '{expected_schema}'. Archive may be from an incompatible version."
                 )
 
         if check_global_sha and not self._is_legacy_pickle and self.sha256:

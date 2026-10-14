@@ -1,0 +1,51 @@
+{
+  "match_id": "match_2026_18_3",
+  "output_mp4": "/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/assets/matches/current-season/west-ham-bournemouth.mp4",
+  "resolution": "720p",
+  "total_frames": 3109,
+  "total_time_sec": 176.51,
+  "effective_fps": 17.6,
+  "render_profile": {
+    "resolution": "720p",
+    "dimensions": "1280x720",
+    "encoder_used": "FFmpegSoftwareEncoder",
+    "encoder_preset": "p4",
+    "opengl_driver": "auto",
+    "total_render_time_ms": 176508.7,
+    "timing_breakdown": {
+      "startup_init_ms": 20500.6,
+      "archive_read_ms": 1723.3,
+      "state_restore_ms": 8107.1,
+      "grf_render_ms": 129804.5,
+      "rgb_copy_resize_ms": 16.5,
+      "hud_compositing_ms": 14483.4,
+      "queue_push_block_ms": 141.4,
+      "encoder_write_ms": 12806.6,
+      "ffmpeg_flush_ms": 162.5
+    },
+    "queue_telemetry": {
+      "max_capacity": 16,
+      "frames_enqueued": 3110,
+      "frames_dequeued": 3110,
+      "producer_block_count": 53,
+      "consumer_block_count": 3011,
+      "time_producer_blocked_ms": 409.87,
+      "time_consumer_idle_ms": 143065.48,
+      "max_depth": 16,
+      "mean_depth": 1.37,
+      "p50_depth": 1.0,
+      "p95_depth": 1.0
+    },
+    "effective_fps": 17.6,
+    "total_frames": 3109,
+    "broadcast_fps": 10
+  },
+  "source_unchanged": true,
+  "source_hashes": {
+    "/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/backend/verification/readme_season_20261014_204915/reports/recordings/run_1792007356_e953de/trace_match_2026_18_3.grfstate": "8f0043b5426102d31246cfedc129c21fb18ef71ad8d8ccc1a61379eefa73d59f",
+    "/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/backend/verification/readme_season_20261014_204915/reports/recordings/run_1792007356_e953de/trace_match_2026_18_3.npz": "2838199300853cdf41a3f45971b5578b3816c4f092eba7079a63a712c0c78550",
+    "/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/backend/verification/readme_season_20261014_204915/reports/recordings/run_1792007356_e953de/trace_match_2026_18_3.goals.json": "6201202e8d8a6dff68bbcdb080aab47b3d670529a01e13d534faaeb3aa9c86d6",
+    "/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/backend/verification/readme_season_20261014_204915/reports/recordings/run_1792007356_e953de/trace_match_2026_18_3.goals.grfstate": "76b5b7bcfa8a89aa24fb25db0adc3250ab92096c85678ab4d1c3110d5f0f9fc7"
+  },
+  "physics_hash": "4a4555386de885ec7d74d7c994dcbda37df4518cd5cd26f5b5366cc2af492f67"
+}

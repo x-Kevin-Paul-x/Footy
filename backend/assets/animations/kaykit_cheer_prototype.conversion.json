@@ -1,0 +1,24 @@
+{
+  "source_sha256": "60428e3abc09ba83e595d256e3af8c5c976b46cdae599f0802fc82b4a3445168",
+  "clip": "Cheer",
+  "source_license": "CC0-1.0",
+  "duration_seconds": 1.6666666269302368,
+  "native_frames": 168,
+  "bones": [
+    "body",
+    "middle",
+    "neck",
+    "left_shoulder",
+    "left_elbow",
+    "right_shoulder",
+    "right_elbow",
+    "left_thigh",
+    "left_knee",
+    "left_ankle",
+    "right_thigh",
+    "right_knee",
+    "right_ankle"
+  ],
+  "root_motion": "pinned",
+  "status": "isolated retargeting prototype; not registered in simulation animation collection"
+}

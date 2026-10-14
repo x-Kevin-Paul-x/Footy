@@ -47,7 +47,8 @@ def get_db_session():
         db.close()
 
 def init_db():
-    Base.metadata.create_all(bind=engine)
+    from database.migrations import upgrade_database
+    upgrade_database(engine)
 
 def backup_database(destination: str) -> None:
     """Create a transactionally consistent SQLite snapshot, including WAL data."""

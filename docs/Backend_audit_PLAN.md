@@ -1,8 +1,10 @@
+> Historical September 2026 audit context. For current implementation and evidence, see [current status](05_current_status.md) and [dated verification](verification_2026_10_13.md).
+
 # Backend Audit Remediation Plan
 
 Last reviewed: **6 September 2026**
 
-This page is the execution checklist for the remaining backend work. Completed and partial items are recorded in [05_current_status.md](05_current_status.md); the original detailed rationale remains in [Footy Project Improvement Plan.md](Footy%20Project%20Improvement%20Plan.md).
+This page is the execution checklist for the remaining backend work. Completed and partial items are recorded in [05_current_status.md](05_current_status.md); the original detailed rationale remains in [Footy Project Improvement Plan.md](improvement_plan_2026_09.md).
 
 ## P0 — release blockers
 

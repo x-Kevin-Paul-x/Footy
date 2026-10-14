@@ -1,4 +1,5 @@
 from sqlalchemy.orm import joinedload
+import json
 from database.session import SessionLocal, get_db_session
 from database.models import Player, PlayerAttribute
 
@@ -50,6 +51,8 @@ def get_player(player_id, db_file=None):
 
         player_data = {
             "player_id": player.player_id,
+            'availability': json.loads(player.availability_json or '{}'),
+            'contract_terms': json.loads(player.contract_json or '{}'),
             "jersey_number": player.jersey_number,
             "name": player.name,
             "age": player.age,
@@ -80,6 +83,8 @@ def get_all_players(db_file=None):
 
             players.append({
                 "player_id": player.player_id,
+                'availability': json.loads(player.availability_json or '{}'),
+                'contract_terms': json.loads(player.contract_json or '{}'),
                 "jersey_number": player.jersey_number,
                 "name": player.name,
                 "age": player.age,

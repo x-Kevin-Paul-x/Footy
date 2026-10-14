@@ -8,47 +8,25 @@ from database.models import Base
 
 logger = logging.getLogger("footy.database.setup")
 
-def create_tables(db_file=DB_FILE):
-    """Create all database tables via SQLAlchemy Base metadata and ensure new columns exist."""
-    Path(db_file).parent.mkdir(parents=True, exist_ok=True)
-    Base.metadata.create_all(bind=engine)
+def create_tables(db_file=None):
+    """Apply the versioned schema; never silently patch columns at runtime."""
+    from database import session
+    from database.migrations import upgrade_database
+    if db_file and Path(db_file).resolve() != Path(session.DB_FILE).resolve():
+        from sqlalchemy import create_engine
+        target = create_engine(f"sqlite:///{Path(db_file).resolve().as_posix()}")
+        try:
+            upgrade_database(target)
+        finally:
+            target.dispose()
+    else:
+        upgrade_database(session.engine)
 
-    # Safe SQLite column migration for Match table
-    try:
-        if os.path.exists(db_file):
-            conn = sqlite3.connect(db_file)
-            cur = conn.cursor()
-            cur.execute("PRAGMA table_info(Match);")
-            cols = [col[1] for col in cur.fetchall()]
-            if "simulation_run_id" not in cols:
-                cur.execute("ALTER TABLE Match ADD COLUMN simulation_run_id TEXT;")
-            if "video_url" not in cols:
-                cur.execute("ALTER TABLE Match ADD COLUMN video_url TEXT;")
-            cur.execute("PRAGMA table_info(SimulationRun);")
-            run_cols = {col[1] for col in cur.fetchall()}
-            for column_name, definition in (
-                ("started_at", "TEXT"),
-                ("finished_at", "TEXT"),
-                ("heartbeat_at", "TEXT"),
-                ("cancel_requested", "INTEGER NOT NULL DEFAULT 0"),
-                ("error_message", "TEXT"),
-            ):
-                if column_name not in run_cols:
-                    cur.execute(f"ALTER TABLE SimulationRun ADD COLUMN {column_name} {definition};")
-            cur.execute("CREATE INDEX IF NOT EXISTS ix_match_season_number ON Match(season_year, match_number);")
-            cur.execute("CREATE INDEX IF NOT EXISTS ix_match_teams ON Match(season_year, home_team_id, away_team_id);")
-            cur.execute("CREATE INDEX IF NOT EXISTS ix_match_sim_run_id ON Match(simulation_run_id);")
-            cur.execute("CREATE INDEX IF NOT EXISTS ix_matchevent_match_id ON MatchEvent(match_id);")
-            cur.execute("CREATE INDEX IF NOT EXISTS ix_transfer_season_year ON TransferHistory(season_year);")
-            cur.execute("CREATE INDEX IF NOT EXISTS ix_player_team_id ON Player(team_id);")
-            cur.execute("CREATE INDEX IF NOT EXISTS ix_attr_player_id ON PlayerAttribute(player_id);")
-            conn.commit()
-            conn.close()
-    except Exception as e:
-        logger.warning(f"Note on SQLite column/index addition: {e}")
 
-def reset_database(db_file=DB_FILE):
-    """Drop all tables for a true fresh start."""
+def reset_database(db_file=DB_FILE, *, allow_reset=False):
+    """Explicit administrative reset, never part of normal startup."""
+    if not allow_reset:
+        raise RuntimeError("Database reset requires allow_reset=True and an isolated data directory")
     try:
         if os.path.exists(db_file):
             conn = sqlite3.connect(db_file)
@@ -96,12 +74,6 @@ def init_simulation_run(season_year: int = 2026, render_mode: str = "3d", total_
 
     now = datetime.now(timezone.utc).isoformat()
     with get_db_session() as db:
-        # A running row cannot survive a process restart. Preserve the record and
-        # make the interruption explicit instead of presenting it as archived.
-        db.query(SimulationRun).filter(SimulationRun.status == "running").update({
-            "status": "interrupted", "finished_at": now,
-            "error_message": "API process restarted before the run completed",
-        })
         new_run = SimulationRun(
             run_id=run_id,
             season_year=season_year,
@@ -212,8 +184,15 @@ def clean_old_simulation_data(preserve_run_id: str = None, recordings_dir: Path 
         reverse=True,
     ) if recordings_root.exists() else []
     retained = 0
+    import json
+    pinned = set()
+    for manifest in (Path(DB_FILE).parent / 'saves').glob('*.manifest.json'):
+        try:
+            pinned.update(json.loads(manifest.read_text(encoding='utf-8')).get('run_ids', []))
+        except (OSError, ValueError, TypeError):
+            logger.warning('Cannot read save retention manifest %s', manifest.name)
     for run_dir in run_dirs:
-        if run_dir.name == preserve_run_id:
+        if run_dir.name == preserve_run_id or run_dir.name in pinned:
             continue
         retained += 1
         if retained > retention:

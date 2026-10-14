@@ -97,8 +97,9 @@ def render_from_dump(payload: Dict[str, Any]):
     away_players = payload.get("away_players") or [f"{away_team} Player {i+1}" for i in range(11)]
     home_formation = payload.get("home_formation", "4-3-3")
     away_formation = payload.get("away_formation", "4-2-3-1")
-    home_color = payload.get("home_color") or team_color_from_name(home_team)
-    away_color = payload.get("away_color") or team_color_from_name(away_team)
+    from logic.team_identity import club_colour
+    home_color = club_colour(home_team, payload.get("home_color"))
+    away_color = club_colour(away_team, payload.get("away_color"))
     home_bgr = hex_to_bgr(home_color)
     away_bgr = hex_to_bgr(away_color)
 
@@ -127,11 +128,12 @@ def render_from_dump(payload: Dict[str, Any]):
     intro_card = draw_pre_match_card(
         w=1280, h=720, home_team=home_team, away_team=away_team,
         home_players=home_players, away_players=away_players,
+        home_roster=payload.get('home_roster'), away_roster=payload.get('away_roster'),
         home_formation=home_formation, away_formation=away_formation,
         home_bgr=home_bgr, away_bgr=away_bgr
     )
     for _ in range(45):
-        writer.append_data(intro_card)
+        writer.append_data(cv2.cvtColor(intro_card, cv2.COLOR_BGR2RGB))
 
     traj = None
     trajectory_file = payload.get("trajectory_file")
@@ -226,7 +228,6 @@ def render_from_dump(payload: Dict[str, Any]):
                 frame_rgb = (frame_rgb * 255.0).clip(0, 255).astype(np.uint8)
             else:
                 frame_rgb = np.clip(frame_rgb, 0, 255).astype(np.uint8)
-        import cv2
         frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
         frame_bgr = draw_hud(
             frame=frame_bgr,
@@ -258,7 +259,7 @@ def render_from_dump(payload: Dict[str, Any]):
                 events=[e for e in traj.manifest.events if e.get("minute", 0) <= 45]
             )
             for _ in range(45):
-                writer.append_data(ht_card)
+                writer.append_data(cv2.cvtColor(ht_card, cv2.COLOR_BGR2RGB))
 
         if progress_file and (step % 30 == 0 or step == total_steps - 1):
             pct = int((step / max(1, total_steps)) * 95)
@@ -284,7 +285,7 @@ def render_from_dump(payload: Dict[str, Any]):
             motm_player=traj.manifest.events[0].get("player") if traj.manifest.events else None
         )
         for _ in range(60):
-            writer.append_data(ft_card)
+            writer.append_data(cv2.cvtColor(ft_card, cv2.COLOR_BGR2RGB))
 
     env.close()
     writer.close()
@@ -378,10 +379,12 @@ def main():
     dump_file = payload.get("dump_file")
     trajectory_file = payload.get("trajectory_file")
 
-    if dump_file and os.path.exists(dump_file):
-        render_from_dump(payload)
-    elif states_file and os.path.exists(states_file):
+    if states_file and os.path.exists(states_file):
         render_from_grf_states(payload)
+    elif dump_file and os.path.exists(dump_file):
+        if payload.get('resolution', '720p') != '720p' or payload.get('camera', 'wide') != 'wide':
+            raise ValueError('HD profiles and camera presets require a saved native state archive')
+        render_from_dump(payload)
     elif trajectory_file and os.path.exists(trajectory_file):
         render_from_trajectory_npz(payload)
     else:

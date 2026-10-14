@@ -1,0 +1,1156 @@
+{
+  "date": "2026-10-14",
+  "scope": "Four fixtures from a fresh isolated season; not a completed season.",
+  "run_id": "run_1792007356_e953de",
+  "selection": {
+    "method": "Uniform random choice from all four completed fixtures, without filtering scores or teams.",
+    "seed": 3596853041,
+    "candidates": [
+      "trace_match_2026_18_3",
+      "trace_match_2026_1_20",
+      "trace_match_2026_2_19",
+      "trace_match_2026_4_17"
+    ],
+    "selected_match_id": "match_2026_18_3"
+  },
+  "fixtures": [
+    {
+      "match_id": "match_2026_18_3",
+      "home": "West Ham",
+      "away": "Bournemouth",
+      "score": [
+        4,
+        4
+      ],
+      "recorded_steps": 3001
+    },
+    {
+      "match_id": "match_2026_1_20",
+      "home": "Arsenal",
+      "away": "Burnley",
+      "score": [
+        2,
+        1
+      ],
+      "recorded_steps": 3001
+    },
+    {
+      "match_id": "match_2026_2_19",
+      "home": "Aston Villa",
+      "away": "Wolves",
+      "score": [
+        7,
+        5
+      ],
+      "recorded_steps": 3001
+    },
+    {
+      "match_id": "match_2026_4_17",
+      "home": "Brentford",
+      "away": "Tottenham",
+      "score": [
+        5,
+        2
+      ],
+      "recorded_steps": 3001
+    }
+  ],
+  "selected_manifest": {
+    "match_id": "match_2026_18_3",
+    "home_team": "West Ham",
+    "away_team": "Bournemouth",
+    "home_score": 4,
+    "away_score": 4,
+    "score": [
+      4,
+      4
+    ],
+    "total_steps": 3001,
+    "possession": [
+      44.0,
+      56.0
+    ],
+    "shots": [
+      5,
+      4
+    ],
+    "shots_on_target": [
+      4,
+      4
+    ],
+    "xg": [
+      0.88,
+      0.61
+    ],
+    "passes_attempted": [
+      31,
+      34
+    ],
+    "passes_completed": [
+      10,
+      15
+    ],
+    "events": [
+      {
+        "minute": 22,
+        "step": 703,
+        "type": "shot",
+        "team": "away",
+        "player": "Ernest Byrd",
+        "xg": 0.191,
+        "on_target": true,
+        "outcome": "GOAL"
+      },
+      {
+        "minute": 22,
+        "step": 711,
+        "type": "goal",
+        "team": "away",
+        "player": "Ernest Byrd",
+        "scorer": "Ernest Byrd",
+        "score": "0-1",
+        "causality": {
+          "ball_coord": [
+            -1.0504487752914429,
+            0.006671349052339792,
+            1.1345455646514893
+          ],
+          "goal_mouth_y": -0.0,
+          "score_transition": [
+            0,
+            1
+          ]
+        }
+      },
+      {
+        "minute": 25,
+        "step": 816,
+        "type": "shot",
+        "team": "away",
+        "player": "Sandra Gerow",
+        "xg": 0.126,
+        "on_target": true,
+        "outcome": "GOAL"
+      },
+      {
+        "minute": 25,
+        "step": 827,
+        "type": "goal",
+        "team": "away",
+        "player": "Sandra Gerow",
+        "scorer": "Sandra Gerow",
+        "score": "0-2",
+        "causality": {
+          "ball_coord": [
+            -1.0449466705322266,
+            0.021836712956428528,
+            0.11296004056930542
+          ],
+          "goal_mouth_y": -0.0,
+          "score_transition": [
+            1,
+            2
+          ]
+        }
+      },
+      {
+        "minute": 26,
+        "step": 848,
+        "type": "shot",
+        "team": "home",
+        "player": "Julio Zielinski",
+        "xg": 0.02,
+        "on_target": false,
+        "outcome": "UNRESOLVED"
+      },
+      {
+        "minute": 45,
+        "step": 1500,
+        "type": "half_time",
+        "score": "0-2",
+        "source": "native_restart",
+        "native_elapsed_steps": 1499
+      },
+      {
+        "minute": 51,
+        "step": 1676,
+        "type": "shot",
+        "team": "home",
+        "player": "Scott Britt",
+        "xg": 0.137,
+        "on_target": true,
+        "outcome": "GOAL"
+      },
+      {
+        "minute": 51,
+        "step": 1676,
+        "type": "goal",
+        "team": "home",
+        "player": "Scott Britt",
+        "scorer": "Scott Britt",
+        "score": "1-2",
+        "causality": {
+          "ball_coord": [
+            1.0254336595535278,
+            0.013702665455639362,
+            0.15409594774246216
+          ],
+          "goal_mouth_y": -0.0,
+          "score_transition": [
+            0,
+            1
+          ]
+        }
+      },
+      {
+        "minute": 56,
+        "step": 1857,
+        "type": "shot",
+        "team": "away",
+        "player": "Ali Bundage",
+        "xg": 0.216,
+        "on_target": true,
+        "outcome": "GOAL"
+      },
+      {
+        "minute": 56,
+        "step": 1864,
+        "type": "goal",
+        "team": "away",
+        "player": "Ali Bundage",
+        "scorer": "Ali Bundage",
+        "score": "1-3",
+        "causality": {
+          "ball_coord": [
+            -1.0556755065917969,
+            0.022293496876955032,
+            0.7525045275688171
+          ],
+          "goal_mouth_y": -0.0,
+          "score_transition": [
+            2,
+            3
+          ]
+        }
+      },
+      {
+        "minute": 66,
+        "step": 2190,
+        "type": "shot",
+        "team": "home",
+        "player": "Jeanine Simpson",
+        "xg": 0.131,
+        "on_target": true,
+        "outcome": "GOAL"
+      },
+      {
+        "minute": 66,
+        "step": 2190,
+        "type": "goal",
+        "team": "home",
+        "player": "Jeanine Simpson",
+        "scorer": "Jeanine Simpson",
+        "score": "2-3",
+        "causality": {
+          "ball_coord": [
+            1.0363222360610962,
+            -0.021146057173609734,
+            0.4418777823448181
+          ],
+          "goal_mouth_y": -0.0,
+          "score_transition": [
+            1,
+            2
+          ]
+        }
+      },
+      {
+        "minute": 76,
+        "step": 2513,
+        "type": "shot",
+        "team": "away",
+        "player": "Sandra Gerow",
+        "xg": 0.078,
+        "on_target": true,
+        "outcome": "GOAL"
+      },
+      {
+        "minute": 76,
+        "step": 2513,
+        "type": "goal",
+        "team": "away",
+        "player": "Sandra Gerow",
+        "scorer": "Sandra Gerow",
+        "score": "2-4",
+        "causality": {
+          "ball_coord": [
+            -1.0633435249328613,
+            0.017056643962860107,
+            2.367215633392334
+          ],
+          "goal_mouth_y": -0.0,
+          "score_transition": [
+            3,
+            4
+          ]
+        }
+      },
+      {
+        "minute": 80,
+        "step": 2666,
+        "type": "shot",
+        "team": "home",
+        "player": "Jeanine Simpson",
+        "xg": 0.176,
+        "on_target": true,
+        "outcome": "GOAL"
+      },
+      {
+        "minute": 80,
+        "step": 2666,
+        "type": "goal",
+        "team": "home",
+        "player": "Jeanine Simpson",
+        "scorer": "Jeanine Simpson",
+        "score": "3-4",
+        "causality": {
+          "ball_coord": [
+            1.030007004737854,
+            -0.005872408859431744,
+            1.3757649660110474
+          ],
+          "goal_mouth_y": -0.0,
+          "score_transition": [
+            2,
+            3
+          ]
+        }
+      },
+      {
+        "minute": 87,
+        "step": 2893,
+        "type": "shot",
+        "team": "home",
+        "player": "Julio Zielinski",
+        "xg": 0.418,
+        "on_target": true,
+        "outcome": "GOAL"
+      },
+      {
+        "minute": 87,
+        "step": 2893,
+        "type": "goal",
+        "team": "home",
+        "player": "Julio Zielinski",
+        "scorer": "Julio Zielinski",
+        "score": "4-4",
+        "causality": {
+          "ball_coord": [
+            1.027695655822754,
+            0.03385758399963379,
+            0.18733134865760803
+          ],
+          "goal_mouth_y": -0.0,
+          "score_transition": [
+            3,
+            4
+          ]
+        }
+      },
+      {
+        "minute": 90,
+        "step": 3000,
+        "type": "full_time",
+        "score": "4-4"
+      }
+    ],
+    "home_players": [
+      "Frank Johnson",
+      "Terry Wrye",
+      "Barbara Belk",
+      "Robert Romig",
+      "Shirley Holland",
+      "Jeanine Simpson",
+      "Jose Lavis",
+      "James Hall",
+      "Byron Munoz",
+      "Julio Zielinski",
+      "Scott Britt"
+    ],
+    "away_players": [
+      "John Patton",
+      "Roy Rivera",
+      "Stephen Platter",
+      "Dennis Derosso",
+      "George Sciancalepore",
+      "Ernest Byrd",
+      "Ali Bundage",
+      "Karen Ipock",
+      "Brandon Brown",
+      "Sandra Gerow",
+      "Bobette Lawson"
+    ],
+    "home_formation": "4-3-3",
+    "away_formation": "3-5-2",
+    "home_color": "#7A263A",
+    "away_color": "#DA291C",
+    "engine_fingerprint": {
+      "engine": "GRFMatchExecutor",
+      "engine_version": "2.1.0",
+      "seed": 3793815100,
+      "determinism_level": 2,
+      "match_complete": true,
+      "native_steps_left": 0,
+      "native_duration": 3000,
+      "policy": {
+        "name": "TiKick actor",
+        "checkpoint_sha256": "5e8157c79353cc916464faa0b2feba07ab4bdcf7b521060c85a19e86686dcef5",
+        "direct_actions": 19,
+        "builtin_ai_allowed": true,
+        "available_actions": 20,
+        "inference_profile": "tikick_kaggle"
+      },
+      "tactical_action_overrides": false
+    },
+    "video_url": null,
+    "created_at": "2026-10-14T19:50:42Z",
+    "home_roster": [
+      {
+        "player_id": 504,
+        "name": "Frank Johnson",
+        "jersey_number": 1,
+        "position": "GK",
+        "appearance": {
+          "skin": 3,
+          "hair": "long02",
+          "hair_colour": "darkblonde"
+        }
+      },
+      {
+        "player_id": 513,
+        "name": "Terry Wrye",
+        "jersey_number": 2,
+        "position": "CB",
+        "appearance": {
+          "skin": 1,
+          "hair": "long01",
+          "hair_colour": "black"
+        }
+      },
+      {
+        "player_id": 512,
+        "name": "Barbara Belk",
+        "jersey_number": 12,
+        "position": "LB",
+        "appearance": {
+          "skin": 3,
+          "hair": "medium01",
+          "hair_colour": "blonde"
+        }
+      },
+      {
+        "player_id": 508,
+        "name": "Robert Romig",
+        "jersey_number": 4,
+        "position": "RB",
+        "appearance": {
+          "skin": 3,
+          "hair": "long01",
+          "hair_colour": "black"
+        }
+      },
+      {
+        "player_id": 506,
+        "name": "Shirley Holland",
+        "jersey_number": 5,
+        "position": "SW",
+        "appearance": {
+          "skin": 1,
+          "hair": "short02",
+          "hair_colour": "black"
+        }
+      },
+      {
+        "player_id": 514,
+        "name": "Jeanine Simpson",
+        "jersey_number": 6,
+        "position": "CM",
+        "appearance": {
+          "skin": 4,
+          "hair": "medium02",
+          "hair_colour": "darkblonde"
+        }
+      },
+      {
+        "player_id": 515,
+        "name": "Jose Lavis",
+        "jersey_number": 8,
+        "position": "CDM",
+        "appearance": {
+          "skin": 4,
+          "hair": "medium02",
+          "hair_colour": "black"
+        }
+      },
+      {
+        "player_id": 519,
+        "name": "James Hall",
+        "jersey_number": 15,
+        "position": "CAM",
+        "appearance": {
+          "skin": 4,
+          "hair": "long01",
+          "hair_colour": "red"
+        }
+      },
+      {
+        "player_id": 516,
+        "name": "Byron Munoz",
+        "jersey_number": 17,
+        "position": "LM",
+        "appearance": {
+          "skin": 3,
+          "hair": "long02",
+          "hair_colour": "darkblonde"
+        }
+      },
+      {
+        "player_id": 521,
+        "name": "Julio Zielinski",
+        "jersey_number": 19,
+        "position": "RM",
+        "appearance": {
+          "skin": 2,
+          "hair": "medium01",
+          "hair_colour": "blonde"
+        }
+      },
+      {
+        "player_id": 525,
+        "name": "Scott Britt",
+        "jersey_number": 7,
+        "position": "ST",
+        "appearance": {
+          "skin": 2,
+          "hair": "medium01",
+          "hair_colour": "brown"
+        }
+      }
+    ],
+    "away_roster": [
+      {
+        "player_id": 60,
+        "name": "John Patton",
+        "jersey_number": 1,
+        "position": "GK",
+        "appearance": {
+          "skin": 4,
+          "hair": "short01",
+          "hair_colour": "red"
+        }
+      },
+      {
+        "player_id": 67,
+        "name": "Roy Rivera",
+        "jersey_number": 3,
+        "position": "CB",
+        "appearance": {
+          "skin": 1,
+          "hair": "short01",
+          "hair_colour": "black"
+        }
+      },
+      {
+        "player_id": 65,
+        "name": "Stephen Platter",
+        "jersey_number": 4,
+        "position": "LB",
+        "appearance": {
+          "skin": 1,
+          "hair": "short02",
+          "hair_colour": "brown"
+        }
+      },
+      {
+        "player_id": 63,
+        "name": "Dennis Derosso",
+        "jersey_number": 5,
+        "position": "RB",
+        "appearance": {
+          "skin": 2,
+          "hair": "medium01",
+          "hair_colour": "darkblonde"
+        }
+      },
+      {
+        "player_id": 76,
+        "name": "George Sciancalepore",
+        "jersey_number": 10,
+        "position": "CM",
+        "appearance": {
+          "skin": 3,
+          "hair": "bald",
+          "hair_colour": "red"
+        }
+      },
+      {
+        "player_id": 77,
+        "name": "Ernest Byrd",
+        "jersey_number": 12,
+        "position": "CDM",
+        "appearance": {
+          "skin": 1,
+          "hair": "short02",
+          "hair_colour": "brown"
+        }
+      },
+      {
+        "player_id": 74,
+        "name": "Ali Bundage",
+        "jersey_number": 6,
+        "position": "CAM",
+        "appearance": {
+          "skin": 4,
+          "hair": "bald",
+          "hair_colour": "blonde"
+        }
+      },
+      {
+        "player_id": 73,
+        "name": "Karen Ipock",
+        "jersey_number": 8,
+        "position": "LM",
+        "appearance": {
+          "skin": 4,
+          "hair": "short01",
+          "hair_colour": "blonde"
+        }
+      },
+      {
+        "player_id": 70,
+        "name": "Brandon Brown",
+        "jersey_number": 14,
+        "position": "RM",
+        "appearance": {
+          "skin": 1,
+          "hair": "bald",
+          "hair_colour": "red"
+        }
+      },
+      {
+        "player_id": 80,
+        "name": "Sandra Gerow",
+        "jersey_number": 7,
+        "position": "ST",
+        "appearance": {
+          "skin": 2,
+          "hair": "medium01",
+          "hair_colour": "blonde"
+        }
+      },
+      {
+        "player_id": 83,
+        "name": "Bobette Lawson",
+        "jersey_number": 9,
+        "position": "CF",
+        "appearance": {
+          "skin": 3,
+          "hair": "short01",
+          "hair_colour": "blonde"
+        }
+      }
+    ],
+    "visual_identity": {
+      "version": 1,
+      "home": {
+        "kit": {
+          "shirt": "#7A263A",
+          "secondary": "#FFFFFF",
+          "shorts": "#FFFFFF",
+          "socks": "#7A263A",
+          "pattern": "plain"
+        },
+        "selected": "home",
+        "goalkeeper": {
+          "shirt": "#35B6ED",
+          "secondary": "#111111",
+          "shorts": "#35B6ED",
+          "socks": "#35B6ED",
+          "pattern": "plain"
+        },
+        "roster": [
+          {
+            "player_id": 504,
+            "name": "Frank Johnson",
+            "jersey_number": 1,
+            "position": "GK",
+            "appearance": {
+              "skin": 3,
+              "hair": "long02",
+              "hair_colour": "darkblonde"
+            }
+          },
+          {
+            "player_id": 513,
+            "name": "Terry Wrye",
+            "jersey_number": 2,
+            "position": "CB",
+            "appearance": {
+              "skin": 1,
+              "hair": "long01",
+              "hair_colour": "black"
+            }
+          },
+          {
+            "player_id": 512,
+            "name": "Barbara Belk",
+            "jersey_number": 12,
+            "position": "LB",
+            "appearance": {
+              "skin": 3,
+              "hair": "medium01",
+              "hair_colour": "blonde"
+            }
+          },
+          {
+            "player_id": 508,
+            "name": "Robert Romig",
+            "jersey_number": 4,
+            "position": "RB",
+            "appearance": {
+              "skin": 3,
+              "hair": "long01",
+              "hair_colour": "black"
+            }
+          },
+          {
+            "player_id": 506,
+            "name": "Shirley Holland",
+            "jersey_number": 5,
+            "position": "SW",
+            "appearance": {
+              "skin": 1,
+              "hair": "short02",
+              "hair_colour": "black"
+            }
+          },
+          {
+            "player_id": 514,
+            "name": "Jeanine Simpson",
+            "jersey_number": 6,
+            "position": "CM",
+            "appearance": {
+              "skin": 4,
+              "hair": "medium02",
+              "hair_colour": "darkblonde"
+            }
+          },
+          {
+            "player_id": 515,
+            "name": "Jose Lavis",
+            "jersey_number": 8,
+            "position": "CDM",
+            "appearance": {
+              "skin": 4,
+              "hair": "medium02",
+              "hair_colour": "black"
+            }
+          },
+          {
+            "player_id": 519,
+            "name": "James Hall",
+            "jersey_number": 15,
+            "position": "CAM",
+            "appearance": {
+              "skin": 4,
+              "hair": "long01",
+              "hair_colour": "red"
+            }
+          },
+          {
+            "player_id": 516,
+            "name": "Byron Munoz",
+            "jersey_number": 17,
+            "position": "LM",
+            "appearance": {
+              "skin": 3,
+              "hair": "long02",
+              "hair_colour": "darkblonde"
+            }
+          },
+          {
+            "player_id": 521,
+            "name": "Julio Zielinski",
+            "jersey_number": 19,
+            "position": "RM",
+            "appearance": {
+              "skin": 2,
+              "hair": "medium01",
+              "hair_colour": "blonde"
+            }
+          },
+          {
+            "player_id": 525,
+            "name": "Scott Britt",
+            "jersey_number": 7,
+            "position": "ST",
+            "appearance": {
+              "skin": 2,
+              "hair": "medium01",
+              "hair_colour": "brown"
+            }
+          }
+        ]
+      },
+      "away": {
+        "kit": {
+          "shirt": "#DA291C",
+          "secondary": "#111111",
+          "shorts": "#111111",
+          "socks": "#DA291C",
+          "pattern": "stripes"
+        },
+        "selected": "home",
+        "goalkeeper": {
+          "shirt": "#F4D35E",
+          "secondary": "#111111",
+          "shorts": "#F4D35E",
+          "socks": "#F4D35E",
+          "pattern": "plain"
+        },
+        "roster": [
+          {
+            "player_id": 60,
+            "name": "John Patton",
+            "jersey_number": 1,
+            "position": "GK",
+            "appearance": {
+              "skin": 4,
+              "hair": "short01",
+              "hair_colour": "red"
+            }
+          },
+          {
+            "player_id": 67,
+            "name": "Roy Rivera",
+            "jersey_number": 3,
+            "position": "CB",
+            "appearance": {
+              "skin": 1,
+              "hair": "short01",
+              "hair_colour": "black"
+            }
+          },
+          {
+            "player_id": 65,
+            "name": "Stephen Platter",
+            "jersey_number": 4,
+            "position": "LB",
+            "appearance": {
+              "skin": 1,
+              "hair": "short02",
+              "hair_colour": "brown"
+            }
+          },
+          {
+            "player_id": 63,
+            "name": "Dennis Derosso",
+            "jersey_number": 5,
+            "position": "RB",
+            "appearance": {
+              "skin": 2,
+              "hair": "medium01",
+              "hair_colour": "darkblonde"
+            }
+          },
+          {
+            "player_id": 76,
+            "name": "George Sciancalepore",
+            "jersey_number": 10,
+            "position": "CM",
+            "appearance": {
+              "skin": 3,
+              "hair": "bald",
+              "hair_colour": "red"
+            }
+          },
+          {
+            "player_id": 77,
+            "name": "Ernest Byrd",
+            "jersey_number": 12,
+            "position": "CDM",
+            "appearance": {
+              "skin": 1,
+              "hair": "short02",
+              "hair_colour": "brown"
+            }
+          },
+          {
+            "player_id": 74,
+            "name": "Ali Bundage",
+            "jersey_number": 6,
+            "position": "CAM",
+            "appearance": {
+              "skin": 4,
+              "hair": "bald",
+              "hair_colour": "blonde"
+            }
+          },
+          {
+            "player_id": 73,
+            "name": "Karen Ipock",
+            "jersey_number": 8,
+            "position": "LM",
+            "appearance": {
+              "skin": 4,
+              "hair": "short01",
+              "hair_colour": "blonde"
+            }
+          },
+          {
+            "player_id": 70,
+            "name": "Brandon Brown",
+            "jersey_number": 14,
+            "position": "RM",
+            "appearance": {
+              "skin": 1,
+              "hair": "bald",
+              "hair_colour": "red"
+            }
+          },
+          {
+            "player_id": 80,
+            "name": "Sandra Gerow",
+            "jersey_number": 7,
+            "position": "ST",
+            "appearance": {
+              "skin": 2,
+              "hair": "medium01",
+              "hair_colour": "blonde"
+            }
+          },
+          {
+            "player_id": 83,
+            "name": "Bobette Lawson",
+            "jersey_number": 9,
+            "position": "CF",
+            "appearance": {
+              "skin": 3,
+              "hair": "short01",
+              "hair_colour": "blonde"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "timing": {
+    "started_at": "2026-10-14T20:49:15.203156+01:00",
+    "batches": [
+      {
+        "matches": 4,
+        "seconds": 69.85
+      }
+    ],
+    "finished_at": "2026-10-14T20:50:44.838975+01:00",
+    "season_wall_seconds": 89.636,
+    "match_batch_wall_seconds": 69.85,
+    "matches_simulated": 4
+  },
+  "native_audits": [
+    {
+      "match_id": "match_2026_18_3",
+      "passed": true,
+      "frames_compared": 3001,
+      "native_steps_left": 0,
+      "native_half_restart_frame": 1500,
+      "halftime_event_present": true,
+      "first_kickoff_motion_frame": 5,
+      "native_goal_frames_checked": 8,
+      "policy": {
+        "name": "TiKick actor",
+        "checkpoint_sha256": "5e8157c79353cc916464faa0b2feba07ab4bdcf7b521060c85a19e86686dcef5",
+        "direct_actions": 19,
+        "builtin_ai_allowed": true,
+        "available_actions": 20,
+        "inference_profile": "tikick_kaggle"
+      },
+      "score": [
+        4,
+        4
+      ],
+      "seconds": 6.83
+    },
+    {
+      "match_id": "match_2026_1_20",
+      "passed": true,
+      "frames_compared": 3001,
+      "native_steps_left": 0,
+      "native_half_restart_frame": 1500,
+      "halftime_event_present": true,
+      "first_kickoff_motion_frame": 4,
+      "native_goal_frames_checked": 3,
+      "policy": {
+        "name": "TiKick actor",
+        "checkpoint_sha256": "5e8157c79353cc916464faa0b2feba07ab4bdcf7b521060c85a19e86686dcef5",
+        "direct_actions": 19,
+        "builtin_ai_allowed": true,
+        "available_actions": 20,
+        "inference_profile": "tikick_kaggle"
+      },
+      "score": [
+        2,
+        1
+      ],
+      "seconds": 6.77
+    },
+    {
+      "match_id": "match_2026_2_19",
+      "passed": true,
+      "frames_compared": 3001,
+      "native_steps_left": 0,
+      "native_half_restart_frame": 1500,
+      "halftime_event_present": true,
+      "first_kickoff_motion_frame": 5,
+      "native_goal_frames_checked": 12,
+      "policy": {
+        "name": "TiKick actor",
+        "checkpoint_sha256": "5e8157c79353cc916464faa0b2feba07ab4bdcf7b521060c85a19e86686dcef5",
+        "direct_actions": 19,
+        "builtin_ai_allowed": true,
+        "available_actions": 20,
+        "inference_profile": "tikick_kaggle"
+      },
+      "score": [
+        7,
+        5
+      ],
+      "seconds": 6.69
+    },
+    {
+      "match_id": "match_2026_4_17",
+      "passed": true,
+      "frames_compared": 3001,
+      "native_steps_left": 0,
+      "native_half_restart_frame": 1500,
+      "halftime_event_present": true,
+      "first_kickoff_motion_frame": 5,
+      "native_goal_frames_checked": 7,
+      "policy": {
+        "name": "TiKick actor",
+        "checkpoint_sha256": "5e8157c79353cc916464faa0b2feba07ab4bdcf7b521060c85a19e86686dcef5",
+        "direct_actions": 19,
+        "builtin_ai_allowed": true,
+        "available_actions": 20,
+        "inference_profile": "tikick_kaggle"
+      },
+      "score": [
+        5,
+        2
+      ],
+      "seconds": 6.82
+    }
+  ],
+  "native_states_compared": 12004,
+  "native_goal_frames_checked": 30,
+  "render": {
+    "match_id": "match_2026_18_3",
+    "output_mp4": "/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/assets/matches/current-season/west-ham-bournemouth.mp4",
+    "resolution": "720p",
+    "total_frames": 3109,
+    "total_time_sec": 176.51,
+    "effective_fps": 17.6,
+    "render_profile": {
+      "resolution": "720p",
+      "dimensions": "1280x720",
+      "encoder_used": "FFmpegSoftwareEncoder",
+      "encoder_preset": "p4",
+      "opengl_driver": "auto",
+      "total_render_time_ms": 176508.7,
+      "timing_breakdown": {
+        "startup_init_ms": 20500.6,
+        "archive_read_ms": 1723.3,
+        "state_restore_ms": 8107.1,
+        "grf_render_ms": 129804.5,
+        "rgb_copy_resize_ms": 16.5,
+        "hud_compositing_ms": 14483.4,
+        "queue_push_block_ms": 141.4,
+        "encoder_write_ms": 12806.6,
+        "ffmpeg_flush_ms": 162.5
+      },
+      "queue_telemetry": {
+        "max_capacity": 16,
+        "frames_enqueued": 3110,
+        "frames_dequeued": 3110,
+        "producer_block_count": 53,
+        "consumer_block_count": 3011,
+        "time_producer_blocked_ms": 409.87,
+        "time_consumer_idle_ms": 143065.48,
+        "max_depth": 16,
+        "mean_depth": 1.37,
+        "p50_depth": 1.0,
+        "p95_depth": 1.0
+      },
+      "effective_fps": 17.6,
+      "total_frames": 3109,
+      "broadcast_fps": 10
+    },
+    "source_unchanged": true,
+    "source_hashes": {
+      "/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/backend/verification/readme_season_20261014_204915/reports/recordings/run_1792007356_e953de/trace_match_2026_18_3.grfstate": "8f0043b5426102d31246cfedc129c21fb18ef71ad8d8ccc1a61379eefa73d59f",
+      "/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/backend/verification/readme_season_20261014_204915/reports/recordings/run_1792007356_e953de/trace_match_2026_18_3.npz": "2838199300853cdf41a3f45971b5578b3816c4f092eba7079a63a712c0c78550",
+      "/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/backend/verification/readme_season_20261014_204915/reports/recordings/run_1792007356_e953de/trace_match_2026_18_3.goals.json": "6201202e8d8a6dff68bbcdb080aab47b3d670529a01e13d534faaeb3aa9c86d6",
+      "/mnt/c/Users/kevin/OneDrive/Desktop/Projects/Footy/backend/verification/readme_season_20261014_204915/reports/recordings/run_1792007356_e953de/trace_match_2026_18_3.goals.grfstate": "76b5b7bcfa8a89aa24fb25db0adc3250ab92096c85678ab4d1c3110d5f0f9fc7"
+    },
+    "physics_hash": "4a4555386de885ec7d74d7c994dcbda37df4518cd5cd26f5b5366cc2af492f67"
+  },
+  "video": {
+    "path": "assets/matches/current-season/west-ham-bournemouth.mp4",
+    "dimensions": [
+      1280,
+      720
+    ],
+    "fps": 10,
+    "decoded_frames": 3109,
+    "duration_seconds": 310.9,
+    "size_bytes": 87834270,
+    "source_unchanged": true,
+    "sha256": "508517cdcd93fc5e78e5539ca82b88f0e85c680b092f847c632c2a33d65934ab"
+  },
+  "hero_gif": {
+    "source_video_start_seconds": 72.1,
+    "duration_seconds": 8,
+    "dimensions": [
+      720,
+      405
+    ],
+    "fps": 10,
+    "event": {
+      "minute": 22,
+      "step": 711,
+      "type": "goal",
+      "team": "away",
+      "player": "Ernest Byrd",
+      "scorer": "Ernest Byrd",
+      "score": "0-1",
+      "causality": {
+        "ball_coord": [
+          -1.0504487752914429,
+          0.006671349052339792,
+          1.1345455646514893
+        ],
+        "goal_mouth_y": -0.0,
+        "score_transition": [
+          0,
+          1
+        ]
+      }
+    },
+    "sha256": "072f174ccc4cef7be132dbf97a3fab6afa2dd8b4f5685c9cb9fcd21cc2eaa592"
+  },
+  "verification": {
+    "affected_tests_passed": 17,
+    "decoded_video_frames": 3109,
+    "studio_goal_events": "Half-time and full-time cards receive canonical recorded events."
+  }
+}

@@ -9,6 +9,23 @@ const apiClient = axios.create({
   timeout: API_TIMEOUT_MS,
 });
 
+export const resolveApiBaseUrl = (): string =>
+  window.localStorage.getItem('footy_api_url')?.trim() || API_BASE_URL;
+
+apiClient.interceptors.request.use((request) => {
+  request.baseURL = resolveApiBaseUrl();
+  return request;
+});
+
+export const resolveSimulationSocketUrl = (): string => {
+  const socket = new URL(resolveApiBaseUrl());
+  socket.protocol = socket.protocol === 'https:' ? 'wss:' : 'ws:';
+  socket.pathname = '/ws';
+  socket.search = '';
+  socket.hash = '';
+  return socket.toString();
+};
+
 export const resolveReplayVideoUrl = (url?: string | null): string => {
   if (!url) return '';
   if (/^(https?:|blob:)/.test(url)) return url;
@@ -179,8 +196,8 @@ export const getPlayers = async (): Promise<Player[]> => {
   return Array.isArray(response.data) ? response.data : (response.data?.players ?? []);
 };
 
-export const runSimulation = async () => {
-  const response = await apiClient.post('/api/v1/run-simulation');
+export const runSimulation = async (params?: { seasons?: number; season_year?: number; render_mode?: '2d' | '3d' }) => {
+  const response = await apiClient.post('/api/v1/run-simulation', params);
   return response.data; // { status: string, message: string, details?: string }
 };
 
@@ -500,9 +517,68 @@ export const runMlEvaluation = async (params: {
   teams?: number;
   season_length?: number;
   fast_mode?: boolean;
-}): Promise<MlReport> => {
-  const response = await apiClient.post<{ status: string; report: MlReport }>('/api/v1/run-ml-eval', params);
-  return response.data.report;
+  seed?: number;
+}, onProgress?: (status: string) => void, signal?: AbortSignal): Promise<MlReport> => {
+  const response = await apiClient.post<JobAcceptance>('/api/v1/run-ml-eval', params, { signal });
+  window.sessionStorage.setItem('footy_ml_job', response.data.job_id);
+  const job = await waitForJob(response.data.job_id, onProgress, signal);
+  window.sessionStorage.removeItem('footy_ml_job');
+  if (!job.result) throw new Error('Evaluation completed without a report');
+  return job.result as unknown as MlReport;
+};
+
+export const resumeMlEvaluation = async (onProgress: (status: string) => void, signal?: AbortSignal): Promise<MlReport | null> => {
+  const identity = window.sessionStorage.getItem('footy_ml_job');
+  if (!identity) return null;
+  try {
+    const job = await waitForJob(identity, onProgress, signal);
+    window.sessionStorage.removeItem('footy_ml_job');
+    return job.result as unknown as MlReport;
+  } catch (error) {
+    if (!signal?.aborted) window.sessionStorage.removeItem('footy_ml_job');
+    throw error;
+  }
+};
+
+export interface JobAcceptance {
+  status: string;
+  message: string;
+  job_id: string;
+  run_id?: string;
+  status_url: string;
+}
+
+export interface WorkJob {
+  job_id: string;
+  kind: string;
+  run_id?: string;
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
+  error_message?: string;
+  result?: Record<string, unknown>;
+}
+
+export const getJob = async (jobId: string, signal?: AbortSignal): Promise<WorkJob> =>
+  (await apiClient.get<WorkJob>(`/api/v1/jobs/${encodeURIComponent(jobId)}`, { signal })).data;
+
+export const cancelJob = async (jobId: string): Promise<WorkJob> =>
+  (await apiClient.post<WorkJob>(`/api/v1/jobs/${encodeURIComponent(jobId)}/cancel`)).data;
+
+export const waitForJob = async (jobId: string, onProgress?: (status: string) => void,
+                                 signal?: AbortSignal): Promise<WorkJob> => {
+  for (;;) {
+    signal?.throwIfAborted();
+    const job = await getJob(jobId, signal);
+    onProgress?.(job.status);
+    if (job.status === 'completed') return job;
+    if (['failed', 'cancelled', 'interrupted'].includes(job.status)) {
+      throw new Error(job.error_message || `Job ${job.status}`);
+    }
+    await new Promise<void>((resolve, reject) => {
+      const abort = () => { clearTimeout(timer); reject(new DOMException('Polling cancelled', 'AbortError')); };
+      const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, 1000);
+      signal?.addEventListener('abort', abort, { once: true });
+    });
+  }
 };
 
 export const createSaveState = async (): Promise<{ status: string; save_id: string; message: string }> => {
@@ -629,6 +705,35 @@ export const getCurrentSimulationRun = async (): Promise<CurrentSimulationRun> =
   return response.data;
 };
 
+export const getSimulationRun = async (runId: string): Promise<CurrentSimulationRun> =>
+  (await apiClient.get<CurrentSimulationRun>(`/api/v1/simulation/runs/${encodeURIComponent(runId)}`)).data;
+
+export interface SavedRun {
+  run_id: string; season_year: number; created_at: string; status: string; matches_played: number; seasons: number[];
+}
+export interface CampaignSnapshot {
+  run_id: string; season_year: number; matches_played: number;
+  teams: Array<{ name: string; players: RetainedPlayer[]; finances: { budget: number } }>;
+}
+export interface RetainedPlayer {
+  name: string; position: string; contract_length: number; wage: number;
+  release_clause?: number | null;
+  suspended_matches?: number;
+  injury_days?: number;
+  sell_on_clause?: { beneficiary: string; percentage: number } | null;
+  loan_contract?: { owner: string; borrower: string; expires_day: number } | null;
+}
+export interface FinancialLedger {
+  opening_balance: number; closing_balance: number; net_cashflow: number;
+  entries: Array<{ entry_number: number; season_year: number; category: string; description: string; amount: number; balance: number }>;
+}
+export const getSimulationRuns = async (): Promise<SavedRun[]> =>
+  (await apiClient.get<{ runs: SavedRun[] }>('/api/v1/simulation/runs')).data.runs;
+export const getCampaignSnapshot = async (runId: string, year: number): Promise<CampaignSnapshot> =>
+  (await apiClient.get<CampaignSnapshot>(`/api/v1/simulation/runs/${encodeURIComponent(runId)}/seasons/${year}`)).data;
+export const getCampaignFinances = async (runId: string, club: string): Promise<FinancialLedger> =>
+  (await apiClient.get<FinancialLedger>(`/api/v1/simulation/runs/${encodeURIComponent(runId)}/finances/${encodeURIComponent(club)}`)).data;
+
 export interface TimelineSegment {
   segment_type: string;
   source_step_start: number;
@@ -671,9 +776,9 @@ export interface MatchRenderResponse {
 
 export const renderMatchReplay = async (
   matchId: string | number,
-  options?: { render_mode?: '3d' | '2d' | 'auto'; force?: boolean }
+  options?: { render_mode?: '3d' | '2d' | 'auto'; force?: boolean; resolution?: '720p' | '1080p'; theme?: 'dark' | 'light'; camera?: 'wide' | 'bird' | 'tele' | 'director' }
 ): Promise<MatchRenderResponse> => {
-  const response = await apiClient.post<MatchRenderResponse>(`/api/v1/match/${matchId}/render`, options || {});
+  const response = await apiClient.post<MatchRenderResponse>(`/api/v1/match/${matchId}/render`, options || {}, { timeout: 660000 });
   return response.data;
 };
 

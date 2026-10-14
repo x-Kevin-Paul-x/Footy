@@ -100,17 +100,12 @@ def test_chronological_matchday_execution_in_concurrent():
     assert "prepared_matches = [self.prepare_match" in src, "play_matchdays_concurrent must prepare matches per matchday batch"
 
 
-def test_process_pool_state_machine_and_order_preservation():
-    """Statically inspect SimulationProcessPool for explicit state machine and input order preservation."""
+def test_process_pool_rejects_duplicate_fixture_identities():
+    """Ambiguous ownership must fail before any workers are dispatched."""
     from logic.simulation.simulation_process_pool import SimulationProcessPool
-
-    src_pool = inspect.getsource(SimulationProcessPool._run_dynamic_queue_pool)
-    assert "fixture_states" in src_pool, "Supervisor must maintain explicit fixture_states map"
-    assert "clean_partial_artifacts" in src_pool, "Supervisor must clean partial artifacts before retry"
-    assert "if m_id not in results_by_id:" in src_pool, "Supervisor must enforce result deduplication"
-
-    src_run = inspect.getsource(SimulationProcessPool.run_batch)
-    assert "return" in src_run, "run_batch must return results matching input fixture order"
+    with pytest.raises(ValueError, match='unique'):
+        SimulationProcessPool(num_workers=2).run_batch(
+            [{'match_id': 'same'}, {'match_id': 'same'}], 'unused', 'unused')
 
 
 def test_fast_mode_engine_mode_precedence():

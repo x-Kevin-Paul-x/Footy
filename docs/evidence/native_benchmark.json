@@ -1,0 +1,90 @@
+{
+  "timestamp": "2026-10-13 02:59:30",
+  "machine_metadata": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "AMD64 Family 25 Model 97 Stepping 2, AuthenticAMD",
+    "python_version": "3.12.10",
+    "python_executable": "C:\\Users\\kevin\\OneDrive\\Desktop\\Projects\\Footy\\.venv\\Scripts\\python.exe",
+    "cpu_count_logical": 32,
+    "total_ram_gb": 23.05,
+    "available_ram_gb": 3.18,
+    "torch_version": "2.13.0+cpu",
+    "cuda_available": false
+  },
+  "benchmark_config": {
+    "worker_counts": [
+      1,
+      2
+    ],
+    "fixture_counts": [
+      2
+    ],
+    "step_counts": [
+      200
+    ],
+    "replay_modes": [
+      "trajectory"
+    ],
+    "repetitions": 2,
+    "smoke": false,
+    "output_dir": "backend\\verification\\tmp\\native-benchmark"
+  },
+  "workload": "native_grf_pool",
+  "suite_duration_seconds": 57.329,
+  "results": [
+    {
+      "workers": 1,
+      "observed_workers": 1,
+      "fixtures": 2,
+      "steps": 200,
+      "replay_mode": "trajectory",
+      "repetitions": 2,
+      "elapsed_times": [
+        23.2526,
+        14.2789
+      ],
+      "throughput_fixtures_per_sec": 0.11,
+      "throughput_steps_per_sec": 21.32,
+      "p50_latency_sec": 18.7658,
+      "p95_latency_sec": 22.8039,
+      "min_latency_sec": 14.2789,
+      "max_latency_sec": 23.2526,
+      "latency_spread_sec": 8.9737,
+      "result_hashes": [
+        "dda74229932bf9ad077fba5f9595b9f4cd334aa794812136eb83fa9f77182fc7",
+        "dda74229932bf9ad077fba5f9595b9f4cd334aa794812136eb83fa9f77182fc7"
+      ],
+      "correctness_pass": true,
+      "memory_peak_mb": null
+    },
+    {
+      "workers": 2,
+      "observed_workers": 2,
+      "fixtures": 2,
+      "steps": 200,
+      "replay_mode": "trajectory",
+      "repetitions": 2,
+      "elapsed_times": [
+        9.7171,
+        10.0799
+      ],
+      "throughput_fixtures_per_sec": 0.2,
+      "throughput_steps_per_sec": 40.41,
+      "p50_latency_sec": 9.8985,
+      "p95_latency_sec": 10.0618,
+      "min_latency_sec": 9.7171,
+      "max_latency_sec": 10.0799,
+      "latency_spread_sec": 0.3628,
+      "result_hashes": [
+        "dda74229932bf9ad077fba5f9595b9f4cd334aa794812136eb83fa9f77182fc7",
+        "dda74229932bf9ad077fba5f9595b9f4cd334aa794812136eb83fa9f77182fc7"
+      ],
+      "correctness_pass": true,
+      "memory_peak_mb": null
+    }
+  ],
+  "all_passed": true,
+  "topology_invariance": true,
+  "saved_path": "backend\\verification\\tmp\\native-benchmark\\benchmark_report_1791856770.json",
+  "measurement_notes": "Cold batch latency includes WSL process startup and checkpoint loading. Two repetitions are diagnostic, not a saturation study."
+}

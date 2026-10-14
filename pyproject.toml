@@ -9,22 +9,58 @@ description = "Footy Simulation Engine & FastAPI Backend"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "fastapi",
-    "uvicorn",
-    "watchfiles",
-    "sqlalchemy",
-    "pydantic",
-    "torch",
-    "pytest",
-    "python-dotenv"
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.34,<1",
+    "watchfiles>=0.21",
+    "sqlalchemy>=2.0.38,<3",
+    "alembic>=1.14,<2",
+    "pydantic>=2,<3",
+    "numpy>=2.2,<3",
+    "names==0.3.0",
+    "filelock>=3.18",
+    "websockets>=14,<17",
+    "python-dotenv>=1.1,<2"
 ]
+
+[project.optional-dependencies]
+ml = ["torch>=2.6", "gymnasium>=1.0", "matplotlib>=3.9"]
+media = ["opencv-python>=4.10", "imageio[ffmpeg]>=2.35", "Pillow>=10"]
+dev = ["pytest>=8.4", "pytest-cov>=6", "httpx>=0.27", "ruff>=0.11", "mypy>=1.15", "pre-commit>=4", "psutil>=6"]
+
+[project.scripts]
+footy-api = "api_fastapi:run_server"
+footy-rl = "ml.train_rl:main"
+footy-convert-archive = "logic.convert_legacy_archive:main"
+footy-migrate = 'database.migrations:main'
+
+[tool.setuptools]
+package-dir = {"" = "backend/src"}
+py-modules = ["api_fastapi", "config", "main", "schemas"]
 
 [tool.setuptools.packages.find]
 where = ["backend/src"]
 
+[tool.setuptools.package-data]
+logic = ["broadcast_fonts/*.ttf", "broadcast_fonts/*OFL.txt"]
+
 [tool.pytest.ini_options]
 pythonpath = ["backend/src"]
 testpaths = ["backend/tests"]
+markers = ["native: requires the GRF runtime and checkpoint", "slow: long integration or stress run"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+extend-exclude = ["backend/third_party", "backend/verification", "backend/native", "backend/commentary/.venv-tts", "backend/commentary/models", "backend/commentary/artifacts", "backend/commentary/output", "frontend", "node_modules"]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]
+
+[tool.mypy]
+files = ["backend/src/logic/safe_paths.py", "backend/src/logic/replay/frame_timeline.py"]
+follow_imports = "skip"
+ignore_missing_imports = true
+check_untyped_defs = true
 
 [tool.pyright]
 extraPaths = ["backend/src"]

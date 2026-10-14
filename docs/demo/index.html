@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#06101E">
+  <meta name="description" content="Explore Footy's recorded matches, manager benchmarks and simulation evidence.">
+  <title>FOOTY — Matchday Showcase</title>
+  <script>
+    try {
+      document.documentElement.dataset.theme = localStorage.getItem('footy_theme_mode') === 'light' ? 'light' : 'dark';
+    } catch { /* Use the frontend's default midnight theme when storage is unavailable. */ }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&display=swap">
+  <link rel="stylesheet" href="frontend-theme.css">
+  <link rel="stylesheet" href="demo.css">
+  <script src="demo.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="app-shell">
+    <header class="finnova-header-bar app-header">
+      <a class="brand" href="#main" aria-label="Footy showcase home">
+        <span class="brand-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m12 7 4.7 3.4-1.8 5.5H9.1l-1.8-5.5L12 7Zm0-4v4m8.6 2.2-3.9 1.2m.6 9.9-2.4-4.4m-8.2 4.4 2.4-4.4M3.4 9.2l3.9 1.2"/></svg></span>
+        <span><strong>FOOTY</strong><small>Smart Analytics, Better Football</small></span>
+      </a>
+      <nav class="finnova-nav-capsule" aria-label="Showcase sections">
+        <a class="finnova-nav-item active" href="#match">Match replay</a>
+        <a class="finnova-nav-item" href="#benchmarks">AI benchmarks</a>
+        <a class="finnova-nav-item" href="#evidence">Verification</a>
+      </nav>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch to light mode">
+        <svg class="sun-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5"/></svg>
+        <svg class="moon-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15.7A9 9 0 0 1 8.3 4a9 9 0 1 0 11.7 11.7Z"/></svg>
+        <span id="theme-label">Light mode</span>
+      </button>
+    </header>
+    <main class="finnova-main-frame" id="main">
+      <div class="page-heading">
+        <div><span class="finnova-filter-pill eyebrow"><span class="status-dot"></span>Read-only showcase</span><h1>Matchday Showcase</h1><p>Native match physics. Recorded replays. Football decisions backed by evidence.</p></div>
+        <a class="finnova-tactile-btn source-button" href="https://github.com/x-Kevin-Paul-x/Footy">Explore the project <span aria-hidden="true">↗</span></a>
+      </div>
+      <section class="metrics-grid" aria-label="Recorded season overview">
+        <article class="finnova-card metric-card"><div class="metric-heading"><span class="metric-icon" aria-hidden="true">01</span><h2>Season coverage</h2></div><div class="metric-value">380 <span>fixtures</span></div><p>A complete recorded season, audited.</p></article>
+        <article class="finnova-card metric-card"><div class="metric-heading"><span class="metric-icon" aria-hidden="true">02</span><h2>Replay archive</h2></div><div class="metric-value">1.14m <span>states</span></div><p>Native saved states checked.</p></article>
+        <article class="finnova-card metric-card"><div class="metric-heading"><span class="metric-icon" aria-hidden="true">03</span><h2>Player policy</h2></div><div class="metric-value">20 <span>agents</span></div><p>TiKick controls the outfield players.</p></article>
+      </section>
+      <section class="finnova-card match-card" id="match" aria-labelledby="match-title">
+        <div class="section-heading"><div><span class="section-kicker">RECORDED MATCH · #372</span><h2 id="match-title">Burnley vs Bournemouth</h2><p>A native GRF match from the verified 380-fixture season.</p></div><div class="score-chip"><strong>2 <span>–</span> 4</strong><small>Recorded result</small></div></div>
+        <div class="video-frame"><video controls playsinline preload="metadata" aria-label="Burnley versus Bournemouth recorded match"><source src="match.mp4" type="video/mp4">Your browser does not support video playback.</video></div>
+        <div class="match-caption"><span class="small-pill">3D broadcast replay</span><span>Google Research Football + TiKick</span><span>5 min 11 sec</span></div>
+      </section>
+      <div class="detail-grid">
+        <section class="finnova-card benchmark-card" id="benchmarks" aria-labelledby="benchmark-title">
+          <div class="section-heading"><div><span class="section-kicker">AI BENCHMARKS</span><h2 id="benchmark-title">Manager policy comparison</h2></div><span class="small-pill">30 held-out seeds</span></div>
+          <p id="benchmark-description">Six clubs, twenty decisions per episode. These results use the synthetic management environment, separate from native GRF match physics.</p>
+          <div class="table-frame"><table aria-describedby="benchmark-description"><thead><tr><th scope="col">Policy</th><th scope="col">Reward</th><th scope="col">Points</th><th scope="col">Rank</th></tr></thead><tbody id="policies"><tr><td colspan="4">Loading measured results…</td></tr></tbody></table></div>
+          <div class="finnova-spotlight-subcard finding"><span class="section-kicker">WHAT THE RESULTS SAY</span><p id="finding" role="status">Loading the policy comparison…</p></div>
+        </section>
+        <section class="finnova-card evidence-card" id="evidence" aria-labelledby="evidence-title">
+          <span class="section-kicker">VERIFICATION</span><h2 id="evidence-title">Measured, with context.</h2><p>Scoring calibration is still in progress.</p>
+          <div class="calibration-grid"><div class="finnova-spotlight-subcard"><strong id="sim-goals">—</strong><small>GRF goals / match</small></div><div class="finnova-spotlight-subcard"><strong id="reference-goals">—</strong><small>Premier League 2023/24</small></div></div>
+          <p id="calibration" role="status">Loading season comparison…</p>
+          <div class="limitations"><h3>Current boundaries</h3><ul><li>Native player substitutions remain unsupported.</li><li>Assists are untracked without an authoritative assist event.</li><li>Saved campaigns retain database history; interrupted in-memory matches cannot automatically resume.</li></ul></div>
+          <a class="finnova-indented-btn evidence-link" href="https://github.com/x-Kevin-Paul-x/Footy/blob/codex/project-roadmap-updates/docs/verification_2026_10_13.md">Read the verification report <span aria-hidden="true">↗</span></a>
+        </section>
+      </div>
+      <footer><span><strong>FOOTY</strong> · Smart Analytics, Better Football</span><span>Recorded data only · no simulation jobs or save changes</span></footer>
+    </main>
+  </div>
+</body>
+</html>

@@ -46,6 +46,15 @@ def assign_squad_numbers(players, appearances=None):
 def sync_player_attributes(db, source, target):
     """Persist generated and trained ability, including newly created youth."""
     from database.models import PlayerAttribute
+    import json
+    target.availability_json = json.dumps({'suspended_matches': getattr(source, 'suspended_matches', 0),
+                                          'yellow_cards_accumulator': getattr(source, 'yellow_cards_accumulator', 0),
+                                          'is_injured': getattr(source, 'is_injured', False),
+                                          'recovery_time': getattr(source, 'recovery_time', 0),
+                                          'injury_type': getattr(source, 'injury_type', None)})
+    target.contract_json = json.dumps({'release_clause': getattr(source, 'release_clause', None),
+                                      'sell_on_clause': getattr(source, 'sell_on_clause', None),
+                                      'loan_contract': getattr(source, 'loan_contract', None)})
     existing = {(a.attribute_type, a.sub_attribute): a for a in target.attributes}
     for category, values in source.attributes.items():
         for key, value in values.items():
