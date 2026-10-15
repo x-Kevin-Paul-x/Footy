@@ -142,3 +142,17 @@ against errors in the source records or audible speech generation.
 
 Detailed implementation plan and remaining work:
 [commentary improvement plan](../../docs/commentary_improvement_plan_2026_10_15.md).
+
+## Conversational discussion
+
+With the local model available, introductions, analysis and quiet-play discussion
+use original dialogue with recent-turn memory and paired questions/replies.
+The planner owns meaning and citations; the model phrases the primary turn.
+Shorter emergency alternatives remain controlled.
+Goal and whistle calls remain deterministically grounded. Every generated speech
+variant passes scoped-evidence checks and a separate model review; that semantic
+review is fallible. Rejected or offline dialogue uses controlled fallback.
+
+See [reference research and access limits](../../docs/commentary_conversation_references_2026_10_16.md).
+`--no-llm` deliberately exercises the controlled fallback rather than the natural
+dialogue path. Listen to a model-generated review before judging conversation.

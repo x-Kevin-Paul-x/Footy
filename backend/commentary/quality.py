@@ -43,6 +43,9 @@ def audit_commentary(artifacts_dir, timeline, source_video=None, output_video=No
         if clip.requested_start_ms+durations[clip.clip_id]>clip.max_end_ms+.001:
             raise ValueError(f"Overflow {clip.clip_id}")
     ordered=sorted(clips,key=lambda c:c.requested_start_ms)
+    spoken_ids = {c.clip_id for c in clips}
+    if any(s.reply_to and s.reply_to not in spoken_ids for s in slots):
+        raise ValueError('Spoken reply has no spoken opener')
     for a,b in zip(ordered,ordered[1:]):
         if a.requested_start_ms+durations[a.clip_id]>b.requested_start_ms+.001:
             raise ValueError("Overlapping speech")
@@ -71,7 +74,10 @@ def audit_commentary(artifacts_dir, timeline, source_video=None, output_video=No
     report['story_clips'] = sum(s.slot_type == 'story' for s in slots)
     omissions = p/'tts_omissions.json'
     report['optional_audio_omissions'] = json.loads(omissions.read_text()) if omissions.exists() else []
-    report['factual_validation_scope'] = 'Controlled text and evidence provenance; not an audio listening score'
+    report['reviewed_dialogue_clips'] = sum(u.grounding and u.grounding.get('version') == 'conversation-1' for u in script.utterances)
+    report['spoken_dialogue_pairs'] = sum(bool(s.reply_to) for s in slots)
+    report['factual_validation_scope'] = ('Deterministic event calls plus time-scoped, model-reviewed original dialogue; '
+        'semantic review is fallible and is not a factual guarantee or listening-quality score')
     report['buildup_definition'] = 'Observed same-team attack/shot cue within four seconds; no requirement to know the future scorer'
     if source_video and output_video:
         report["original_video_packets_preserved"]=video_packet_hash(source_video)==video_packet_hash(output_video)

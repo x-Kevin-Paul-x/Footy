@@ -63,7 +63,60 @@ class SlotAllocator:
             if add(t, end, kind, event=e, priority=8 if urgent else 2,
                    energy=.76 if urgent else .43):
                 last_live = t
-        # Fill eligible quiet windows using already-recorded roles/formations.
+        # Reserve connected discussion ahead of routine possession announcements.
+        # An observed attack/shot always bounds the exchange, including unvoiced cues.
+        dialogue_index = 0
+        story_topics = [r for r in context.evidence_records if r['kind'] in
+                        ('prior_result','winning_run','formation')]
+        used_topics = set()
+        ledger = EvidenceLedger(context)
+        for left, right in self.timeline.get_play_windows():
+            left, right = int(left*1000), int(right*1000)
+            anchors = sorted([s for s in slots if s.priority >= 5 and
+                              s.start_ms < right and s.max_end_ms > left],key=lambda s:s.start_ms)
+            cursor = max(left,10000)
+            for following in anchors+[None]:
+                stop = min(right,following.start_ms) if following else right
+                start = cursor+650
+                # Future observations only delimit fit; packet() still supplies
+                # facts available at each turn, never a later outcome.
+                cues = [e.presentation_ms for e in ordered_events if e.type in
+                    ('BOX_ENTRY','SHOT_RELEASE','CONTROL_IN_ATTACK') and start < e.presentation_ms < stop]
+                boundaries = [start]+[t+2600 for t in cues]
+                for candidate_start in boundaries:
+                    deadline = min([t-150 for t in cues if t > candidate_start]+[stop-200])
+                    if deadline-candidate_start < 7800:
+                        continue
+                    end = min(deadline,candidate_start+10200)
+                    split = candidate_start+min(4100,int((end-candidate_start)*.43))
+                    available = ledger.at(candidate_start)
+                    topic = next((r for r in story_topics if r['id'] not in used_topics and
+                                  r['available_ms'] <= candidate_start),None)
+                    if topic:
+                        ids = [topic['id']]
+                        used_topics.add(topic['id'])
+                    else:
+                        goals_now = [r for r in available if r['kind']=='GOAL']
+                        ids = ['fixture']+([goals_now[-1]['id']] if goals_now else [])
+                    dialogue_index += 1
+                    did = f'discussion_{dialogue_index}'
+                    if not add(candidate_start,split,'story','Ryan',priority=3):
+                        continue
+                    opener = slots[-1]
+                    opener.active_event_type = 'STORY'
+                    opener.evidence_ids = ids
+                    opener.dialogue_id, opener.speech_act = did,'ask'
+                    if not add(split+250,end,'story','Aiden',priority=3):
+                        slots.remove(opener)
+                        continue
+                    answer = slots[-1]
+                    answer.active_event_type = 'STORY'
+                    answer.evidence_ids = ids
+                    answer.dialogue_id, answer.speech_act = did,'answer'
+                    break
+                if following:
+                    cursor = max(cursor,following.max_end_ms)
+        # Fill remaining short quiet windows using already-recorded roles/formations.
         # No streak, age or other-match result is manufactured when absent.
         formations = [r for r in context.evidence_records if r['kind'] == 'formation']
         home_players = [r for r in context.evidence_records if r['kind'] == 'player' and r['data']['team'] == context.home_team]
@@ -106,4 +159,8 @@ class SlotAllocator:
                     cursor = max(cursor,following.max_end_ms)
         slots.sort(key=lambda s:s.start_ms)
         for i, s in enumerate(slots): s.commentary_id = f"com_{i+1:03d}"
+        openers = {s.dialogue_id:s for s in slots if s.speech_act=='ask'}
+        for s in slots:
+            if s.speech_act=='answer':
+                s.reply_to = openers[s.dialogue_id].commentary_id
         return slots

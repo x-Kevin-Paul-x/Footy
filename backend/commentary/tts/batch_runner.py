@@ -31,6 +31,19 @@ def trim_silence(audio, sample_rate):
     margin = int(sample_rate*.015)
     return audio[max(0, active[0]-margin):min(len(audio),active[-1]+margin+1)]
 
+def drop_orphan_replies(records, slots, omissions):
+    """A cached answer must not survive a failed/omitted spoken question."""
+    kept = []
+    available = set()
+    for record in sorted(records,key=lambda r:r['requested_start_ms']):
+        reply = slots[record['clip_id']].get('reply_to')
+        if reply and reply not in available:
+            omissions.append(dict(id=record['clip_id'],reason='Spoken dialogue opener unavailable'))
+        else:
+            kept.append(record)
+            available.add(record['clip_id'])
+    return kept
+
 def run_batch_tts(script_path, slots_path, output_dir=CLIPS_DIR, voice=DEFAULT_VOICE, device="auto", limit=None):
     import torch, soundfile as sf
     from qwen_tts import Qwen3TTSModel
@@ -109,7 +122,7 @@ def run_batch_tts(script_path, slots_path, output_dir=CLIPS_DIR, voice=DEFAULT_V
         wav.with_suffix(".json").write_text(json.dumps({"signature":signature,"text":text,"record":record,
             "seed":seed,"profile":PROFILE_REVISION,"generation":GENERATION},indent=2),encoding="utf-8")
         records.append(record)
-    records.sort(key=lambda c:c["requested_start_ms"])
+    records = drop_orphan_replies(records,slots,omissions)
     (output_dir.parent/"audio_clips_manifest.json").write_text(json.dumps(records,indent=2),encoding="utf-8")
     (output_dir.parent/"tts_omissions.json").write_text(json.dumps(omissions,indent=2),encoding="utf-8")
     (output_dir.parent/"tts_run.json").write_text(json.dumps({"device":device,"torch":torch.__version__,

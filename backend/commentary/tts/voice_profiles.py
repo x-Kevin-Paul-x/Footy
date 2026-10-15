@@ -10,6 +10,10 @@ GENERATION = dict(do_sample=True, temperature=.65, top_p=.9, top_k=30,
 
 
 def instruction(slot):
+    if slot.get('speech_act') == 'ask':
+        return 'Clear English football commentator. Ask your colleague a relaxed, curious question in your usual voice. Natural connected speech, no theatrical pauses.'
+    if slot.get('speech_act') == 'answer':
+        return 'Clear English football analyst. Reply directly to your colleague with a warm, thoughtful conversational tone. Natural connected speech in your usual voice, no whispering.'
     if slot.get('speaker') == 'Aiden':
         return 'Clear English football analyst. Warm, conversational and measured, with consistent natural vocal tone. No whispering.'
     if slot.get('slot_type') == 'goal_reaction':

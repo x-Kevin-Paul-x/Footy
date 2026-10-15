@@ -113,6 +113,9 @@ class CommentarySlot(BaseModel):
     in_play_summary: str = ""
     allowed_fact_ids: List[str] = Field(default_factory=list)
     evidence_ids: List[str] = Field(default_factory=list)
+    dialogue_id: Optional[str] = None
+    speech_act: str = "call"
+    reply_to: Optional[str] = None
 
 
 class CommentaryUtterance(BaseModel):

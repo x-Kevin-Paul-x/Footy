@@ -200,6 +200,66 @@ class GroundedCompiler:
             return options
         if slot.slot_type == 'story':
             wanted = set(slot.evidence_ids)
+            if slot.dialogue_id:
+                cited = [r for r in eligible if r['id'] in wanted]
+                if not cited:
+                    raise MissingEvidence('Discussion topic unavailable')
+                formation = next((r for r in cited if r['kind']=='formation'),None)
+                support = list(cited)
+                latest = goals[-1] if goals else None
+                if latest and latest not in support:
+                    support.append(latest)
+                if formation:
+                    team = formation['data']['team']
+                    shape = formation['data']['formation']
+                    if shape.startswith('3-'):
+                        question = f'{team} with three at the back. Your first thought?'
+                        answer = "I'd try to stretch them. Make those gaps as wide as possible."
+                        short_answer = "I'd stretch them and look for gaps."
+                    else:
+                        question = f"{team}'s shape, Aiden. Where would you look for space?"
+                        answer = "I'd test the wide areas first. Make them defend the whole pitch."
+                        short_answer = "I'd test the wide areas first."
+                    short_question = f'{team}: where would you attack?'
+                elif score[0] != score[1]:
+                    trailing = home if score[0]<score[1] else away
+                    gap = abs(score[0]-score[1])
+                    if gap == 1:
+                        question = f'Just one in it. Would you take more risks?'
+                        short_question = 'Would you take more risks?'
+                        answer = "I would, but I'd leave cover. There's no need to gamble everything."
+                        short_answer = "I would, but I'd leave some cover."
+                    elif slot.match_minute >= 45:
+                        if latest and slot.start_ms-latest['available_ms'] < 15000:
+                            question = f'The gap is {number_word(gap)} now. Your response?'
+                            short_question = 'How would you respond to that?'
+                            answer = "I'd keep looking for a way back. But the next chance has to count."
+                            short_answer = "I'd keep looking for a way back."
+                        else:
+                            question = f'{trailing} still need {number_word(gap)}. What changes now?'
+                            short_question = 'What would you change now?'
+                            answer = "I'd be more adventurous. Get the next goal and the conversation changes."
+                            short_answer = "I'd be more adventurous. They need a goal."
+                    elif slot.match_minute >= 35:
+                        question = 'Is the next goal the key, do you think?'
+                        short_question = 'How important is the next goal?'
+                        answer = "Very. I'd keep it simple and give yourself something to build on."
+                        short_answer = "Very. I'd keep it simple for now."
+                    else:
+                        question = f'{trailing} need {number_word(gap)} goals. Time to gamble?'
+                        short_question = 'Time to gamble, do you think?'
+                        answer = "Not everything, no. I'd work towards the next goal first."
+                        short_answer = "Not yet. I'd focus on the next goal."
+                else:
+                    question = 'Nothing between them. Where would you take a risk?'
+                    short_question = 'Where would you take a risk?'
+                    answer = "I'd commit someone forward, but keep cover. Don't give the other side an easy break."
+                    short_answer = "I'd commit someone forward, with cover."
+                if slot.speech_act == 'ask':
+                    add('discussion.ask', support, question, short_question, short_question)
+                else:
+                    add('opinion.discussion.answer', support, answer, short_answer, short_answer)
+                return options
             for record in eligible:
                 if record['id'] not in wanted:
                     continue
@@ -278,11 +338,15 @@ class GroundedCompiler:
             short=candidate.short, emergency_short=candidate.emergency_short,
             used_fact_ids=[], grounding=dict(version=self.version, template_id=template_id,
                 kind='opinion' if template_id.startswith('opinion.') else 'fact',
+                dialogue_id=slot.dialogue_id, speech_act=slot.speech_act, reply_to=slot.reply_to,
                 claim_ids=list(candidate.claim_ids), as_of_ms=slot.start_ms,
                 sources=[dict(id=cid, source=records[cid]['source'], available_ms=records[cid]['available_ms'])
                          for cid in candidate.claim_ids]))
 
     def validate(self, utterance, slot):
+        if utterance.grounding and utterance.grounding.get('version') == 'conversation-1':
+            from backend.commentary.llm.conversation import validate
+            return validate(self.context, utterance, slot)
         try:
             expected = self.realize(slot, utterance.grounding['template_id'])
             # A copied evidence citation cannot authorize altered factual prose.

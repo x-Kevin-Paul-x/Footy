@@ -1,0 +1,150 @@
+{
+  "date": "2026-10-16",
+  "match_id": "match_2026_18_3",
+  "source": "Fresh-season West Ham 4-4 Bournemouth; original video packets preserved",
+  "research": {
+    "flashscore_page": "https://www.flashscore.com/audio/",
+    "public_demo_url": "https://static.flashscore.com/res/sound/_fs/mp3/audio-promo-en.mp3",
+    "demo_sha256": "4b8095f3b10c98786c0ebb6528f0a5f6764d641569e13b1eca92eb4d478134c1",
+    "asr_model": "faster-whisper base.en CPU int8",
+    "asr_duration_seconds": 24.744,
+    "perceptual_listening_performed": false,
+    "access_limits": "University final transcript excerpt accessible in search index; direct PDF 403/406. Published World Cup article and GOAL commentary examples inspected. Full copyrighted match transcripts not bundled."
+  },
+  "tests": {
+    "combined_suite_before_final_primary_rewrite": {
+      "passed": 247,
+      "skipped": 11
+    },
+    "final_commentary_suite_after_primary_rewrite": {
+      "passed": 70
+    },
+    "configured_ruff": "passed",
+    "full_backend_changed_by_this_task": false
+  },
+  "generation": {
+    "accepted_reviewed_turns": 14,
+    "rejections": [
+      {
+        "id": "com_015",
+        "reason": "Dialogue rejected: Primary exceeds 6 words"
+      },
+      {
+        "id": "com_021",
+        "reason": "Dialogue rejected: Primary exceeds 8 words"
+      },
+      {
+        "id": "discussion_3",
+        "reason": "Unterminated string starting at: line 6 column 5 (char 841)"
+      },
+      {
+        "id": "discussion_5",
+        "reason": "Unterminated string starting at: line 4 column 592 (char 634)"
+      },
+      {
+        "id": "discussion_6",
+        "reason": "Unterminated string starting at: line 4 column 592 (char 634)"
+      },
+      {
+        "id": "com_045",
+        "reason": "Unterminated string starting at: line 5 column 5 (char 77)"
+      },
+      {
+        "id": "discussion_7",
+        "reason": "Unterminated string starting at: line 4 column 592 (char 634)"
+      }
+    ],
+    "fallback_pairs_are_atomic": true,
+    "meaning_and_citations_owned_by_planner": true
+  },
+  "quality": {
+    "match_id": "match_2026_18_3",
+    "clips": 61,
+    "overflow_clips": 0,
+    "overlap_clips": 0,
+    "all_script_variants_valid": true,
+    "speech_seconds": 136.19,
+    "goals": [
+      {
+        "scorer": "Ernest Byrd",
+        "score": "0-1",
+        "crossing_seconds": 74.1,
+        "goal_voice_onset_ms": 15.2,
+        "buildup_seconds": 72.2
+      },
+      {
+        "scorer": "Sandra Gerow",
+        "score": "0-2",
+        "crossing_seconds": 85.8,
+        "goal_voice_onset_ms": 15.3,
+        "buildup_seconds": 84.1
+      },
+      {
+        "scorer": "Scott Britt",
+        "score": "1-2",
+        "crossing_seconds": 173.8,
+        "goal_voice_onset_ms": 15.1,
+        "buildup_seconds": null
+      },
+      {
+        "scorer": "Ali Bundage",
+        "score": "1-3",
+        "crossing_seconds": 192.7,
+        "goal_voice_onset_ms": 15.6,
+        "buildup_seconds": 189.4
+      },
+      {
+        "scorer": "Jeanine Simpson",
+        "score": "2-3",
+        "crossing_seconds": 225.4,
+        "goal_voice_onset_ms": 15.4,
+        "buildup_seconds": null
+      },
+      {
+        "scorer": "Sandra Gerow",
+        "score": "2-4",
+        "crossing_seconds": 257.8,
+        "goal_voice_onset_ms": 15.0,
+        "buildup_seconds": null
+      },
+      {
+        "scorer": "Jeanine Simpson",
+        "score": "3-4",
+        "crossing_seconds": 273.2,
+        "goal_voice_onset_ms": 15.7,
+        "buildup_seconds": 269.8
+      },
+      {
+        "scorer": "Julio Zielinski",
+        "score": "4-4",
+        "crossing_seconds": 296.0,
+        "goal_voice_onset_ms": 15.4,
+        "buildup_seconds": null
+      }
+    ],
+    "all_goals_have_buildup": false,
+    "speech_gaps_over_eight_seconds": [],
+    "maximum_inter_clip_speech_gap_seconds": 7.525,
+    "grounded_clips": 61,
+    "story_clips": 18,
+    "optional_audio_omissions": [
+      {
+        "id": "com_052",
+        "reason": "No complete variant fits",
+        "budget_seconds": 0.7
+      }
+    ],
+    "reviewed_dialogue_clips": 14,
+    "spoken_dialogue_pairs": 7,
+    "factual_validation_scope": "Deterministic event calls plus time-scoped, model-reviewed original dialogue; semantic review is fallible and is not a factual guarantee or listening-quality score",
+    "buildup_definition": "Observed same-team attack/shot cue within four seconds; no requirement to know the future scorer",
+    "original_video_packets_preserved": true
+  },
+  "script_sha256": "3df4a588b4a8b7e7120cfec547cf0ffe9297aa0382baceaf917da6000c30ed44",
+  "limitations": [
+    "Semantic model review is fallible; no zero-hallucination guarantee",
+    "Delivery and name pronunciation still require user listening",
+    "Some supported turns retain controlled fallback",
+    "Live action-chain descriptions remain limited by event evidence"
+  ]
+}

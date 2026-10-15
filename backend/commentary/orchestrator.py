@@ -134,7 +134,8 @@ class CommentaryPipelineOrchestrator:
             json.dump([s.model_dump() for s in slots], f, indent=2)
 
         # Resume only a script matching this exact context, plan and writer code.
-        scripts = [Path(__file__).parent / name for name in ('grounding.py','speech_text.py','schemas.py')]
+        scripts = [Path(__file__).parent / name for name in ('grounding.py','speech_text.py','schemas.py',
+                                                           'planning/slot_allocator.py')]
         scripts += list((Path(__file__).parent/'llm').glob('*.py'))
         signature_data = dict(context=match_context.model_dump(), plan=[s.model_dump() for s in slots], use_llm=use_llm,
                               code={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in scripts})
@@ -148,7 +149,7 @@ class CommentaryPipelineOrchestrator:
                 cache_metadata = json.loads(signature_path.read_text())
                 if (cache_metadata.get('signature') == signature and
                         cache_metadata.get('compiled_sha256') == hashlib.sha256(script_path.read_bytes()).hexdigest()):
-                    cached = CommentaryScript.model_validate_json(script_path.read_text())
+                    cached = CommentaryScript.model_validate_json(script_path.read_text(encoding='utf-8'))
                     compiler = GroundedCompiler(match_context)
                     slot_map = {s.commentary_id:s for s in slots}
                     if not all(compiler.validate(u, slot_map[u.commentary_id])[0] for u in cached.utterances):

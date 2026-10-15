@@ -14,9 +14,9 @@ def export_review(artifacts, output):
     artifacts, output = Path(artifacts), Path(output)
     output.mkdir(parents=True, exist_ok=True)
     quality = json.loads((artifacts/'quality_report.json').read_text())
-    context = json.loads((artifacts/'match_context.json').read_text())
+    context = json.loads((artifacts/'match_context.json').read_text(encoding='utf-8'))
     clips = json.loads((artifacts/'audio_clips_manifest.json').read_text())
-    script = json.loads((artifacts/'commentary_script.json').read_text())
+    script = json.loads((artifacts/'commentary_script.json').read_text(encoding='utf-8'))
     utterances = {u['commentary_id']:u for u in script['utterances']}
     videos = list(output.glob('*-commentary.mp4'))
     if len(videos) != 1:
@@ -48,6 +48,14 @@ def export_review(artifacts, output):
     replacements = dict(TITLE=title,CLIPS=str(len(clips)),GAP=f"{quality.get('maximum_inter_clip_speech_gap_seconds',0):.1f}",
                         VIDEO=html.escape(videos[0].name,quote=True),OMISSIONS=str(omissions),GOALS=goals,ROWS=''.join(rows))
     replacements['ROWS'] = ''.join(rows)
+    page = page.replace('</div><main>',
+        f'<span>{quality.get("spoken_dialogue_pairs",0)} paired exchanges</span>'
+        f'<span>{quality.get("reviewed_dialogue_clips",0)} model-reviewed turns</span></div><main>')
+    page = page.replace('EVIDENCE-GATED COMMENTARY','CONVERSATIONAL COMMENTARY REVIEW')
+    page = page.replace('the approved template, supporting records and when they became available',
+                        'the evidence, conversational links and independent model review')
+    page = page.replace('A passing text check is not a listening-quality score.',
+                        'Model review can miss errors. The dialogue and delivery still need your listening feedback.')
     page = page.replace('8 recorded goals',f'{len(quality["goals"])} recorded goals')
     for key,value in replacements.items():
         page=page.replace(f'__{key}__',value)

@@ -106,6 +106,8 @@ backend/verification/tmp/
 backend/verification/latest.json
 backend/native/runtime/
 backend/commentary/.venv-tts/
+backend/commentary/.venv-research/
+backend/commentary/models/research-cache/
 backend/commentary/artifacts/
 backend/commentary/output/
 backend/commentary/bin/

@@ -1,4 +1,4 @@
-"""Select an eligible speech plan; model output cannot introduce prose or facts."""
+"""Local language model transport and deterministic event-call selection."""
 import json
 import urllib.request
 from backend.commentary.config import LLM_HOST, LLM_PORT
@@ -28,6 +28,7 @@ class LlamaClient:
         fallback = GroundedCompiler.stable_choice(slot, options)
         if not self.is_server_online() or len(options) == 1:
             return fallback
+
         ids = [o.template_id for o in options]
         payload = {
             "model": "qwen3.5-9b", "temperature": .35, "max_tokens": 80,
@@ -59,6 +60,16 @@ class LlamaClient:
         except (OSError, ValueError, KeyError, TypeError, IndexError) as exc:
             self.last_failure = type(exc).__name__
             return fallback
+
+    def request_json(self, system, data, schema, temperature=.6, max_tokens=500):
+        payload = dict(model='qwen3.5-9b', temperature=temperature, max_tokens=max_tokens,
+            chat_template_kwargs={'enable_thinking':False},
+            messages=[dict(role='system',content=system),dict(role='user',content=json.dumps(data))],
+            response_format=dict(type='json_object',schema=schema))
+        request = urllib.request.Request(self.base_url,data=json.dumps(payload).encode(),
+                                        headers={'Content-Type':'application/json'})
+        with urllib.request.urlopen(request,timeout=45) as response:
+            return json.loads(json.loads(response.read())['choices'][0]['message']['content'])
 
     def generate_utterance(self, slot, match_context, recent):
         compiler = GroundedCompiler(match_context)
