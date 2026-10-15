@@ -76,10 +76,9 @@ def test_burnley_bournemouth_golden_pipeline():
             f"but {slots[i+1].commentary_id} starts at {slots[i+1].start_ms}ms"
         )
 
-    # Check speech density in target range (40% to 60%)
-    total_speech_sec = sum(s.window_seconds for s in slots)
-    density = total_speech_sec / 310.7
-    assert 0.40 <= density <= 0.60, f"Speech density {density:.2f} out of target range"
+    # A fitting window is a budget, not the duration of the selected speech.
+    # Density and quiet gaps are measured from rendered clips in quality.py.
+    assert max(s.window_seconds for s in slots) <= 6, 'Avoid uninterrupted long monologues'
 
     # Check exact goal reactions start at goal timestamps
     rxn_slots = [s for s in slots if s.slot_type == "goal_reaction"]
@@ -87,8 +86,15 @@ def test_burnley_bournemouth_golden_pipeline():
     for rxn, exp in zip(rxn_slots, expected_goals):
         assert rxn.start_ms == exp[2], f"Goal reaction start {rxn.start_ms}ms does not match goal PTS {exp[2]}ms"
 
-    # Check lead-in slots end at goal timestamps
-    leadin_slots = [s for s in slots if s.slot_type == "lead_in"]
-    assert len(leadin_slots) == 6
-    for lead, exp in zip(leadin_slots, expected_goals):
-        assert lead.max_end_ms == exp[2], f"Lead-in end {lead.max_end_ms}ms does not match goal PTS {exp[2]}ms"
+    # Anticipation is selected from observations, including attacks which do
+    # not become goals. It must not require hindsight about the future scorer.
+    attacks = [s for s in slots if s.slot_type in ('attack','shot_call')]
+    assert attacks
+    for attack in attacks:
+        observed = [e for e in events if e.presentation_ms == attack.start_ms and
+                    e.team == attack.active_team and e.player == attack.active_player and
+                    e.type == attack.active_event_type]
+        assert observed, 'Anticipation must cite an observation already available at its anchor'
+        for goal in goals:
+            if attack.start_ms < goal.presentation_ms:
+                assert attack.max_end_ms <= goal.presentation_ms, 'Live buildup cannot delay a goal call'

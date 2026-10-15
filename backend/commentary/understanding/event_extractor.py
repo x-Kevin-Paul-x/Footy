@@ -87,7 +87,8 @@ class EventExtractor:
             pts_ms = self.timeline.step_to_ms(step, self.total_steps)
             minute = max(1, min(90, int(step / (self.total_steps / 90.0)) + 1))
             new_control = step == 0 or (curr_team != int(self.ball_owned_team[step-1]) or curr_player != int(self.ball_owned_player[step-1]))
-            if curr_team >= 0 and curr_player >= 0 and int(self.game_mode[step]) == 0 and abs(bx) > .55 and (step % 5 == 0 or new_control):
+            attacking_x = float(bx) * (1 if curr_team == 0 else -1)
+            if curr_team >= 0 and curr_player >= 0 and int(self.game_mode[step]) == 0 and attacking_x > .55 and (step % 5 == 0 or new_control):
                 event_counter += 1
                 events.append(EnrichedEvent(event_id=f'evt_{event_counter:04d}', type='CONTROL_IN_ATTACK',
                     step=step, presentation_ms=pts_ms, match_minute=minute,
@@ -237,6 +238,9 @@ class EventExtractor:
             in_away_box = in_a_box_now
 
             # --- Track Passes & Carries & Turnovers ---
+            if int(self.game_mode[step]) != 0:
+                prev_owner_team = prev_owner_player = -1
+                continue
             if curr_team >= 0 and curr_player >= 0:
                 if prev_owner_team >= 0 and prev_owner_player >= 0:
                     # Same team, different player = Pass Completed
@@ -370,4 +374,20 @@ class EventExtractor:
                     event.facts['shot_release_ms'] = attempts[-1].presentation_ms
         # Keep speech knowledge chronological, including shots before goals.
         events.sort(key=lambda e: (e.presentation_ms, e.type == 'GOAL', -e.importance))
+        from backend.commentary.understanding.danger import DangerEngine
+        danger_engine = DangerEngine()
+        score = (0, 0)
+        for event in events:
+            if event.type == 'GOAL':
+                score = tuple(int(n) for n in event.facts['score'].split('-'))
+            team_idx = 0 if event.team == self.home_team else 1 if event.team == self.away_team else -1
+            if team_idx < 0:
+                continue
+            components = danger_engine.evaluate_step(event.step, self.ball_coords[event.step],
+                self.ball_dirs[event.step], team_idx, self.player_coords[event.step],
+                xg_val=float(event.facts.get('xg', 0)), is_goal=event.type == 'GOAL',
+                minute=event.match_minute, score_diff=score[0]-score[1])
+            event.danger = components.composite_danger
+            event.importance = max(event.importance, components.importance)
+            event.facts['danger_components'] = components.model_dump()
         return events

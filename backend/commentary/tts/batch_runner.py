@@ -4,12 +4,15 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[3]
 if str(root) not in sys.path: sys.path.insert(0, str(root))
 from backend.commentary.config import ARTIFACTS_DIR, CLIPS_DIR, TTS_MODELS_DIR, DEFAULT_VOICE
+from backend.commentary.tts.voice_profiles import PROFILE_REVISION, PRONUNCIATION_REVISION, GENERATION, instruction, clip_seed
 
 def get_wav_duration_seconds(path):
     with wave.open(str(path), "rb") as f: return f.getnframes()/f.getframerate()
 
 def cache_signature(utterance, slot):
-    payload = {"version":3, "utterance":utterance, "speaker":slot.get("speaker"),
+    payload = {"version":4, "utterance":utterance, "speaker":slot.get("speaker"),
+        "profile": PROFILE_REVISION, "pronunciation": PRONUNCIATION_REVISION,
+        "instruction": instruction(slot), "generation": GENERATION,
         "energy":slot.get("energy_target"), "type":slot.get("slot_type"),
         "budget_ms":slot["max_end_ms"]-slot["start_ms"],
         "model":str(TTS_MODELS_DIR), "weights_mtime":(TTS_MODELS_DIR/"model.safetensors").stat().st_mtime_ns
@@ -17,14 +20,7 @@ def cache_signature(utterance, slot):
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 def get_instruction_for_slot(slot, emotion=""):
-    kind = slot.get("slot_type")
-    if slot.get("speaker") == "Aiden":
-        return "Warm, thoughtful British football analyst. Conversational and measured; concise natural phrasing."
-    if kind == "goal_reaction":
-        return "Excited British football commentator. Immediate clear goal call, energetic but not screaming. No long pauses."
-    if kind in ("lead_in","shot_call","attack"):
-        return "British live football commentator. Brisk, rising anticipation. Say the words immediately and keep pauses short."
-    return "British football broadcaster. Clear, relaxed conversational rhythm. No theatrical pauses."
+    return instruction(slot)
 
 def trim_silence(audio, sample_rate):
     import numpy as np
@@ -47,7 +43,7 @@ def run_batch_tts(script_path, slots_path, output_dir=CLIPS_DIR, voice=DEFAULT_V
     slots = {s["commentary_id"]:s for s in json.loads(Path(slots_path).read_text(encoding="utf-8-sig"))}
     if limit: utterances = sorted(utterances,key=lambda u:slots[u["commentary_id"]].get("priority",1), reverse=True)[:limit]
     output_dir.mkdir(parents=True,exist_ok=True)
-    records, pending = [], []
+    records, pending, omissions = [], [], []
     for u in utterances:
         s = slots[u["commentary_id"]]
         wav = output_dir / (u["commentary_id"]+".wav")
@@ -77,9 +73,11 @@ def run_batch_tts(script_path, slots_path, output_dir=CLIPS_DIR, voice=DEFAULT_V
             # Skip obviously impossible prose rather than generating wasted audio.
             if variant!="emergency_short" and len(text.split()) > max(2, budget*2.8): continue
             print(f"[{i+1}/{len(pending)}] {u['commentary_id']} {s['speaker']} {variant}: {text}",flush=True)
+            seed = clip_seed(u['commentary_id'], text, s['speaker'], variant)
+            torch.manual_seed(seed)
             with torch.inference_mode():
                 audio,sr=model.generate_custom_voice(text=text,language="English",speaker=s["speaker"].lower(),
-                    instruct=get_instruction_for_slot(s), max_new_tokens=600)
+                    instruct=get_instruction_for_slot(s), max_new_tokens=600, **GENERATION)
             audio=trim_silence(audio[0],sr)
             duration=len(audio)/sr
             tempo=1.0
@@ -97,17 +95,23 @@ def run_batch_tts(script_path, slots_path, output_dir=CLIPS_DIR, voice=DEFAULT_V
                 if get_wav_duration_seconds(wav) <= budget:
                     accepted=(variant,text,tempo)
                     break
-        if not accepted: raise RuntimeError(f"No complete speech variant fits {u['commentary_id']} ({budget:.2f}s); not delaying the goal.")
+        if not accepted:
+            if s['slot_type'] in ('goal_reaction', 'halftime_recap', 'fulltime_summary'):
+                raise RuntimeError(f"No complete speech variant fits required {u['commentary_id']} ({budget:.2f}s)")
+            omissions.append(dict(id=u['commentary_id'], reason='No complete variant fits', budget_seconds=budget))
+            continue
         variant,text,tempo=accepted
         record={"clip_id":u["commentary_id"],"requested_start_ms":s["start_ms"],"max_end_ms":s["max_end_ms"],
             "variant_used":variant,"actual_duration_ms":round(get_wav_duration_seconds(wav)*1000),
             "speaker":s["speaker"],"energy":s["energy_target"],"slot_type":s["slot_type"],
             "priority":s.get("priority",1),"file_path":str(wav),"pts_offset_seconds":s["start_ms"]/1000,
             "atempo_applied":tempo}
-        wav.with_suffix(".json").write_text(json.dumps({"signature":signature,"text":text,"record":record},indent=2),encoding="utf-8")
+        wav.with_suffix(".json").write_text(json.dumps({"signature":signature,"text":text,"record":record,
+            "seed":seed,"profile":PROFILE_REVISION,"generation":GENERATION},indent=2),encoding="utf-8")
         records.append(record)
     records.sort(key=lambda c:c["requested_start_ms"])
     (output_dir.parent/"audio_clips_manifest.json").write_text(json.dumps(records,indent=2),encoding="utf-8")
+    (output_dir.parent/"tts_omissions.json").write_text(json.dumps(omissions,indent=2),encoding="utf-8")
     (output_dir.parent/"tts_run.json").write_text(json.dumps({"device":device,"torch":torch.__version__,
         "gpu":torch.cuda.get_device_name() if device=="cuda" else None,"seconds":time.monotonic()-started,
         "clips":len(records)},indent=2),encoding="utf-8")

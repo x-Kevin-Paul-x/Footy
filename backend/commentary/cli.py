@@ -74,9 +74,12 @@ def main():
     parser.add_argument("--goals-json-path", type=Path, default=GOLDEN_GOALS_JSON_PATH)
     parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
     parser.add_argument("--artifacts-dir", type=Path, default=ARTIFACTS_DIR)
+    parser.add_argument("--context-path", type=Path, help="Trusted kickoff snapshot bound to this trajectory/run")
     parser.add_argument("--tts-engine", choices=["auto", "qwen", "sapi"], default="auto", help="TTS synthesis engine")
     parser.add_argument("--qwen-limit", type=int, default=None, help="Limit number of Qwen-TTS clips synthesized (remainder uses fallback)")
     parser.add_argument("--skip-mux", action="store_true", help="Skip final FFmpeg MP4 multiplexing")
+    parser.add_argument("--script-only", action="store_true", help="Compile and audit text without speech synthesis")
+    parser.add_argument("--no-llm", action="store_true", help="Select grounded templates deterministically, without starting a model")
 
     args = parser.parse_args()
 
@@ -84,7 +87,7 @@ def main():
         calibrate_tts_action()
         return
 
-    if not CALIBRATION_FILE.exists():
+    if not CALIBRATION_FILE.exists() and not args.script_only:
         print("No tts_calibration.json found. Running one-time TTS bootstrap calibration...")
         calibrate_tts_action()
 
@@ -96,6 +99,7 @@ def main():
         goals_json_path=args.goals_json_path,
         artifacts_dir=args.artifacts_dir,
         output_dir=args.output_dir,
+        context_path=args.context_path,
     )
 
     result = orch.run_pipeline(
@@ -103,6 +107,8 @@ def main():
         skip_mux=args.skip_mux,
         tts_engine=args.tts_engine,
         qwen_tts_limit=args.qwen_limit,
+        script_only=args.script_only,
+        use_llm=not args.no_llm,
     )
     print("\n--- Pipeline Summary ---")
     print(json.dumps(result, indent=2))

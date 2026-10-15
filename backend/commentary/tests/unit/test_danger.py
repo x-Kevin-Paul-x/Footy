@@ -40,3 +40,12 @@ def test_danger_on_goal():
     )
     assert res.composite_danger == 1.0
     assert res.importance == 1.0
+
+
+def test_mirrored_archive_preserves_danger():
+    coords=np.array([[.1,.2]]*22)
+    original=DangerEngine().evaluate_step(10,np.array([.8,.1,0]),np.array([.03,0,0]),0,coords)
+    mirrored=DangerEngine(home_attack_sign=-1).evaluate_step(10,np.array([-.8,-.1,0]),np.array([-.03,0,0]),0,-coords)
+    assert original == mirrored
+    own_half=DangerEngine().evaluate_step(10,np.array([-.8,.1,0]),np.zeros(3),0,coords)
+    assert original.field_progression > own_half.field_progression

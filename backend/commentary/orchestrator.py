@@ -5,6 +5,7 @@ Connects Phases -1 through 13 with intermediate artifact caching and clean VRAM 
 
 import json
 import time
+import hashlib
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -31,7 +32,8 @@ from backend.commentary.audio.processor import AudioProcessor
 from backend.commentary.audio.ambient_bed import AmbientBedManager
 from backend.commentary.audio.mixer import mix_commentary_and_ambience
 from backend.commentary.audio.multiplexer import VideoMultiplexer
-from backend.commentary.schemas import AudioManifest
+from backend.commentary.schemas import AudioManifest, CommentaryScript
+from backend.commentary.grounding import GroundedCompiler
 from backend.commentary.quality import audit_commentary
 
 
@@ -47,6 +49,7 @@ class CommentaryPipelineOrchestrator:
         goals_json_path: Path = GOLDEN_GOALS_JSON_PATH,
         artifacts_dir: Path = ARTIFACTS_DIR,
         output_dir: Path = OUTPUT_DIR,
+        context_path: Optional[Path] = None,
     ):
         self.video_path = video_path
         self.timeline_path = timeline_path
@@ -55,6 +58,7 @@ class CommentaryPipelineOrchestrator:
         self.goals_json_path = goals_json_path
         self.artifacts_dir = artifacts_dir
         self.output_dir = output_dir
+        self.context_path = context_path
 
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -65,7 +69,21 @@ class CommentaryPipelineOrchestrator:
         skip_mux: bool = False,
         tts_engine: str = "auto",
         qwen_tts_limit: Optional[int] = None,
+        script_only: bool = False,
+        use_llm: bool = True,
     ) -> Dict[str, Any]:
+        status_path = self.artifacts_dir / 'run_status.json'
+        status_path.write_text(json.dumps({'status': 'running', 'started_at': time.time()}))
+        try:
+            result = self._run_pipeline(voice, skip_mux, tts_engine, qwen_tts_limit, script_only, use_llm)
+            status_path.write_text(json.dumps(result, indent=2))
+            return result
+        except Exception as exc:
+            status_path.write_text(json.dumps({'status': 'failed', 'error': str(exc),
+                                               'error_type': type(exc).__name__}, indent=2))
+            raise
+
+    def _run_pipeline(self, voice, skip_mux, tts_engine, qwen_tts_limit, script_only, use_llm):
         t0 = time.time()
         print("=== Step 1: Phase -1 Artifact Inspection ===")
         artifact_report = inspect_match_artifacts(
@@ -95,7 +113,14 @@ class CommentaryPipelineOrchestrator:
             json.dump([s.model_dump() for s in sequences], f, indent=2)
 
         print("=== Step 5: Phase 4 Match Context & Storylines ===")
-        story_builder = StoryStatsBuilder(extractor.manifest)
+        extra_evidence = []
+        if self.context_path:
+            from backend.commentary.understanding.broadcast_context import snapshot_evidence
+            snapshot = json.loads(self.context_path.read_text(encoding='utf-8-sig'))
+            extra_evidence = snapshot_evidence(snapshot, extractor.manifest,
+                hashlib.sha256(self.trace_npz_path.read_bytes()).hexdigest(), self.trace_npz_path.parent.name)
+            (self.artifacts_dir/'broadcast_context_snapshot.json').write_text(json.dumps(snapshot,indent=2))
+        story_builder = StoryStatsBuilder(extractor.manifest, extra_evidence)
         match_context = story_builder.build_match_context(events, sequences)
         ctx_json = self.artifacts_dir / "match_context.json"
         with open(ctx_json, "w", encoding="utf-8") as f:
@@ -108,10 +133,33 @@ class CommentaryPipelineOrchestrator:
         with open(slots_json, "w", encoding="utf-8") as f:
             json.dump([s.model_dump() for s in slots], f, indent=2)
 
+        # Resume only a script matching this exact context, plan and writer code.
+        scripts = [Path(__file__).parent / name for name in ('grounding.py','speech_text.py','schemas.py')]
+        scripts += list((Path(__file__).parent/'llm').glob('*.py'))
+        signature_data = dict(context=match_context.model_dump(), plan=[s.model_dump() for s in slots], use_llm=use_llm,
+                              code={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in scripts})
+        signature = hashlib.sha256(json.dumps(signature_data,sort_keys=True).encode()).hexdigest()
+        (self.artifacts_dir/'commentary_plan.allocated.json').write_text(json.dumps([s.model_dump() for s in slots],indent=2))
+        signature_path = self.artifacts_dir/'script_signature.json'
+        script_path = self.artifacts_dir/'commentary_script.compiled.json'
+        cached = None
+        if signature_path.exists() and script_path.exists():
+            try:
+                cache_metadata = json.loads(signature_path.read_text())
+                if (cache_metadata.get('signature') == signature and
+                        cache_metadata.get('compiled_sha256') == hashlib.sha256(script_path.read_bytes()).hexdigest()):
+                    cached = CommentaryScript.model_validate_json(script_path.read_text())
+                    compiler = GroundedCompiler(match_context)
+                    slot_map = {s.commentary_id:s for s in slots}
+                    if not all(compiler.validate(u, slot_map[u.commentary_id])[0] for u in cached.utterances):
+                        cached = None
+            except (ValueError, KeyError):
+                cached = None
+
         print("=== Step 7: Phase 6-8 Qwen3.5 Director & Writer (with Fact Firewall) ===")
         server_mgr = LlamaServerManager()
         server_started = False
-        if server_mgr.is_binary_ready() and server_mgr.is_model_ready():
+        if cached is None and use_llm and server_mgr.is_binary_ready() and server_mgr.is_model_ready():
             print("Launching local Qwen3.5-9B llama-server on GPU...")
             server_started = server_mgr.start_server()
 
@@ -119,15 +167,31 @@ class CommentaryPipelineOrchestrator:
             director = CommentaryDirector(match_context)
             directed_slots = director.direct_slots(slots)
             writer = CommentaryWriter(match_context)
-            script = writer.write_script(directed_slots)
-            (self.artifacts_dir / 'writer_diagnostics.json').write_text(json.dumps(writer.diagnostics, indent=2), encoding='utf-8')
+            if not use_llm:
+                writer.client._server_available = False
+            script = cached or writer.write_script(directed_slots)
+            if cached is None:
+                (self.artifacts_dir / 'writer_diagnostics.json').write_text(json.dumps(writer.diagnostics, indent=2), encoding='utf-8')
+            (self.artifacts_dir/'sentence_provenance.json').write_text(json.dumps([
+                dict(id=u.commentary_id, primary=u.primary, short=u.short, emergency_short=u.emergency_short,
+                     **u.grounding) for u in script.utterances],indent=2))
+            kept_ids = {u.commentary_id for u in script.utterances}
+            directed_slots = [s for s in directed_slots if s.commentary_id in kept_ids]
+            slots_json.write_text(json.dumps([s.model_dump() for s in directed_slots],indent=2))
             script_json = self.artifacts_dir / "commentary_script.json"
             with open(script_json, "w", encoding="utf-8") as f:
                 json.dump(script.model_dump(), f, indent=2)
+            script_path.write_text(script.model_dump_json(indent=2),encoding='utf-8')
+            signature_path.write_text(json.dumps({'signature':signature,
+                'compiled_sha256':hashlib.sha256(script_path.read_bytes()).hexdigest()}))
         finally:
             if server_started:
                 print("Stopping llama-server and releasing VRAM before TTS...")
                 server_mgr.stop_server()
+
+        if script_only:
+            return dict(status='script_ready', match_id=match_context.match_id,
+                        slots=len(directed_slots), script=str(script_json), cached_script=cached is not None)
 
         print("=== Step 8: Phase 9-10 Speech Synthesis (Multi-Variant Duration Fitting) ===")
         worker = TTSWorker(voice=voice, clips_dir=self.artifacts_dir / 'clips')
@@ -137,6 +201,14 @@ class CommentaryPipelineOrchestrator:
             engine=tts_engine,
             qwen_limit=qwen_tts_limit,
         )
+        voiced_ids = {c.clip_id for c in clips}
+        if any(s.slot_type in ('goal_reaction','halftime_recap','fulltime_summary') and
+               s.commentary_id not in voiced_ids for s in directed_slots):
+            raise RuntimeError('Required commentary is missing')
+        directed_slots = [s for s in directed_slots if s.commentary_id in voiced_ids]
+        script.utterances = [u for u in script.utterances if u.commentary_id in voiced_ids]
+        slots_json.write_text(json.dumps([s.model_dump() for s in directed_slots],indent=2))
+        script_json.write_text(script.model_dump_json(indent=2),encoding='utf-8')
 
         print("=== Step 9: Phase 11 Audio Assembly (48kHz Master Timeline) ===")
         processor = AudioProcessor(master_duration_seconds=timeline.total_duration_seconds)
@@ -166,7 +238,7 @@ class CommentaryPipelineOrchestrator:
         validation_report = {}
         if not skip_mux and self.video_path.exists():
             print("=== Step 12: Phase 13 FFmpeg Multiplexing ===")
-            final_mp4_path = self.output_dir / "burnley-2-4-bournemouth-commentary.mp4"
+            final_mp4_path = self.output_dir / f"{self.video_path.stem}-commentary.mp4"
             VideoMultiplexer.mux(self.video_path, master_audio_path, final_mp4_path)
             validation_report = VideoMultiplexer.validate_mp4(final_mp4_path)
             print(f"Multiplexed broadcast video written to: {final_mp4_path}")

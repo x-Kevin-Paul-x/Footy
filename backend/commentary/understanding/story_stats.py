@@ -1,11 +1,15 @@
 """Timestamped facts from the recorded match, without future outcomes."""
 from backend.commentary.schemas import MatchContext
+from backend.commentary.grounding import build_evidence
 class StoryStatsBuilder:
-    def __init__(self, manifest): self.manifest = manifest
+    def __init__(self, manifest, extra_evidence=None):
+        self.manifest = manifest
+        self.extra_evidence = extra_evidence or []
     def build_match_context(self, events, sequences):
         m = self.manifest
         home, away = m["home_team"], m["away_team"]
-        venue = m.get("venue") or ("Turf Moor" if home == "Burnley" else "")
+        # Older recordings may have no venue. Do not fill them from today's club data.
+        venue = m.get("venue") or ""
         facts, available, links = {}, {}, {}
         def add(text, when=0):
             fid = f"fact_{len(facts)+1:04d}"
@@ -37,4 +41,5 @@ class StoryStatsBuilder:
             home_players=m.get("home_players", []), away_players=m.get("away_players", []),
             xg=m.get("xg", []), possession=m.get("possession", []), shots=m.get("shots", []),
             shots_on_target=m.get("shots_on_target", []), allowed_facts=facts,
-            fact_available_ms=available, event_to_fact_id=links)
+            fact_available_ms=available, event_to_fact_id=links,
+            evidence_records=build_evidence(m, events) + self.extra_evidence)

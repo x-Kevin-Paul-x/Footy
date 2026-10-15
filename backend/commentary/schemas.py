@@ -77,6 +77,7 @@ class MatchContext(BaseModel):
     allowed_facts: Dict[str, str] = Field(default_factory=dict)  # fact_id -> human-readable factual claim
     event_to_fact_id: Dict[str, str] = Field(default_factory=dict)  # event_id -> fact_id
     fact_available_ms: Dict[str, int] = Field(default_factory=dict)
+    evidence_records: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class CommentarySlot(BaseModel):
@@ -95,6 +96,7 @@ class CommentarySlot(BaseModel):
         "stoppage",
         "halftime_recap",
         "fulltime_summary",
+        "story",
     ]
     sequence_id: Optional[str] = None
     speaker: str = "Ryan"
@@ -110,6 +112,7 @@ class CommentarySlot(BaseModel):
     active_player: Optional[str] = None
     in_play_summary: str = ""
     allowed_fact_ids: List[str] = Field(default_factory=list)
+    evidence_ids: List[str] = Field(default_factory=list)
 
 
 class CommentaryUtterance(BaseModel):
@@ -123,6 +126,7 @@ class CommentaryUtterance(BaseModel):
     short: str
     emergency_short: str
     used_fact_ids: List[str] = Field(default_factory=list)
+    grounding: Optional[Dict[str, Any]] = None
 
 
 class CommentaryScript(BaseModel):

@@ -21,15 +21,18 @@ from backend.commentary.config import (
 class DangerEngine:
     """Computes transparent, component-level danger and commentary importance."""
 
-    def __init__(self, weights: Dict[str, float] = None):
+    def __init__(self, weights: Dict[str, float] = None, home_attack_sign: int = 1):
+        if home_attack_sign not in (-1, 1):
+            raise ValueError('An archive attack direction must be -1 or 1')
         self.weights = weights or DANGER_WEIGHTS
+        self.home_attack_sign = home_attack_sign
 
     def evaluate_step(
         self,
         step: int,
         ball_coord: np.ndarray,
         ball_dir: np.ndarray,
-        team_idx: int,  # 0 = Burnley (attacks x -> -1.0), 1 = Bournemouth (attacks x -> +1.0)
+        team_idx: int,
         player_coords: np.ndarray,  # (22, 2)
         xg_val: float = 0.0,
         is_goal: bool = False,
@@ -50,19 +53,13 @@ class DangerEngine:
                 importance=1.0,
             )
 
-        # 1. Field progression (0.0 to 1.0)
-        # Burnley attacks left (x -> -1.0), Bournemouth attacks right (x -> +1.0)
-        if team_idx == 0:
-            # Burnley attacking
-            prog = max(0.0, min(1.0, (1.0 - bx) / 2.0))
-        elif team_idx == 1:
-            # Bournemouth attacking
-            prog = max(0.0, min(1.0, (bx + 1.0) / 2.0))
-        else:
-            prog = 0.2
+        # Footy's saved world observations keep home attacking positive X.
+        # Mirrored archive adapters can explicitly reverse the convention.
+        direction = self.home_attack_sign * (1 if team_idx == 0 else -1)
+        prog = max(0.0, min(1.0, (direction * bx + 1.0) / 2.0)) if team_idx in (0, 1) else 0.2
 
         # 2. Box proximity (0.0 to 1.0)
-        target_goal_x = -1.0 if team_idx == 0 else 1.0
+        target_goal_x = float(direction)
         dist_to_goal = np.hypot(bx - target_goal_x, by)
         # Closer to goal = higher score (max dist is ~2.0 across pitch)
         box_prox = max(0.0, min(1.0, 1.0 - (dist_to_goal / 1.5)))
@@ -77,13 +74,8 @@ class DangerEngine:
             def_start = 11 if team_idx == 0 else 0
             def_end = 22 if team_idx == 0 else 11
             def_xs = player_coords[def_start:def_end, 0]
-            if team_idx == 0:
-                # Burnley attacking left: defenders behind ball if def_x > bx
-                bypassed = np.sum(def_xs > bx)
-            else:
-                # Bournemouth attacking right: defenders behind ball if def_x < bx
-                bypassed = np.sum(def_xs < bx)
-            defenders_bypassed = float(bypassed / 10.0)
+            bypassed = np.sum(direction * def_xs < direction * bx)
+            defenders_bypassed = min(1.0, float(bypassed / 10.0))
 
         # 5. Shot xG (0.0 to 1.0)
         shot_component = min(1.0, xg_val * 3.5) if xg_val > 0 else 0.0

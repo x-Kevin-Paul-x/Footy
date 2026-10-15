@@ -1,34 +1,47 @@
-"""Write, validate every alternative, and remember only accepted lines."""
+"""Controlled factual realization with a second gate after candidate selection."""
 from backend.commentary.schemas import CommentaryScript
 from backend.commentary.llm.client import LlamaClient
-from backend.commentary.llm.validator import FactFirewallValidator, RepetitionDetector
+from backend.commentary.llm.validator import FactFirewallValidator
+from backend.commentary.grounding import GroundedCompiler, MissingEvidence
+
+
 class CommentaryWriter:
     def __init__(self, match_context, client=None):
-        self.context, self.client = match_context, client or LlamaClient()
+        self.context = match_context
+        self.client = client or LlamaClient()
+        self.compiler = GroundedCompiler(match_context)
         self.validator = FactFirewallValidator(match_context)
-        self.repetition = RepetitionDetector(memory_window=12)
-        self.diagnostics = {"llm_accepted":0, "factual_fallbacks":0, "rejections":[]}
+        self.diagnostics = {"llm_accepted": 0, "factual_fallbacks": 0, "rejections": [],
+                            "omissions": [], "selected_claims": []}
+
     def write_script(self, slots):
-        utterances = []
+        utterances, spoken = [], set()
         for slot in slots:
-            # Sub-second live calls are tightly constrained, not prose writing.
-            if slot.slot_type == "shot_call":
-                utt = self.client.fallback_generate(slot, self.context)
-                source = "factual_fallbacks"
-            else:
-                utt = self.client.generate_utterance(slot, self.context, utterances)
-                source = "llm_accepted" if self.client.last_generation_source == 'llm' else "factual_fallbacks"
-            valid, errors = self.validator.validate(utt, slot)
-            repetitive, _, phrase = self.repetition.check_repetition(utt.primary, commit=False)
-            if not valid or repetitive or len(utt.primary.split()) > slot.target_words+3:
-                self.diagnostics["rejections"].append({"id":slot.commentary_id,"errors":errors,"repeated":phrase})
-                utt = self.client.fallback_generate(slot, self.context)
-                source = "factual_fallbacks"
+            try:
+                options = self.compiler.options(slot)
+            except MissingEvidence as exc:
+                if slot.slot_type in ('goal_reaction', 'halftime_recap', 'fulltime_summary'):
+                    raise
+                self.diagnostics['omissions'].append({"id": slot.commentary_id, "reason": str(exc)})
+                continue
+            # Critical calls may repeat necessary names. Analyst/filler prose
+            # gets a whole-match exact-sentence cooldown, including alternatives.
+            if slot.slot_type in ('analysis', 'story'):
+                options = [o for o in options if not ({o.primary, o.short, o.emergency_short} & spoken)]
+                if not options:
+                    self.diagnostics['omissions'].append({"id": slot.commentary_id, "reason": 'No novel supported alternative'})
+                    continue
+            selected = self.client.choose_template(slot, options, utterances)
+            utt = self.compiler.realize(slot, selected)
             valid, errors = self.validator.validate(utt, slot)
             if not valid:
-                raise ValueError(f"Invalid fallback {slot.commentary_id}: {errors}")
-            self.repetition.check_repetition(utt.primary)
+                raise MissingEvidence(f'Controlled realization failed: {errors}')
+            source = 'llm_accepted' if self.client.last_generation_source == 'llm_selection' else 'factual_fallbacks'
             self.diagnostics[source] += 1
+            if self.client.last_failure:
+                self.diagnostics['rejections'].append({"id": slot.commentary_id, "reason": self.client.last_failure})
+            spoken.update((utt.primary, utt.short, utt.emergency_short))
+            self.diagnostics['selected_claims'].append({"id": slot.commentary_id, **utt.grounding})
             utterances.append(utt)
         return CommentaryScript(match_id=self.context.match_id, utterances=utterances,
-            model_version="Qwen3.5-9B-Q4_K_M" if self.diagnostics["llm_accepted"] else "factual-fallback")
+                                model_version='controlled-evidence-1')

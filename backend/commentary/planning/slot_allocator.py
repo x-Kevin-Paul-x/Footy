@@ -1,5 +1,6 @@
 """Reserve decisive events first; optional speech yields to these deadlines."""
 from backend.commentary.schemas import CommentarySlot
+from backend.commentary.grounding import EvidenceLedger
 class SlotAllocator:
     def __init__(self, timeline, calibration=None): self.timeline = timeline
     def allocate_slots(self, events, sequences, context):
@@ -38,27 +39,71 @@ class SlotAllocator:
             deadline = min(upcoming or [self.timeline.total_duration_ms])
             end = min(t+4300, deadline-100)
             add(t, end, "goal_reaction", event=goal, priority=10, energy=.9)
-            release = next((e for e in reversed(events) if e.type == "SHOT_RELEASE" and e.team == goal.team and e.player in ('', goal.player) and 0 < goal.step-e.step <= 60), None)
-            if release:
-                r = release.presentation_ms
-                observed = [e for e in events if e.player == goal.player and e.type in ("CONTROL_IN_ATTACK","BOX_ENTRY","POSSESSION_START","PASS","PROGRESSIVE_PASS") and r-2000 <= e.presentation_ms < r]
-                if observed:
-                    approach = observed[0]
-                    add(approach.presentation_ms, t, "lead_in", event=approach, priority=8, energy=.7)
-                elif t-r >= 600:
-                    add(r, t, "shot_call", event=release, priority=9, energy=.82)
             add(end+250, min(end+4100, deadline-100), "analysis", "Aiden", goal,
                 summary="Explain the effect of the goal on the current score. No invented finish technique.", priority=5, energy=.52)
         for e in events:
             if e.type == "HALFTIME": add(e.presentation_ms, e.presentation_ms+2900, "halftime_recap", event=e, priority=9)
             elif e.type == "FULLTIME": add(e.presentation_ms, self.timeline.total_duration_ms, "fulltime_summary", event=e, priority=10)
         last_live = -10000
-        for e in sorted(events, key=lambda e:e.presentation_ms):
+        ordered_events = sorted(events, key=lambda e:e.presentation_ms)
+        for e in ordered_events:
             t = e.presentation_ms
-            if t < 10000 or t-last_live < 6500 or e.type not in ("PASS","PROGRESSIVE_PASS","BOX_ENTRY","TURNOVER","SHOT_RELEASE"): continue
-            if self.timeline.is_in_stoppage_card(t/1000): continue
-            if add(t, t+3300, "attack" if e.type in ("BOX_ENTRY","SHOT_RELEASE") else "buildup",
-                   event=e, priority=2, energy=.7 if e.type in ("BOX_ENTRY","SHOT_RELEASE") else .43): last_live = t
+            urgent = e.type in ('BOX_ENTRY', 'SHOT_RELEASE', 'CONTROL_IN_ATTACK')
+            if t < 10000 or t-last_live < (1900 if urgent else 6000):
+                continue
+            if e.type not in ('PASS','PROGRESSIVE_PASS','BOX_ENTRY','TURNOVER','SHOT_RELEASE','CONTROL_IN_ATTACK'):
+                continue
+            if self.timeline.is_in_stoppage_card(t/1000):
+                continue
+            # A recorded event may bound speech fitting, but no later scorer
+            # or outcome selects an anticipation cue or its wording.
+            blocked = [s.start_ms for s in slots if s.start_ms > t and s.priority >= 8]
+            end = min(t + (2500 if urgent else 3300), min(blocked)-100 if blocked else t+3300)
+            kind = 'shot_call' if e.type == 'SHOT_RELEASE' else 'attack' if urgent else 'buildup'
+            if add(t, end, kind, event=e, priority=8 if urgent else 2,
+                   energy=.76 if urgent else .43):
+                last_live = t
+        # Fill eligible quiet windows using already-recorded roles/formations.
+        # No streak, age or other-match result is manufactured when absent.
+        formations = [r for r in context.evidence_records if r['kind'] == 'formation']
+        home_players = [r for r in context.evidence_records if r['kind'] == 'player' and r['data']['team'] == context.home_team]
+        away_players = [r for r in context.evidence_records if r['kind'] == 'player' and r['data']['team'] == context.away_team]
+        topics = [r for r in context.evidence_records if r['kind'] in ('prior_result','winning_run')] + formations
+        for i in range(max(len(home_players),len(away_players))):
+            topics.extend(team[i] for team in (home_players,away_players) if i < len(team))
+        topic_index = 0
+        used_stories = set()
+        ledger = EvidenceLedger(context)
+        boundaries = [(int(a*1000),int(b*1000)) for a,b in self.timeline.get_play_windows()]
+        for start, end in boundaries:
+            occupied = sorted([s for s in slots if s.start_ms < end and s.max_end_ms > start], key=lambda s:s.start_ms)
+            cursor = start
+            for following in occupied + [None]:
+                stop = min(end, following.start_ms) if following else end
+                if stop-cursor >= 6000 and topic_index < len(topics):
+                    story_start = cursor+1800
+                    story_end = min(story_start+4500,stop-250)
+                    # Expire a background story before an observed danger cue,
+                    # even when that cue itself was not allocated speech.
+                    cues = [e.presentation_ms for e in ordered_events if
+                            e.type in ('BOX_ENTRY','SHOT_RELEASE','CONTROL_IN_ATTACK') and
+                            story_start < e.presentation_ms < story_end]
+                    if cues:
+                        story_end = min(cues)-100
+                    if story_end-story_start >= 2800:
+                        milestones = [r for r in ledger.at(story_start) if r['kind'] == 'goal_tally'
+                                      and r['id'] not in used_stories]
+                        record = milestones[-1] if milestones else topics[topic_index]
+                        if record['available_ms'] <= story_start and add(story_start,story_end,'story',
+                                speaker='Aiden' if topic_index%2==0 else 'Ryan',priority=1):
+                            story_slot = slots[-1]
+                            story_slot.active_event_type = 'STORY'
+                            story_slot.evidence_ids = [record['id']]
+                            used_stories.add(record['id'])
+                            if not milestones:
+                                topic_index += 1
+                if following:
+                    cursor = max(cursor,following.max_end_ms)
         slots.sort(key=lambda s:s.start_ms)
         for i, s in enumerate(slots): s.commentary_id = f"com_{i+1:03d}"
         return slots

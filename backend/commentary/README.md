@@ -87,3 +87,58 @@ These are timing, factual-rule and audio measurements. Audio listening is not av
 in this agent session, so this does not claim a perceptual broadcast-quality score.
 The validator is deliberately conservative; its factual fallback can be less expressive
 than a human commentator. Crowd audio is added in post-production and must retain its credit.
+
+
+## Evidence-gated commentary (15 October 2026)
+
+The release writer now chooses among controlled realizations from a time-scoped
+fact ledger. The optional local model selects an eligible template ID, not free
+factual prose. Names, scores, roles and event meanings come from the recording.
+Every alternative carries a sentence-to-source audit trail, and a copied citation
+cannot authorize altered prose. Unknown ages, streaks, assists and other results
+remain unknown.
+
+Goal transitions distinguish an opener, equaliser, deficit reduction, go-ahead
+and extended advantage. The match clock supplies late-game context; score speech
+uses words with explicit team bindings. Analyst alternatives contribute context
+instead of repeating the goal scorer and score. Repeated analyst sentences are
+checked across the match, including their shorter alternatives.
+
+Attack speech is triggered from observations rather than a later goal/scorer.
+The danger evaluator now shares the saved-world direction convention (home
+positive X, away negative X); it can accept an explicitly mirrored adapter.
+Quiet-play stories use recorded line-up roles and formations by default. Historical
+results and winning runs require a trusted kickoff snapshot supplied with
+`--context-path`: the adapter verifies the trajectory hash/run binding, frozen
+football timestamp and eligible completed fixtures. It never queries today's
+mutable database for an old match. Predictions are limited to approved conditional
+opinion forms grounded in that snapshot; live other-match feeds and arbitrary
+season-position forecasts are not implemented.
+
+To compile and audit text without loading neural models, use the normal match
+paths plus `--script-only --no-llm`. Omit `--script-only` and pass
+`--tts-engine qwen` to create audio. Omitting `--no-llm` permits the installed
+model to select among the same verified candidates.
+
+The compiled script checkpoint is content-checked and bound to context, plan and
+writer code. Re-running a matching command reuses it and valid per-clip speech
+caches. Native English voice profiles, generation settings and per-clip seeds are
+recorded; this improves reproducible comparisons but does not guarantee stable
+pronunciation or identical outputs across hardware. Pronunciation aliases have
+not been guessed for generated names.
+
+A neural clip that cannot fit an optional window is reported in
+`tts_omissions.json`; it does not silently switch voice engine or delay a goal.
+Missing required goal/whistle speech still fails. `run_status.json` records run
+success or failure. Original allocated plans and compiled scripts remain separate
+from the final voiced plan, so recovery needs no manual JSON editing.
+
+`sentence_provenance.json` records intended controlled text and evidence;
+`clips/*.json` records the actual selected text, seed and delivery profile.
+`quality_report.json` checks the selected text, audio timing and source video
+packet preservation, and lists actual speech gaps above eight seconds. These
+are automated evidence/timing checks, not a human listening score or a guarantee
+against errors in the source records or audible speech generation.
+
+Detailed implementation plan and remaining work:
+[commentary improvement plan](../../docs/commentary_improvement_plan_2026_10_15.md).

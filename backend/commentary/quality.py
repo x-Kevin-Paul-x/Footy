@@ -24,6 +24,14 @@ def audit_commentary(artifacts_dir, timeline, source_video=None, output_video=No
     for s in slots:
         valid,errors=validator.validate(utterances[s.commentary_id],s)
         if not valid: raise ValueError(f"Unverified speech {s.commentary_id}: {errors}")
+        clip = next(c for c in clips if c.clip_id == s.commentary_id)
+        metadata_path = Path(clip.file_path).with_suffix('.json')
+        if utterances[s.commentary_id].grounding is not None:
+            if not metadata_path.exists():
+                raise ValueError('Grounded audio has no selected-text provenance')
+            metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+            if metadata.get('text') != getattr(utterances[s.commentary_id],clip.variant_used):
+                raise ValueError('Actual selected speech text differs from validated variant')
     for clip in clips:
         with wave.open(clip.file_path,"rb") as f:
             values=np.frombuffer(f.readframes(f.getnframes()),dtype=np.int16).reshape(-1,f.getnchannels())
@@ -45,13 +53,26 @@ def audit_commentary(artifacts_dir, timeline, source_video=None, output_video=No
         s=next(s for s in slots if s.slot_type=="goal_reaction" and s.start_ms==e["presentation_ms"])
         if s.active_player!=e["player"]: raise ValueError("Wrong scorer")
         clip=next(c for c in clips if c.clip_id==s.commentary_id)
-        lead=[a for a in slots if a.slot_type in ("lead_in","shot_call") and a.active_player==e["player"] and 0<e["presentation_ms"]-a.start_ms<=4000]
+        lead=[a for a in slots if a.slot_type in ("lead_in","shot_call","attack") and
+              a.active_team==e['team'] and 0<e["presentation_ms"]-a.start_ms<=4000]
         rows.append({"scorer":e["player"],"score":s.running_score,"crossing_seconds":s.start_ms/1000,
             "goal_voice_onset_ms":round(onsets[clip.clip_id],1),
             "buildup_seconds":lead[-1].start_ms/1000 if lead else None})
     report={"match_id":context.match_id,"clips":len(clips),"overflow_clips":0,"overlap_clips":0,
         "all_script_variants_valid":True,"speech_seconds":round(sum(durations.values())/1000,2),
         "goals":rows,"all_goals_have_buildup":all(r["buildup_seconds"] is not None for r in rows)}
+    gaps = [dict(start_seconds=round((a.requested_start_ms+durations[a.clip_id])/1000,3),
+                 end_seconds=b.requested_start_ms/1000,
+                 duration_seconds=round((b.requested_start_ms-a.requested_start_ms-durations[a.clip_id])/1000,3))
+            for a,b in zip(ordered,ordered[1:])]
+    report['speech_gaps_over_eight_seconds'] = [g for g in gaps if g['duration_seconds'] > 8]
+    report['maximum_inter_clip_speech_gap_seconds'] = max((g['duration_seconds'] for g in gaps),default=0)
+    report['grounded_clips'] = sum(u.grounding is not None for u in script.utterances)
+    report['story_clips'] = sum(s.slot_type == 'story' for s in slots)
+    omissions = p/'tts_omissions.json'
+    report['optional_audio_omissions'] = json.loads(omissions.read_text()) if omissions.exists() else []
+    report['factual_validation_scope'] = 'Controlled text and evidence provenance; not an audio listening score'
+    report['buildup_definition'] = 'Observed same-team attack/shot cue within four seconds; no requirement to know the future scorer'
     if source_video and output_video:
         report["original_video_packets_preserved"]=video_packet_hash(source_video)==video_packet_hash(output_video)
         if not report["original_video_packets_preserved"]: raise ValueError("Video was changed")

@@ -1,0 +1,107 @@
+{
+  "date": "2026-10-15",
+  "match_id": "match_2026_18_3",
+  "human_rating": {
+    "score": 54,
+    "out_of": 100,
+    "source": "User review of this match; not an automated quality score."
+  },
+  "original_slots": 50,
+  "published_clips": 49,
+  "goals": 8,
+  "speech_seconds": 123.95,
+  "video_duration_seconds": 310.9,
+  "speech_density_percent": 39.9,
+  "overflow_clips": 0,
+  "overlap_clips": 0,
+  "original_video_packets_preserved": true,
+  "observed_goals_with_buildup": 6,
+  "original_writer": {
+    "llm_accepted": 15,
+    "factual_fallbacks": 35,
+    "rejected_candidate_records": 35,
+    "rejections_can_have_multiple_reasons": true,
+    "rejection_reasons": {
+      "Invented action beyond recorded possession": 18,
+      "Invented action beyond recorded pass": 5,
+      "Unverified player gender": 8,
+      "Unnecessary partner name": 6,
+      "Unrelated player in active action: Shirley Holland": 1,
+      "Unrelated player in active action: Byron Munoz": 1,
+      "Unrelated player in active action: Dennis Derosso": 2,
+      "Wrong scorer attributed: expected Sandra Gerow in '2-4.'": 1,
+      "Speech has no words": 1,
+      "Unrelated player in active action: Julio Zielinski": 1
+    },
+    "repetition_flagged_records": 8,
+    "rejection_reason_counts_by_record": {
+      "Invented action beyond recorded possession": 14,
+      "Invented action beyond recorded pass": 3,
+      "Unverified player gender": 7,
+      "Unnecessary partner name": 4,
+      "Unrelated player in active action: Byron Munoz": 1,
+      "Unrelated player in active action: Shirley Holland": 1,
+      "Unrelated player in active action: Dennis Derosso": 1,
+      "Wrong scorer attributed: expected Sandra Gerow in '2-4.'": 1,
+      "Speech has no words": 1,
+      "Unrelated player in active action: Julio Zielinski": 1
+    },
+    "rejection_reasons_count_occurrences_not_unique_records": true
+  },
+  "server_timing": {
+    "requests_in_log": 50,
+    "median_generation_seconds": 10.57,
+    "p95_generation_seconds": 13.52,
+    "generation_times_over_15_seconds": 0,
+    "caveat": "Server generation timing is not the full HTTP round-trip and does not alone prove absence of client/network errors."
+  },
+  "failed_optional_slot": {
+    "id": "com_040",
+    "start_seconds": 257.0,
+    "budget_seconds": 0.8,
+    "text": "Gerow!",
+    "review_copy_resolution": "Preserved original plan; omitted only this slot and reused 39 cached neural clips."
+  },
+  "baseline_auto_validation_blind_spot": {
+    "id": "com_026",
+    "seconds": 173.8,
+    "spoken_text": "Scott Britt scores. West Ham level it. 1-2.",
+    "actual_score": [
+      1,
+      2
+    ]
+  },
+  "source_artifacts": "backend/commentary/artifacts/west-ham-bournemouth-20261014",
+  "scope": "Read-only research and planning. No new speech synthesis or production-code changes.",
+  "speech_gaps": {
+    "description": "Inter-clip gaps in actual speech, not absence of crowd audio; not yet classified by match phase.",
+    "over_eight_seconds": 4,
+    "longest_five": [
+      {
+        "start_seconds": 244.465,
+        "end_seconds": 257.8,
+        "duration_seconds": 13.335
+      },
+      {
+        "start_seconds": 283.443,
+        "end_seconds": 293.7,
+        "duration_seconds": 10.257
+      },
+      {
+        "start_seconds": 8.292,
+        "end_seconds": 18.5,
+        "duration_seconds": 10.208
+      },
+      {
+        "start_seconds": 139.534,
+        "end_seconds": 148.5,
+        "duration_seconds": 8.966
+      },
+      {
+        "start_seconds": 99.358,
+        "end_seconds": 107.2,
+        "duration_seconds": 7.842
+      }
+    ]
+  }
+}

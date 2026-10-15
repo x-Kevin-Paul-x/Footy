@@ -45,6 +45,7 @@ class TTSWorker:
         self.voice = voice
         self.clips_dir = clips_dir
         self.clips_dir.mkdir(parents=True, exist_ok=True)
+        self.omissions = []
 
     def synthesize_script(
         self,
@@ -60,6 +61,8 @@ class TTSWorker:
         Falls back to per-clip speech synthesizer if Qwen is not available or errors.
         """
         python_exe = TTS_VENV_DIR / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+        slot_map = {s.commentary_id: s for s in slots}
+        slots = [slot_map[u.commentary_id] for u in script.utterances]
         batch_script = Path(__file__).resolve().parent / "batch_runner.py"
 
         use_qwen = False
@@ -94,6 +97,18 @@ class TTSWorker:
                     with open(manifest_path, "r", encoding="utf-8") as f:
                         raw_clips = json.load(f)
                     clips = [AudioClip(**c) for c in raw_clips]
+                    omission_path = self.clips_dir.parent / 'tts_omissions.json'
+                    self.omissions = json.loads(omission_path.read_text()) if omission_path.exists() else []
+                    omitted_ids = {o['id'] for o in self.omissions}
+                    expected_ids = {u.commentary_id for u in script.utterances}
+                    if any(slot_map[cid].slot_type in ('goal_reaction','halftime_recap','fulltime_summary') for cid in omitted_ids):
+                        raise RuntimeError('A required speech slot cannot be omitted')
+                    if ({c.clip_id for c in clips} | omitted_ids == expected_ids and
+                            len(clips)+len(omitted_ids) == len(expected_ids) and
+                            not ({c.clip_id for c in clips} & omitted_ids)):
+                        return sorted(clips, key=lambda c:c.requested_start_ms)
+                    if not qwen_limit:
+                        raise RuntimeError('Neural clip set is incomplete or contains unexpected IDs')
                     if len(clips) == len(script.utterances):
                         return clips
                     print(f"Batch runner produced {len(clips)}/{len(script.utterances)} clips. Completing remaining with fallback...")
@@ -212,7 +227,7 @@ $s.Dispose()
         actual_dur_ms = int(get_wav_duration_seconds(best_wav) * 1000)
         pts_offset_sec = slot.start_ms / 1000.0
 
-        return AudioClip(
+        clip = AudioClip(
             clip_id=cid,
             requested_start_ms=slot.start_ms,
             max_end_ms=slot.max_end_ms,
@@ -226,3 +241,7 @@ $s.Dispose()
             pts_offset_seconds=pts_offset_sec,
             atempo_applied=atempo_applied,
         )
+        best_wav.with_suffix('.json').write_text(json.dumps({
+            'engine':'sapi','text':getattr(utterance,best_variant),'record':clip.model_dump(),
+        },indent=2),encoding='utf-8')
+        return clip
