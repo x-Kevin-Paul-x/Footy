@@ -14,10 +14,9 @@ import os
 import sys
 import time
 import signal
-import threading
 import numpy as np
 from pathlib import Path
-from unittest.mock import patch, mock_open
+from unittest.mock import patch
 import tempfile
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -25,9 +24,8 @@ backend_src = REPO_ROOT / "src"
 if str(backend_src) not in sys.path:
     sys.path.insert(0, str(backend_src))
 
-from logic.grf_state_archive import GRFStateArchiveWriter, GRFStateArchiveReader, ReplayIntegrityError
+from logic.grf_state_archive import GRFStateArchiveWriter, GRFStateArchiveReader
 from logic.simulation.simulation_process_pool import SimulationProcessPool
-from logic.simulation.simulation_worker import SimulationWorker, ReplayMode
 from logic.replay.replay_pipeline import ReplayPipeline, InstrumentedFrameQueue
 from logic.replay.replay_encoder import create_encoder
 
@@ -187,7 +185,7 @@ def test_renderer_error_isolation():
             "trajectory_file": str(RESILIENCE_DIR / "nonexistent.npz"),
             "output_mp4": str(RESILIENCE_DIR / "test_render_iso.mp4")
         })
-    except Exception as ex:
+    except Exception:
         caught = True
 
     # Verify archive is STILL 100% valid after failed render
@@ -197,7 +195,7 @@ def test_renderer_error_isolation():
     if os.path.exists(test_state):
         os.remove(test_state)
 
-    print(f"\n[+] 6. Verified renderer fault isolation (Archive remains 100% valid)")
+    print("\n[+] 6. Verified renderer fault isolation (Archive remains 100% valid)")
     assert True
 
 

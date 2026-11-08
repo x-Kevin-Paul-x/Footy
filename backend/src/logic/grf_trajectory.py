@@ -4,7 +4,6 @@ Provides compact binary trajectory serialization (.npz), manifest metadata,
 and deterministic trajectory fingerprinting for 100% replay fidelity.
 """
 
-import os
 import json
 import hashlib
 from pathlib import Path

@@ -3,7 +3,6 @@ import logging
 import os
 import sys
 import asyncio
-import io
 import re
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -17,32 +16,26 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from fastapi import Body, FastAPI, BackgroundTasks, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse, Response
-from urllib.parse import unquote
 
 # Database repositories and ORM models
 from database.session import get_db_session
-from database.models import Match, Team, Player, Manager as DBManager, TransferHistory, MatchEvent, SimulationRun
+from database.models import Match, Team, Player, TransferHistory, MatchEvent, SimulationRun
 from database.team_db import get_all_teams
 from database.player_db import get_all_players
-from database.match_db import get_matches_for_season, get_match_details
+from database.match_db import get_match_details
 from database.report_db import get_all_season_reports, get_season_report_by_year, get_all_transfer_reports, get_transfer_report_by_year
 from config import (
     API_DEBUG,
     API_PORT,
     BASE_DIR,
-    MATCH_REPORTS_DIR,
     ML_MODELS_DIR,
     ML_REPORTS_DIR,
     PROJECT_ROOT,
     RECORDINGS_DIR,
     REPORTS_DIR,
     SEASON_REPORTS_DIR,
-    SIMULATION_SCRIPT,
-    SIMULATION_TIMEOUT_SECONDS,
-    TRANSFER_LOGS_DIR,
     ensure_report_directories,
 )
 
@@ -122,7 +115,9 @@ def find_match_video_and_url(match_id: Any) -> tuple[Optional[Path], Optional[st
         video_url = details.get('video_url')
         if video_url:
             candidate = (RECORDINGS_DIR / video_url.removeprefix('/recordings/')).resolve()
-            candidate.relative_to(RECORDINGS_DIR.resolve())
+            if not candidate.is_relative_to(RECORDINGS_DIR.resolve()):
+                logger.warning("Ignoring video_url outside recordings for match %s", match_id)
+                return None, None
             if replay_video_is_ready(candidate):
                 trace = details.get('trace_file')
                 if trace and str(trace).endswith('.npz') and candidate.name.endswith('_3d.mp4'):
@@ -314,7 +309,6 @@ from schemas import (
     MatchRenderResponse,
     SimulationSettings, SimulationSubmission, EvaluationSubmission, JobResponse
 )
-import shutil
 from database.session import DB_FILE
 
 SAVES_DIR = Path(DB_FILE).parent / "saves"
@@ -1265,7 +1259,8 @@ async def render_match_replay(match_id: str, req: Optional[MatchRenderRequest] =
         traj_path = to_win_path(match_details.get('trace_file'))
         if traj_path is None or not traj_path.is_file():
             raise HTTPException(status_code=404, detail='Recorded trajectory is missing for this match.')
-        traj_path.resolve().relative_to(RECORDINGS_DIR.resolve())
+        if not traj_path.resolve().is_relative_to(RECORDINGS_DIR.resolve()):
+            raise HTTPException(status_code=404, detail='Recorded trajectory is outside the recordings directory.')
         from logic.grf_trajectory import MatchTrajectory
         recorded = MatchTrajectory.load_from_npz(traj_path)
         fixture_id = recorded.match_id
@@ -1314,10 +1309,6 @@ async def simulate_grf_match(req: MatchSimulationRequest):
     On repeat calls: loads trace and replays exact same actions — score and goals are identical.
     """
     try:
-        from models.team import Team
-        from models.player import FootballPlayer
-        from models.match import get_grf_simulator
-        from models.manager import Manager
         from database.match_db import get_match_details
         from logic.grf_native_runner import GRFNativeRunner, team_color_from_name
         from datetime import datetime
@@ -1381,8 +1372,9 @@ async def simulate_grf_match(req: MatchSimulationRequest):
                         timeline=events, video_url=legacy_url, render_mode_used='existing', render_source='legacy_video',
                     )
                 raise HTTPException(status_code=409, detail='This fixture has no recording. Re-simulation would change the original match.')
-            recorded_path.resolve().relative_to(RECORDINGS_DIR.resolve())
-            original = MatchTrajectory.load_from_npz(recorded_path)
+            if not recorded_path.resolve().is_relative_to(RECORDINGS_DIR.resolve()):
+                raise HTTPException(status_code=409, detail='Stored recording is outside the recordings directory.')
+            original =MatchTrajectory.load_from_npz(recorded_path)
             manifest = original.manifest
             if (manifest.home_team != h_team or manifest.away_team != a_team
                     or list(manifest.score) != [existing_match['home_goals'], existing_match['away_goals']]):

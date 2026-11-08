@@ -8,7 +8,10 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     define: {
-      'process.env.VITE_API_BASE_URL': JSON.stringify(env.VITE_API_BASE_URL || ''),
+      // Unset keeps the localhost:5001 default; an explicit empty value (the
+      // Docker/nginx build) means "same origin as the page".
+      'process.env.VITE_API_BASE_URL':
+        env.VITE_API_BASE_URL === undefined ? 'undefined' : JSON.stringify(env.VITE_API_BASE_URL),
       'process.env.VITE_API_TIMEOUT_MS': JSON.stringify(env.VITE_API_TIMEOUT_MS || ''),
     },
     server: {

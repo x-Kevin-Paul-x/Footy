@@ -1,6 +1,5 @@
 from models.player import FootballPlayer
-from models.manager import Manager
-from database.team_db import create_team, get_team, update_team, delete_team
+from database.team_db import create_team, get_team, update_team
 import random
 
 class Team:

@@ -1,11 +1,10 @@
 """CLI entry point for training, evaluating, and comparing Action-Masked DQN agents."""
 
 import argparse
-import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 # Add backend/src to path if not present
 BACKEND_SRC = Path(__file__).resolve().parent.parent
@@ -16,11 +15,6 @@ import numpy as np
 
 from ml.dqn_agent import DQNAgent, TORCH_AVAILABLE
 from ml.footy_env import FootyEnv
-from ml.evaluation import (
-    build_evaluation_report,
-    save_evaluation_report,
-    summarize_episode_results,
-)
 
 
 def run_episode(

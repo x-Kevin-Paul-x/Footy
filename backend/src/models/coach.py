@@ -2,7 +2,6 @@ import random
 import numpy as np
 import names
 
-from database.coach_db import create_coach, get_coach, update_coach, delete_coach
 from collections import defaultdict
 
 class Coach:

@@ -1,7 +1,8 @@
 import axios from 'axios';
 
 const DEFAULT_API_BASE_URL = 'http://localhost:5001';
-const API_BASE_URL = process.env.VITE_API_BASE_URL?.trim() || DEFAULT_API_BASE_URL;
+// An empty string is meaningful: requests go to the page's own origin (nginx proxy).
+const API_BASE_URL = (process.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL).trim();
 const API_TIMEOUT_MS = Number(process.env.VITE_API_TIMEOUT_MS || 30000);
 
 const apiClient = axios.create({
@@ -18,7 +19,7 @@ apiClient.interceptors.request.use((request) => {
 });
 
 export const resolveSimulationSocketUrl = (): string => {
-  const socket = new URL(resolveApiBaseUrl());
+  const socket = new URL(resolveApiBaseUrl() || '/', window.location.origin);
   socket.protocol = socket.protocol === 'https:' ? 'wss:' : 'ws:';
   socket.pathname = '/ws';
   socket.search = '';
@@ -29,7 +30,7 @@ export const resolveSimulationSocketUrl = (): string => {
 export const resolveReplayVideoUrl = (url?: string | null): string => {
   if (!url) return '';
   if (/^(https?:|blob:)/.test(url)) return url;
-  const base = window.localStorage.getItem('footy_api_url')?.trim() || API_BASE_URL;
+  const base = resolveApiBaseUrl();
   return `${base.replace(/\/+$/, '')}/${url.replace(/^\/+/, '')}`;
 };
 

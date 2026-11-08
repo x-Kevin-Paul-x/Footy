@@ -9,9 +9,8 @@ Renders broadcast-quality 720p/1080p MP4 videos from:
 import os
 import sys
 import json
-import time
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any
 import numpy as np
 import cv2
 
@@ -25,7 +24,6 @@ from logic.replay.replay_pipeline import ReplayPipeline
 from logic.grf_trajectory import MatchTrajectory
 from logic.grf_renderer import (
     render_video_from_trajectory,
-    team_color_from_name,
     hex_to_bgr,
     draw_pre_match_card,
     draw_studio_stats_card,

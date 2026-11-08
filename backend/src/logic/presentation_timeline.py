@@ -7,7 +7,6 @@ Maps the three explicit clocks:
 Enables sample-accurate replay seeking across intro cards, halftime cards, goal holds, and slow-mo replays.
 """
 
-import os
 import json
 from pathlib import Path
 from dataclasses import dataclass, field, asdict

@@ -5,7 +5,6 @@ physics-calibrated Opta xG modeling, and compact MatchTrajectory output without 
 """
 
 import math
-import hashlib
 import logging
 from typing import Dict, List, Any, Optional, Tuple
 import numpy as np

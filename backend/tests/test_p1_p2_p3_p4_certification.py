@@ -3,25 +3,20 @@ Certification Test Suite for P1 (Consolidation & Render Decoupling),
 P2 (API Standardization), P3 (Canonical Presentation Timeline), and P4 (Benchmark Harness).
 """
 
-import os
 import json
 import struct
-import pytest
 from pathlib import Path
 from fastapi.testclient import TestClient
 
-from api_fastapi import app, RECORDINGS_DIR
+from api_fastapi import app
 from logic.simulation.match_executor import (
     GRFMatchExecutor,
     SimulationSpec,
-    SimulationTransition,
-    CanonicalMatchResult,
     ReplayMode,
 )
 from logic.simulation.simulation_worker import SimulationWorker
 from logic.presentation_timeline import (
     PresentationTimeline,
-    TimelineSegment,
     build_canonical_timeline,
 )
 from benchmarks.benchmark_harness import BenchmarkConfig, BenchmarkRunner

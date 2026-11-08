@@ -6,7 +6,6 @@ with physics-grounded 3D Multi-Agent Reinforcement Learning simulation.
 
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Any, Optional, Tuple
-import numpy as np
 
 
 # Standard Formation Anchor Coordinates on GRF Pitch: x in [-1.0, 1.0], y in [-0.42, 0.42]

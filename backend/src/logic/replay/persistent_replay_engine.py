@@ -8,12 +8,11 @@ Eliminates repeated ~2.2s environment teardown/recreation overhead in bulk repla
 from logic.team_identity import club_colour
 
 import os
-import sys
 import time
 import queue
 import threading
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, Any, Optional
 import numpy as np
 import cv2
 
@@ -32,16 +31,14 @@ except ImportError:
 from logic.grf_trajectory import MatchTrajectory
 from logic.broadcast.stats import StatsSnapshotReducer
 from logic.grf_state_archive import GRFStateArchiveReader, ReplayIntegrityError
-from logic.replay_schema import SIM_STEP_SECONDS
 from logic.grf_renderer import (
-    team_color_from_name,
     hex_to_bgr,
     draw_pre_match_card,
     draw_studio_stats_card,
     draw_hud
 )
 from .native_goal_frames import NativeGoalFrames
-from .replay_encoder import create_encoder, ReplayEncoder
+from .replay_encoder import create_encoder
 from .replay_pipeline import InstrumentedFrameQueue
 
 

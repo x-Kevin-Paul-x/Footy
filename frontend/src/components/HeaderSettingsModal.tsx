@@ -37,7 +37,8 @@ export const HeaderSettingsModal: React.FC<Props> = ({ open, onClose, onShowToas
     return localStorage.getItem('footy_enable_toasts') !== 'false';
   });
   const [apiUrl, setApiUrl] = useState<string>(() => {
-    return localStorage.getItem('footy_api_url') || 'http://localhost:5001';
+    // Empty means "use the build's default"; only an explicit override is stored.
+    return localStorage.getItem('footy_api_url') || '';
   });
 
   useEffect(() => {
@@ -58,12 +59,15 @@ export const HeaderSettingsModal: React.FC<Props> = ({ open, onClose, onShowToas
   }, [open]);
 
   const handleSave = async () => {
-    localStorage.setItem('footy_active_model', activeModel);
     localStorage.setItem('footy_enable_toasts', String(enableToasts));
-    localStorage.setItem('footy_api_url', apiUrl);
+    // The URL is connection config, so apply it before talking to the backend.
+    const trimmedUrl = apiUrl.trim();
+    if (trimmedUrl) localStorage.setItem('footy_api_url', trimmedUrl);
+    else localStorage.removeItem('footy_api_url');
     try {
       const current = await getSimulationSettings();
       await updateSimulationSettings({ ...current, active_model: activeModel });
+      localStorage.setItem('footy_active_model', activeModel);
       onShowToast('Settings saved successfully!', 'success');
       onClose();
     } catch {
@@ -74,7 +78,7 @@ export const HeaderSettingsModal: React.FC<Props> = ({ open, onClose, onShowToas
   const handleResetDefaults = () => {
     setActiveModel('dqn_best.pt');
     setEnableToasts(true);
-    setApiUrl('http://localhost:5001');
+    setApiUrl('');
     onShowToast('Settings reset to defaults.', 'info');
   };
 
@@ -160,6 +164,8 @@ export const HeaderSettingsModal: React.FC<Props> = ({ open, onClose, onShowToas
               label="Backend API Base URL"
               value={apiUrl}
               onChange={(e) => setApiUrl(e.target.value)}
+              placeholder="Default (leave empty)"
+              helperText="Leave empty to use the build default."
               sx={{ mt: 1 }}
             />
           </Box>

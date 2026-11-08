@@ -361,16 +361,16 @@ flowchart TB
 | **Domain Model** | Raw observation vectors and action integers | Typed football domain models (clubs, players, events, xG) |
 | **Artifact Output** | Raw binary `.dump` / `.replay` files | Typed `.npz` trajectories, manifests, and presentation timelines |
 | **Visual Presentation** | Headless or basic OpenGL viewport | Clay-style studio cards, club kits and player identity, native HD, directed cameras, scoreboard and radar |
-| **Product Interface** | Python script execution | 14-page React 19 visual analytics & control center |
+| **Product Interface** | Python script execution | 15-page React 19 visual analytics & control center |
 | **Process Model** | Single environment loop | Multiprocess fixture pool with watchdog supervisor recovery |
 
 ---
 
 ## Quick Start
 
-### 🐳 Zero-Friction Setup (Docker Compose)
+### 🐳 Docker Compose (browse mode)
 
-The fastest way to launch Footy with both backend and frontend pre-configured:
+The fastest way to launch the API and frontend. The image installs only the core API dependencies, so it is for browsing existing data, saves and recordings. Running new GRF simulations needs the local or WSL setup below (PyTorch, GRF and FFmpeg).
 
 ```bash
 git clone https://github.com/x-Kevin-Paul-x/Footy.git
@@ -472,7 +472,7 @@ Footy/
 │   └── tests/                   unit, regression, and GRF determinism tests
 ├── frontend/
 │   ├── src/components/          formation viewer, replay player, charts, and tables
-│   ├── src/pages/               14 product surfaces (dashboard, match center, analytics)
+│   ├── src/pages/               15 product surfaces (dashboard, match center, analytics)
 │   ├── src/services/            typed Axios client and WebSocket hooks
 │   └── src/store/               Zustand simulation state store
 ├── assets/readme/               theme-aware screenshots and showcase match artifacts

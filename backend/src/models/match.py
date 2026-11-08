@@ -1,10 +1,8 @@
 import logging
 import random
-import math
 import os
 from dataclasses import dataclass
 from typing import Any, List, Dict, Tuple, Optional
-from database.match_db import save_match_to_db
 
 logger = logging.getLogger("footy.models.match")
 

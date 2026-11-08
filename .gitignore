@@ -1,35 +1,21 @@
-__pycache__/# Python
+# Python
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
-*.pyc
 *.pdb
 *.egg-info/
-.env
 .venv/
 venv/
 env/
-*.sqlite3
-db.sqlite3
-
-# VSCode
-.vscode/
-
-# macOS
-.DS_Store
-
-# Windows
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-
-
-node_modules
+.env
+.coverage
+coverage.xml
+.ruff_cache/
+.mypy_cache/
 
 # Node.js / React / Frontend
 node_modules/
-frontend/node_modules/
 frontend/dist/
 frontend/build/
 frontend/.env
@@ -39,87 +25,76 @@ frontend/.parcel-cache/
 frontend/.turbo/
 frontend/.next/
 frontend/.cache/
-frontend/yarn-error.log
-frontend/npm-debug.log
-frontend/pnpm-debug.log
 
 # Logs
 *.log
 logs/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
 # Test output
 coverage/
 *.lcov
 
-# Editor directories and files
+# Editors and OS files
+.vscode/
 .idea/
 *.sublime-workspace
 *.sublime-project
-
-# Misc
 *.swp
 *.swo
+.qodo/
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
 
-# Ignore reports and simulation outputs
+# Databases
+*.db
+*.sqlite3
+*.db-shm
+*.db-wal
+backend/data/saves/
+
+# Simulation reports and outputs
 match_reports/
 season_reports/
 simulation_results/
 transfer_logs/
-*.pyc
-*.pyo
-*.egg-info/
-.env
-*.log
-*.DS_Store
-match_reports/
-.qodo/
-.qodo
-season_reports/
-transfer_logs/
-football_sim.db
-*.db
-backend/data/*.db
-backend/data/*.db-shm
-backend/data/*.db-wal
-backend/data/saves/
 backend/reports/
+
+# Local scratch files
 implementation_plan.md
 test_data.py
 test_database.py
-test_transfers.log
 test_training.py
 test_transfers.py
-node_modules/*
+
+# Media: only curated README/showcase recordings are tracked
 *.mp4
-!assets/readme/showcase-match.mp4
-!assets/matches/full-match-recordings/*.mp4
-*.db-shm
-*.db-wal
 *.avi
 *.webm
-backend/reports/recordings/
+!assets/readme/showcase-match.mp4
+!assets/matches/full-match-recordings/*.mp4
+!assets/matches/current-season/west-ham-bournemouth.mp4
+assets/matches/current-season/*.kits/
+
+# Verification runs
 backend/verification/season_*/
+backend/verification/readme_season_*/
 backend/verification/tmp/
 backend/verification/latest.json
+
+# Native runtime build
 backend/native/runtime/
+
+# Commentary runtimes, models and outputs
 backend/commentary/.venv-tts/
 backend/commentary/.venv-research/
 backend/commentary/models/research-cache/
+backend/commentary/models/llm/
+backend/commentary/models/tts/
 backend/commentary/artifacts/
 backend/commentary/output/
 backend/commentary/bin/
-backend/commentary/models/llm/
-backend/commentary/models/tts/
-.coverage
-coverage.xml
-.ruff_cache/
-.mypy_cache/
-docs/evidence/training/**/*.pt
 
-# Curated fresh-season README recording; keep generated runtime assets local.
-!assets/matches/current-season/west-ham-bournemouth.mp4
-assets/matches/current-season/*.kits/
-backend/verification/readme_season_*/
+# Training checkpoints in evidence folders
+docs/evidence/training/**/*.pt

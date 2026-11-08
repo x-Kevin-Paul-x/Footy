@@ -3,7 +3,6 @@ import os
 from typing import List, Dict, Optional
 import random
 from datetime import datetime
-from database.session import DB_FILE
 from models.player import FootballPlayer
 from models.team import Team
 

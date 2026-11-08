@@ -7,10 +7,8 @@ manager financial bounds, and frontend/API route alignment WITHOUT running simul
 
 import ast
 import inspect
-import json
 import textwrap
 import pytest
-from pathlib import Path
 
 
 def test_home_lineup_abstraction_contract():
@@ -81,7 +79,7 @@ def test_match_rng_isolation_ast():
 
 def test_truthiness_seed_val_preservation():
     """Statically verify that seed_val=0 is preserved correctly using 'is not None' rather than truthiness 'or'."""
-    from models.match import Match, PreparedMatch
+    from models.match import Match
     from models.league import League
 
     src_match_init = inspect.getsource(Match.__init__)

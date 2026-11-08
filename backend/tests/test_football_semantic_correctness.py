@@ -12,7 +12,6 @@ Validates domain football rules, event ordering, and statistical integrity:
 
 import os
 import sys
-import numpy as np
 from pathlib import Path
 
 import tempfile
@@ -25,7 +24,6 @@ if str(backend_src) not in sys.path:
 from logic.simulation.simulation_worker import SimulationWorker, ReplayMode
 from logic.simulation.policy_backend import CPUSinglePolicy
 from logic.grf_trajectory import MatchTrajectory
-from logic.match_manifest import MatchManifest, compute_file_sha256, ArtifactLifecycle
 
 import pytest
 try:

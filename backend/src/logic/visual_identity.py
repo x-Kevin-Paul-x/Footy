@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 from copy import deepcopy
-from pathlib import Path
 from filelock import FileLock
 from logic.team_identity import club_colour
 

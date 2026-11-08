@@ -27,7 +27,6 @@ os.environ["FOOTY_DATA_DIR"] = str(_TEST_DATA_DIR)
 def _isolated_data_dir():
     """Point DB/save paths at a temp dir and clean it up after the run."""
     import database.session as session_mod
-    import database.models as models_mod
     import config as config_mod
 
     # Main DB lives in the temp dir via the FOOTY_DATA_DIR override.

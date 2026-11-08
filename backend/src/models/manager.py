@@ -1,5 +1,4 @@
 import random
-import numpy as np
 import names
 from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, List, Tuple, Any, Optional
@@ -7,8 +6,8 @@ if TYPE_CHECKING:
     from models.team import Team
     from models.transfer import TransferMarket
 from logic.manager_profile import ManagerProfile
-from logic.manager_brain import ManagerBrain, StateEncoder
-from database.manager_db import create_manager, get_manager, update_manager, delete_manager
+from logic.manager_brain import ManagerBrain
+from database.manager_db import create_manager, get_manager, update_manager
 
 class Manager:
     def __init__(self, name=None, experience_level=None, profile=None,

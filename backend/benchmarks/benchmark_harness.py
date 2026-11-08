@@ -17,7 +17,7 @@ import hashlib
 import platform
 import statistics
 from pathlib import Path
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Tuple
 
 
