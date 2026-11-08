@@ -1,0 +1,166 @@
+{
+  "date": "2026-10-15",
+  "branch": "codex/commentary-grounding",
+  "scope": "First evidence-gated commentary milestone; broader dialogue, pronunciation and graphics work remains.",
+  "selection_mode": "Deterministic controlled template selection; optional local model selects only template IDs.",
+  "tests": {
+    "backend_passed": 177,
+    "backend_skipped": 11,
+    "commentary_passed_after_final_fixes": 52,
+    "note": "Combined diagnostic run passed all backend tests but found one obsolete commentary golden assertion; it was updated for causal cues and actual audio metrics, then the complete commentary suite passed."
+  },
+  "quality": {
+    "match_id": "match_2026_18_3",
+    "clips": 59,
+    "overflow_clips": 0,
+    "overlap_clips": 0,
+    "all_script_variants_valid": true,
+    "speech_seconds": 117.75,
+    "goals": [
+      {
+        "scorer": "Ernest Byrd",
+        "score": "0-1",
+        "crossing_seconds": 74.1,
+        "goal_voice_onset_ms": 15.1,
+        "buildup_seconds": 72.2
+      },
+      {
+        "scorer": "Sandra Gerow",
+        "score": "0-2",
+        "crossing_seconds": 85.8,
+        "goal_voice_onset_ms": 15.4,
+        "buildup_seconds": 84.1
+      },
+      {
+        "scorer": "Scott Britt",
+        "score": "1-2",
+        "crossing_seconds": 173.8,
+        "goal_voice_onset_ms": 15.2,
+        "buildup_seconds": null
+      },
+      {
+        "scorer": "Ali Bundage",
+        "score": "1-3",
+        "crossing_seconds": 192.7,
+        "goal_voice_onset_ms": 34.3,
+        "buildup_seconds": 189.4
+      },
+      {
+        "scorer": "Jeanine Simpson",
+        "score": "2-3",
+        "crossing_seconds": 225.4,
+        "goal_voice_onset_ms": 15.2,
+        "buildup_seconds": null
+      },
+      {
+        "scorer": "Sandra Gerow",
+        "score": "2-4",
+        "crossing_seconds": 257.8,
+        "goal_voice_onset_ms": 15.4,
+        "buildup_seconds": null
+      },
+      {
+        "scorer": "Jeanine Simpson",
+        "score": "3-4",
+        "crossing_seconds": 273.2,
+        "goal_voice_onset_ms": 16.5,
+        "buildup_seconds": 269.8
+      },
+      {
+        "scorer": "Julio Zielinski",
+        "score": "4-4",
+        "crossing_seconds": 296.0,
+        "goal_voice_onset_ms": 18.7,
+        "buildup_seconds": null
+      }
+    ],
+    "all_goals_have_buildup": false,
+    "speech_gaps_over_eight_seconds": [
+      {
+        "start_seconds": 249.771,
+        "end_seconds": 257.8,
+        "duration_seconds": 8.029
+      }
+    ],
+    "maximum_inter_clip_speech_gap_seconds": 8.029,
+    "grounded_clips": 59,
+    "story_clips": 8,
+    "optional_audio_omissions": [
+      {
+        "id": "com_050",
+        "reason": "No complete variant fits",
+        "budget_seconds": 0.7
+      }
+    ],
+    "factual_validation_scope": "Controlled text and evidence provenance; not an audio listening score",
+    "buildup_definition": "Observed same-team attack/shot cue within four seconds; no requirement to know the future scorer",
+    "original_video_packets_preserved": true
+  },
+  "source_video_sha256": "508517cdcd93fc5e78e5539ca82b88f0e85c680b092f847c632c2a33d65934ab",
+  "source_packet_hash": "SHA256=acdaa24aa1fe47ae1023332a89578a2fba265c4ff26be8e08fa2f5493ba0ca12",
+  "output_packet_hash": "SHA256=acdaa24aa1fe47ae1023332a89578a2fba265c4ff26be8e08fa2f5493ba0ca12",
+  "review_output": "backend/commentary/output/west-ham-grounded-v1/west-ham-bournemouth-commentary.mp4",
+  "observations": {
+    "baseline_maximum_gap_seconds": 13.34,
+    "new_maximum_gap_seconds": 8.029,
+    "baseline_clips": 49,
+    "new_clips": 59,
+    "evidence_records": 237,
+    "human_listening_score": null
+  },
+  "corrected_calls": [
+    {
+      "seconds": 173.8,
+      "text": "Britt scores! West Ham pull one back!",
+      "evidence": {
+        "version": "evidence-1",
+        "template_id": "goal.team",
+        "kind": "fact",
+        "claim_ids": [
+          "evt_0115"
+        ],
+        "as_of_ms": 173800,
+        "sources": [
+          {
+            "id": "evt_0115",
+            "source": "event:evt_0115;source_step:1676",
+            "available_ms": 173800
+          }
+        ]
+      }
+    },
+    {
+      "seconds": 306.9,
+      "text": "Full time. West Ham four, Bournemouth four.",
+      "evidence": {
+        "version": "evidence-1",
+        "template_id": "whistle.score",
+        "kind": "fact",
+        "claim_ids": [
+          "fixture",
+          "evt_0203"
+        ],
+        "as_of_ms": 306900,
+        "sources": [
+          {
+            "id": "fixture",
+            "source": "manifest:fixture",
+            "available_ms": 0
+          },
+          {
+            "id": "evt_0203",
+            "source": "event:evt_0203;source_step:3000",
+            "available_ms": 306900
+          }
+        ]
+      }
+    }
+  ],
+  "source_recording_hashes_unchanged": {
+    "trace_match_2026_18_3.grfstate": "8f0043b5426102d31246cfedc129c21fb18ef71ad8d8ccc1a61379eefa73d59f",
+    "trace_match_2026_18_3.npz": "2838199300853cdf41a3f45971b5578b3816c4f092eba7079a63a712c0c78550",
+    "trace_match_2026_18_3.goals.json": "6201202e8d8a6dff68bbcdb080aab47b3d670529a01e13d534faaeb3aa9c86d6",
+    "trace_match_2026_18_3.goals.grfstate": "76b5b7bcfa8a89aa24fb25db0adc3250ab92096c85678ab4d1c3110d5f0f9fc7"
+  },
+  "full_output_video_audio_decode": "passed"
+}

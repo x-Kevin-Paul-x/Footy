@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import aliased
 from database.session import SessionLocal, get_db_session
-from database.models import Match, MatchShots, MatchEvent, Team, Manager, Player, SimulationRun, WorkJob
+from database.models import Match, MatchShots, MatchEvent, Team, Manager, SimulationRun, WorkJob
 
 logger = logging.getLogger("footy.database.match")
 

@@ -7,13 +7,11 @@ integrity validation, atomic file creation (.tmp -> fsync -> rename), and legacy
 
 import os
 import io
-import sys
 import json
 import zlib
 import pickle
 import hashlib
 import struct
-from pathlib import Path
 from typing import Dict, List, Any, Optional, Iterator, Tuple
 
 from logic.replay_schema import GRF_STATE_SCHEMA_VERSION, REPLAY_FORMAT_VERSION, SIM_STEP_SECONDS, SIM_FPS

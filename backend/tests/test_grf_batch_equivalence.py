@@ -8,11 +8,8 @@ Verifies that:
 """
 
 import pytest
-import numpy as np
-from pathlib import Path
 
 from logic.grf_native_runner import GRFNativeRunner
-from logic.grf_trajectory import MatchTrajectory
 from config import RECORDINGS_DIR
 
 

@@ -1,11 +1,10 @@
-import shutil
 import struct
 from pathlib import Path
 
 import pytest
 
 from fastapi.testclient import TestClient
-from api_fastapi import app, DB_FILE, SAVES_DIR
+from api_fastapi import app, DB_FILE
 
 client = TestClient(app)
 
@@ -111,6 +110,17 @@ def test_find_match_video_and_url_direct_and_run_dir(tmp_path, monkeypatch):
     p3, url3 = find_match_video_and_url("nonexistent_match")
     assert p3 is None
     assert url3 is None
+
+
+def test_find_match_video_rejects_stored_url_outside_recordings(tmp_path, monkeypatch):
+    """A stored video_url that escapes RECORDINGS_DIR is treated as missing, not a 500."""
+    from api_fastapi import find_match_video_and_url
+    test_recordings = tmp_path / "recordings"
+    test_recordings.mkdir()
+    monkeypatch.setattr("api_fastapi.RECORDINGS_DIR", test_recordings)
+    monkeypatch.setattr("api_fastapi.get_match_details",
+                        lambda _mid: {"video_url": "/recordings/../../outside.mp4"})
+    assert find_match_video_and_url("123") == (None, None)
 
     incomplete = test_recordings / 'match_99993.mp4'
     incomplete.write_bytes(struct.pack('>I4s', 12, b'ftyp') + b'isom')

@@ -8,7 +8,6 @@ match artifact package (matching SHA256 hashes across .npz trajectories, .grfsta
 import os
 import sys
 import shutil
-import hashlib
 import multiprocessing as mp
 from pathlib import Path
 

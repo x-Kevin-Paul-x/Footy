@@ -7,7 +7,6 @@ Direct rawvideo FFmpeg pipes for ultra-low latency video rendering:
 """
 
 import os
-import sys
 import subprocess
 import threading
 from abc import ABC, abstractmethod

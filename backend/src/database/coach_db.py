@@ -161,13 +161,13 @@ def test_coach_db():
     add_coach_to_team(coach_id, test_team_id)
     team_coaches = get_coaches_for_team(test_team_id)
     assert any([coach[0] == coach_id for coach in team_coaches])
-    print(f"   Added coach to team and verified.")
+    print("   Added coach to team and verified.")
 
     # Remove coach from team and check
     remove_coach_from_team(coach_id, test_team_id)
     team_coaches = get_coaches_for_team(test_team_id)
     assert not any([coach[0] == coach_id for coach in team_coaches])
-    print(f"   Removed coach from team and verified.")
+    print("   Removed coach from team and verified.")
 
     # Delete the coach
     delete_coach(coach_id)

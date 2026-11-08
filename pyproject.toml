@@ -54,7 +54,9 @@ line-length = 120
 extend-exclude = ["backend/third_party", "backend/verification", "backend/native", "backend/commentary/.venv-tts", "backend/commentary/models", "backend/commentary/artifacts", "backend/commentary/output", "frontend", "node_modules"]
 
 [tool.ruff.lint]
-select = ["E9", "F63", "F7", "F82"]
+select = ["E9", "F"]
+# TODO: review the remaining unused locals by hand (some may be logic slips), then drop this ignore.
+ignore = ["F841"]
 
 [tool.mypy]
 files = ["backend/src/logic/safe_paths.py", "backend/src/logic/replay/frame_timeline.py"]

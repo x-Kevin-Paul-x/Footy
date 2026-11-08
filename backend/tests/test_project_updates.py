@@ -1,14 +1,12 @@
-import asyncio
 import json
 import pickle
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 
-import numpy as np
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from database import jobs

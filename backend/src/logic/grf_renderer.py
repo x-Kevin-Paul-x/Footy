@@ -5,9 +5,7 @@ or native GRF episode (.dump) files without invoking neural network policy model
 """
 
 import os
-import sys
 import json
-import time
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 from collections import deque
@@ -317,7 +315,6 @@ def draw_pitch_frame_from_state(
 
 def _validate_and_publish_video(staging_path: str, output_path: str) -> None:
     """Fully decode staged media and validate its renderer-owned frame contract."""
-    import json
     if not os.path.exists(staging_path) or os.path.getsize(staging_path) == 0:
         raise RuntimeError(f'Video encoder produced no output: {staging_path}')
     sidecar = Path(staging_path).with_suffix('.timeline.json')

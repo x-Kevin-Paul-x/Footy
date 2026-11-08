@@ -5,10 +5,8 @@ Supports decoupled high-throughput pure simulation (1-3s) and standalone 3D TV b
 """
 
 import os
-import sys
 import json
 import time
-import hashlib
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Any, Optional
@@ -21,7 +19,7 @@ from config import (
     FOOTY_GRF_MAX_STEPS,
     BASE_DIR
 )
-from logic.grf_renderer import team_color_from_name, hex_to_bgr
+from logic.grf_renderer import team_color_from_name
 
 logger = logging.getLogger(__name__)
 

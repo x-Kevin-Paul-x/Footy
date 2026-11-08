@@ -11,7 +11,6 @@ Provides:
 """
 
 import os
-import sys
 import enum
 import json
 import socket

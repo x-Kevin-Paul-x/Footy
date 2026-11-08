@@ -4,13 +4,8 @@ from datetime import datetime
 import random
 from models.match import Match
 from models.team import Team
-from models.manager import Manager
-from models.coach import Coach
 from models.transfer import TransferMarket
-from database.match_db import get_matches_for_season
-from database.league_db import create_league, get_league, update_league, delete_league
-from database.player_db import update_player
-from database.team_db import update_team
+from database.league_db import create_league, get_league, update_league
 
 class League:
     def __init__(self, name, num_teams=20):

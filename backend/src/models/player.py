@@ -1,7 +1,7 @@
 import random
 import names  # Requires: pip install names
-from database.player_db import create_player, get_player, update_player, delete_player
-from database.session import DB_FILE, get_raw_conn
+from database.player_db import create_player, get_player, update_player
+from database.session import get_raw_conn
 
 class FootballPlayer:
 

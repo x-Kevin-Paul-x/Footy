@@ -2,7 +2,6 @@ import os
 import time
 from types import SimpleNamespace
 
-import numpy as np
 import pytest
 
 from logic.availability import apply_recorded_availability

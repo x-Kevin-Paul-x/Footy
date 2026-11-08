@@ -4,7 +4,7 @@ from contextlib import contextmanager, closing
 import os
 import sqlite3
 import tempfile
-from database.models import Base
+from database.models import Base  # noqa: F401 -- re-exported; tests create tables via session.Base
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _DATA_DIR_OVERRIDE = os.environ.get("FOOTY_DATA_DIR")

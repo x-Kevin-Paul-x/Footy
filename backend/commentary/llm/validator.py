@@ -13,6 +13,15 @@ from typing import List, Dict, Any, Tuple, Optional
 from backend.commentary.schemas import CommentaryUtterance, CommentarySlot, MatchContext
 
 
+def get_player_short_name(name: str) -> str:
+    parts = (name or "").split()
+    if not parts:
+        return ""
+    if parts[-1].isdigit() and len(parts) >= 2:
+        return f"{parts[-2]} {parts[-1]}"
+    return parts[-1]
+
+
 class FactFirewallValidator:
     """Validates that generated lines cite valid fact IDs and do not hallucinate."""
 
@@ -22,6 +31,11 @@ class FactFirewallValidator:
         self.all_player_names = set(match_context.home_players + match_context.away_players)
 
     def validate(self, utterance: CommentaryUtterance, slot: CommentarySlot) -> Tuple[bool, List[str]]:
+        if utterance.grounding is not None:
+            from backend.commentary.grounding import GroundedCompiler
+            return GroundedCompiler(self.context).validate(utterance, slot)
+        if self.context.evidence_records:
+            return False, ['Structured evidence requires controlled factual realization']
         errors = []
 
         # 1. Verify commentary_id correspondence
@@ -57,11 +71,16 @@ class FactFirewallValidator:
                     errors.append(f"Premature match conclusion phrase '{term}' in minute {slot.match_minute}")
 
         # 4. Strict Running Scoreline Verification
-        # Find any score pattern like X-Y or X to Y
+        # Find any score pattern like X-Y or X to Y with realistic match scores (0-9)
         for text in [utterance.primary, utterance.short, utterance.emergency_short]:
+            h_now, a_now = map(int, slot.running_score.split('-'))
+            if h_now != a_now and re.search(r'\b(?:level(?:s|led)?(?:\s+it|\s+again|\s+terms)?|equalis(?:e|es|er)|equaliz(?:e|es|er)|all\s+square)\b', text, re.I):
+                errors.append('Equaliser claim contradicts current score')
+            if slot.match_minute >= 86 and 'fresh contest' in text.lower():
+                errors.append('Fresh-contest claim contradicts late match clock')
             number_words = {'nil':'0', 'zero':'0', 'one':'1', 'two':'2', 'three':'3', 'four':'4', 'five':'5', 'six':'6', 'seven':'7', 'eight':'8', 'nine':'9', 'ten':'10'}
             score_text = re.sub(r'\b(?:nil|zero|one|two|three|four|five|six|seven|eight|nine|ten)\b', lambda m:number_words[m.group()], text.lower())
-            scores_found = re.findall(r"\b(\d+)\s*(?:[-–]|to)\s*(\d+)\b", score_text)
+            scores_found = re.findall(r"\b([0-9]+)\s*(?:[-–]|to)\s*([0-9]+)\b", score_text)
             for h, a in scores_found:
                 mentioned = f"{h}-{a}"
                 # Must match current running score (or reverse)
@@ -75,8 +94,7 @@ class FactFirewallValidator:
 
         # 5. Active Goal Scorer Verification
         if slot.slot_type == "goal_reaction" and slot.active_player:
-            active_p = slot.active_player.lower()
-            last_name = active_p.split()[-1] if active_p else ""
+            last_name = get_player_short_name(slot.active_player).lower()
             for text in (utterance.primary, utterance.short, utterance.emergency_short):
                 if last_name not in text.lower():
                     errors.append(f"Wrong scorer attributed: expected {slot.active_player} in '{text}'")
@@ -90,13 +108,13 @@ class FactFirewallValidator:
             if slot.active_event_type in ('PASS', 'PROGRESSIVE_PASS') and re.search(r'\b(?:run(?:s)?|move(?:s)?|press|driv(?:es|ing)|space|attack|respond)\b', text, re.I):
                 errors.append('Invented action beyond recorded pass')
             permitted = [slot.active_player or '', slot.active_facts.get('passer',''), slot.active_facts.get('receiver','')]
-            permitted_words = {name.lower().split()[-1] for name in permitted if name}
+            permitted_words = {get_player_short_name(name).lower() for name in permitted if name}
             if slot.active_event_type != 'INTRO':
                 for name in self.all_player_names:
-                    surname = name.lower().split()[-1]
+                    surname = get_player_short_name(name).lower()
                     if surname not in permitted_words and re.search(r'\b'+re.escape(surname)+r'\b', text.lower()):
                         errors.append(f'Unrelated player in active action: {name}')
-            if slot.slot_type == 'lead_in' and slot.active_player and slot.active_player.lower().split()[-1] not in text.lower():
+            if slot.slot_type == 'lead_in' and slot.active_player and get_player_short_name(slot.active_player).lower() not in text.lower():
                 errors.append('Buildup names the wrong player')
             if slot.active_event_type != 'INTRO' and re.search(r'\b(?:Ryan|Aiden)\b', text):
                 errors.append('Unnecessary partner name')

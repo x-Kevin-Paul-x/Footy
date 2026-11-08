@@ -6,7 +6,6 @@ preallocated trajectory recording, and state archiving.
 """
 
 import os
-import sys
 import time
 import json
 import enum
@@ -32,12 +31,10 @@ except ImportError:
 
 from logic.grf_trajectory import MatchTrajectory, MatchManifest
 from logic.grf_state_archive import GRFStateArchiveWriter, ReplayIntegrityError
-from logic.replay_schema import SIM_STEP_SECONDS
 from logic.grf_core import (
     extract_canonical_features,
     compute_shot_xg,
     apply_tactical_action_bias,
-    ACTION_MIRROR_MAP,
 )
 from logic.footy_grf_adapter import (
     FootyGRFAdapter,

@@ -4,10 +4,8 @@ Tests canonical architecture, perspective symmetry, trajectory serialization,
 attribute mapping, truthful statistics invariants, and FastAPI endpoints.
 """
 
-import math
 import numpy as np
 import pytest
-from pathlib import Path
 from fastapi.testclient import TestClient
 
 from api_fastapi import app
@@ -414,7 +412,7 @@ def test_pure_trajectory_renderer_integrity(tmp_path):
 def test_attribute_sensitivity():
     """Verify that teams with different attributes produce measurably distinct velocities and trajectories under the exact same seed."""
     from logic.grf_native_runner import GRFNativeRunner
-    from logic.footy_grf_adapter import GRFPlayerProfile, GRFTeamTactics
+    from logic.footy_grf_adapter import GRFTeamTactics
     runner = GRFNativeRunner()
     if not runner.is_available():
         pytest.skip("GRF WSL environment not available")

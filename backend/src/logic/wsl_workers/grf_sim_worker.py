@@ -8,8 +8,7 @@ Supports both one-shot CLI execution and persistent daemon mode.
 import os
 import sys
 import json
-import time
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 # Ensure backend/src and third-party modules can be imported
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -17,7 +16,7 @@ backend_src = os.path.dirname(os.path.dirname(script_dir))
 if backend_src not in sys.path:
     sys.path.insert(0, backend_src)
 
-from logic.simulation.match_executor import GRFMatchExecutor, ReplayMode, SimulationSpec, CanonicalMatchResult
+from logic.simulation.match_executor import GRFMatchExecutor, ReplayMode
 from logic.simulation.policy_backend import CPUSinglePolicy
 
 _CANONICAL_POLICY = None

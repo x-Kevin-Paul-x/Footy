@@ -11,7 +11,6 @@ Manages isolated worker processes across CPU physical cores with:
 """
 
 import os
-import sys
 import time
 import queue
 import subprocess
@@ -20,7 +19,7 @@ from typing import Dict, List, Any, Optional
 import numpy as np
 
 from .simulation_worker import SimulationWorker, ReplayMode
-from .policy_backend import PolicyBackend, CPUSinglePolicy, CUDABatchPolicy, CPUBatchPolicy
+from .policy_backend import CPUSinglePolicy, CUDABatchPolicy
 
 
 def discover_physical_cores() -> List[int]:

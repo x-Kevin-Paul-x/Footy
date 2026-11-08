@@ -89,13 +89,22 @@ def test_two_commentators_script_generation_and_validation():
     allocator = SlotAllocator(timeline)
     slots = allocator.allocate_slots(events, sequences, ctx)
 
-    writer = CommentaryWriter(ctx, client=LlamaClient())
+    client = LlamaClient()
+    client._server_available = False
+    writer = CommentaryWriter(ctx, client=client)
     script = writer.write_script(slots)
 
     validator = FactFirewallValidator(ctx)
 
-    assert len(script.utterances) == len(slots)
-    for utt, slot in zip(script.utterances, slots):
+    emitted = {u.commentary_id for u in script.utterances}
+    omitted = {r['id'] for r in writer.diagnostics['omissions']}
+    assert emitted | omitted == {s.commentary_id for s in slots}
+    assert not emitted & omitted
+    assert all(s.commentary_id in emitted for s in slots if s.slot_type in
+               ('goal_reaction','halftime_recap','fulltime_summary'))
+    slot_map = {s.commentary_id:s for s in slots}
+    for utt in script.utterances:
+        slot = slot_map[utt.commentary_id]
         assert utt.speaker == slot.speaker
         valid, errors = validator.validate(utt, slot)
         assert valid, f"Validation failure on {slot.commentary_id} ({slot.speaker}): {errors}"

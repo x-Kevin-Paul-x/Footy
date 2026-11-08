@@ -9,13 +9,11 @@ and comprehensive telemetry profiling.
 from logic.team_identity import club_colour
 
 import os
-import sys
 import time
-import json
 import queue
 import threading
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 import numpy as np
 import cv2
 
@@ -32,19 +30,18 @@ try:
 except ImportError:
     football_env = None
 
-from logic.grf_trajectory import MatchTrajectory, MatchManifest
+from logic.grf_trajectory import MatchTrajectory
 from logic.broadcast.stats import StatsSnapshotReducer
 from logic.grf_state_archive import GRFStateArchiveReader, ReplayIntegrityError
-from logic.replay_schema import SIM_STEP_SECONDS, PerformanceConfig
+from logic.replay_schema import PerformanceConfig
 from logic.grf_renderer import (
-    team_color_from_name,
     hex_to_bgr,
     draw_pre_match_card,
     draw_studio_stats_card,
     draw_hud
 )
 from .native_goal_frames import NativeGoalFrames
-from .replay_encoder import create_encoder, ReplayEncoder
+from .replay_encoder import create_encoder
 
 
 class InstrumentedFrameQueue:

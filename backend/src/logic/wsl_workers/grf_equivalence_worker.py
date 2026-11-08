@@ -9,7 +9,6 @@ and measures mathematical parity:
 """
 
 import sys
-import os
 import json
 import numpy as np
 from pathlib import Path

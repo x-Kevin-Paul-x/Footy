@@ -1,11 +1,11 @@
 """Gymnasium-compatible Football Simulation Environment for RL Manager Training."""
 
 import random
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 try:
-    import gymnasium as gym
+    import gymnasium as gym  # noqa: F401 -- import probes availability for GYM_AVAILABLE
     from gymnasium import spaces
     GYM_AVAILABLE = True
 except ImportError:

@@ -5,15 +5,12 @@ Records compact .npz trajectory and event traces for 100% consistent 3D cinemati
 """
 
 import os
-import sys
 import json
 import time
-import hashlib
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 import logging
-import numpy as np
 
 from config import (
     RECORDINGS_DIR,

@@ -10,23 +10,16 @@ Verifies:
 """
 
 import os
-import sys
 import json
 import pickle
 import zlib
-import hashlib
-import tempfile
 import numpy as np
 import pytest
-from pathlib import Path
 
 from logic.grf_state_archive import (
     GRFStateArchiveWriter,
     GRFStateArchiveReader,
-    ReplayIntegrityError,
-    load_grf_states,
-    SIM_STEP_SECONDS,
-    SIM_FPS
+    ReplayIntegrityError
 )
 from logic.grf_trajectory import MatchTrajectory, MatchManifest
 

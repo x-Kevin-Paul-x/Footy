@@ -18,7 +18,6 @@ if sys.platform == "win32":
 from models.league import League
 import json
 import random
-import shutil
 import logging
 from datetime import datetime, timedelta
 
@@ -267,7 +266,7 @@ def print_transfer_summary(transfer_market):
     """Print transfer window summary"""
     analysis = transfer_market.get_market_analysis()
 
-    logger.info(f"\nTransfer Market Summary")
+    logger.info("\nTransfer Market Summary")
     logger.info("=" * 60)
     logger.info(f"Current Window: {analysis['current_window'] or 'CLOSED'}")
     logger.info(f"Transfer Listings: {analysis['total_listings']}")
@@ -278,7 +277,7 @@ def print_transfer_summary(transfer_market):
     logger.info(f"Loans Completed: {analysis['loans_completed']}")
 
     if analysis['positions']:
-        logger.info(f"\nMost Active Positions:")
+        logger.info("\nMost Active Positions:")
         sorted_positions = sorted(analysis['positions'].items(),
                                 key=lambda x: x[1]['count'], reverse=True)[:5]
         for pos, data in sorted_positions:
@@ -325,7 +324,7 @@ def print_youth_prospects(teams):
     # Sort by potential and current rating
     all_youth.sort(key=lambda x: (x['potential'], x['current_rating']), reverse=True)
 
-    logger.info(f"\nTop Youth Prospects")
+    logger.info("\nTop Youth Prospects")
     logger.info("=" * 80)
     logger.info(f"{'Name':<20} {'Team':<15} {'Age':<4} {'Pos':<5} {'Current':<8} {'Potential':<9}")
     logger.info("-" * 80)
@@ -691,7 +690,7 @@ def simulate_season_with_transfers(premier_league, transfer_market, run_id=None,
     if max_matches_limit > 0 and matches_played >= max_matches_limit:
         logger.info(f"Skipping second half of season due to FOOTY_MAX_MATCHES={max_matches_limit}.")
     else:
-        logger.info(f"\nPlaying second half of season...")
+        logger.info("\nPlaying second half of season...")
         for round_chunk_start in range(january_round, len(schedule_rounds), 2):
             checkpoint_run()
             matchday_batches = schedule_rounds[round_chunk_start:min(round_chunk_start + 2, len(schedule_rounds))]
@@ -779,9 +778,8 @@ def simulate_season_with_transfers(premier_league, transfer_market, run_id=None,
 
 def _run_main(run_id: str = None, render_mode: str = None, event_callback=None, season_year=None, seasons=None):
     """Enhanced main function with run-scoped simulation"""
-    from database.db_setup import init_simulation_run, clean_old_simulation_data, create_tables
+    from database.db_setup import init_simulation_run, create_tables
     from database.session import get_db_session
-    from database.models import SimulationRun
 
     eff_render_mode = str(render_mode or os.getenv("FOOTY_DEFAULT_RENDER_MODE", "3d")).lower()
     if not run_id:
@@ -838,7 +836,7 @@ def _run_main(run_id: str = None, render_mode: str = None, event_callback=None, 
         logger.info(f"   Transfer Success Rate: {champion_manager_details['transfer_success_rate']:.1f}%")
 
         # Print team of the season
-        logger.info(f"\n Premier League Team of the Season")
+        logger.info("\n Premier League Team of the Season")
         logger.info("=" * 85)
         logger.info(f"{'Position':<8} {'Name':<20} {'Team':<15} {'Age':<4} {'Rating':<7} {'Value':<10}")
         logger.info("-" * 85)

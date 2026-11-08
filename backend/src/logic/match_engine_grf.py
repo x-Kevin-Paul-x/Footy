@@ -7,7 +7,7 @@ with physics-accurate 3D Multi-Agent Reinforcement Learning simulation.
 import logging
 from typing import Any, Dict, List, Optional
 from config import FOOTY_GRF_MAX_STEPS
-from logic.footy_grf_adapter import FootyGRFAdapter, FORMATION_COORDINATES, GRFTeamTactics
+from logic.footy_grf_adapter import FootyGRFAdapter
 from logic.grf_native_runner import GRFNativeRunner
 
 logger = logging.getLogger("footy.engine.grf")
